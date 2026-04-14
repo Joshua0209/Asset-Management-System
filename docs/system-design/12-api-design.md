@@ -1,0 +1,1154 @@
+# API Design
+
+**Base URL:** `/api/v1`
+**Auth:** Bearer token (JWT) in `Authorization` header for all endpoints except login/register.
+**Content-Type:** `application/json` (except image upload: `multipart/form-data`).
+
+---
+
+## Endpoint Summary
+
+### Auth
+
+| Method | Path | Description | Access | FR |
+|--------|------|-------------|--------|-----|
+| POST | `/auth/register` | Register new user | Public | FR-01 |
+| POST | `/auth/login` | Login | Public | FR-02 |
+| GET | `/auth/me` | Get current user | Auth | FR-02 |
+| POST | `/auth/password-reset` | Request password reset | Public | FR-04 |
+| POST | `/auth/password-reset/confirm` | Confirm password reset | Public | FR-04 |
+
+### Assets
+
+| Method | Path | Description | Access | FR | FSM |
+|--------|------|-------------|--------|-----|-----|
+| GET | `/assets` | List/search assets | Manager | FR-17 | — |
+| GET | `/assets/mine` | My assigned assets | Holder | FR-18 | — |
+| GET | `/assets/:id` | Get asset details | Manager/Owner | FR-17 | — |
+| POST | `/assets` | Register new asset | Manager | FR-10–13 | T1 |
+| PATCH | `/assets/:id` | Update asset info | Manager | FR-15 | — |
+| POST | `/assets/:id/assign` | Assign to holder | Manager | FR-16 | T2 |
+| POST | `/assets/:id/unassign` | Reclaim asset | Manager | FR-16 | T5 |
+| POST | `/assets/:id/dispose` | Scrap asset | Manager | — | T3 |
+| GET | `/assets/:id/history` | View audit trail | Manager | — | — |
+
+### Repair Requests
+
+| Method | Path | Description | Access | FR | FSM |
+|--------|------|-------------|--------|-----|-----|
+| POST | `/repair-requests` | Submit request + images | Holder | FR-20,21,30 | T4 |
+| GET | `/repair-requests` | List requests | Both | FR-27,28 | — |
+| GET | `/repair-requests/:id` | Get request details | Both | FR-31 | — |
+| POST | `/repair-requests/:id/approve` | Approve request | Manager | FR-22,23 | T6 |
+| POST | `/repair-requests/:id/reject` | Reject request | Manager | FR-22,24 | T7 |
+| PATCH | `/repair-requests/:id/repair-details` | Fill repair details | Manager | FR-25 | — |
+| POST | `/repair-requests/:id/complete` | Mark repair done | Manager | FR-26 | T8 |
+
+### Images
+
+| Method | Path | Description | Access | FR |
+|--------|------|-------------|--------|-----|
+| GET | `/images/:id` | Retrieve image | Auth | FR-31 |
+
+### Users
+
+| Method | Path | Description | Access | FR |
+|--------|------|-------------|--------|-----|
+| GET | `/users` | List users | Manager | FR-16 |
+
+---
+
+## Rate Limiting
+
+Per NFR-12, all endpoints are rate-limited at **100 requests/minute per authenticated user** (configurable). Anonymous endpoints (login, register, password reset) are limited to **30 requests/minute per IP**.
+
+Response headers on every request:
+
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1744742400
+```
+
+---
+
+## RBAC Summary
+
+| Capability | Holder | Manager |
+|-----------|--------|---------|
+| View own assets | ✓ | — |
+| View all assets | — | ✓ |
+| Register/edit/assign assets | — | ✓ |
+| Submit repair request | ✓ | — |
+| View own repair requests | ✓ | — |
+| View all repair requests | — | ✓ |
+| Approve/reject/complete repairs | — | ✓ |
+| View images on any request | ✓ | ✓ |
+
+---
+
+## Conventions
+
+### Response Envelope
+
+All responses use a consistent envelope:
+
+```jsonc
+// Success (single resource)
+{
+  "data": { /* resource object */ }
+}
+
+// Success (collection)
+{
+  "data": [ /* resource objects */ ],
+  "meta": {
+    "total": 142,
+    "page": 1,
+    "per_page": 20,
+    "total_pages": 8
+  }
+}
+
+// Error
+{
+  "error": {
+    "code": "validation_error",       // machine-readable code
+    "message": "Human-readable text",
+    "details": [                      // optional, for field-level errors
+      { "field": "email", "message": "Must be a valid email", "code": "invalid_format" }
+    ]
+  }
+}
+```
+
+### Common Error Codes
+
+| HTTP Status | `error.code` | When |
+|-------------|-------------|------|
+| 400 | `bad_request` | Malformed JSON, missing required field |
+| 401 | `unauthorized` | Missing or expired token |
+| 403 | `forbidden` | Valid token but insufficient role |
+| 404 | `not_found` | Resource does not exist (or soft-deleted) |
+| 409 | `conflict` | Optimistic locking version mismatch |
+| 409 | `duplicate_request` | Repair request already exists for this asset |
+| 409 | `invalid_transition` | FSM transition not allowed from current state |
+| 422 | `validation_error` | Semantically invalid input |
+| 429 | `rate_limit_exceeded` | Too many requests |
+
+### Optimistic Locking
+
+Any request that modifies `assets`, `repair_requests`, or `users` **must** include the current `version` in the request body. The server checks `WHERE id = :id AND version = :version`. If 0 rows affected, the server returns:
+
+```
+HTTP/1.1 409 Conflict
+{
+  "error": {
+    "code": "conflict",
+    "message": "Resource was modified by another user. Please refresh and try again.",
+    "details": [{ "field": "version", "message": "Expected 3, but current is 4", "code": "version_mismatch" }]
+  }
+}
+```
+
+### Pagination
+
+Offset-based pagination for all list endpoints (sufficient for Phase 1-2 scale):
+
+| Parameter | Default | Max | Description |
+|-----------|---------|-----|-------------|
+| `page` | 1 | — | Page number (1-indexed) |
+| `per_page` | 20 | 100 | Items per page |
+
+### Soft Delete
+
+All queries filter by `deleted_at IS NULL` server-side. Deleted resources return `404`. There is no public "undelete" endpoint (admin-only operation).
+
+### ID Format
+
+- Internal IDs: UUID v4 (opaque, no information leakage)
+- Asset business code: `asset_code` field (e.g., `AST-2026-00001`) — auto-generated by the server
+
+### Timestamps
+
+All timestamps are ISO 8601 in UTC: `2026-04-15T10:30:00Z`
+
+---
+
+## 1. Authentication (`/api/v1/auth`)
+
+### 1.1 Register
+
+```
+POST /api/v1/auth/register
+```
+
+**Access:** Public
+
+**Request:**
+
+```json
+{
+  "email": "alice@example.com",
+  "password": "securePassword123",
+  "name": "Alice Chen",
+  "department": "IT",
+  "role": "holder"
+}
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `email` | string | yes | Valid email, unique among active users |
+| `password` | string | yes | Min 8 chars, at least 1 letter + 1 digit |
+| `name` | string | yes | 1–100 chars |
+| `department` | string | yes | Non-empty |
+| `role` | string | yes | `"holder"` or `"manager"` |
+
+**Response:** `201 Created`
+
+```json
+{
+  "data": {
+    "id": "a1b2c3d4-...",
+    "email": "alice@example.com",
+    "name": "Alice Chen",
+    "department": "IT",
+    "role": "holder",
+    "created_at": "2026-04-15T10:30:00Z"
+  }
+}
+```
+
+**Errors:** `400` (malformed), `422` (validation), `409` (email taken)
+
+---
+
+### 1.2 Login
+
+```
+POST /api/v1/auth/login
+```
+
+**Access:** Public
+
+**Request:**
+
+```json
+{
+  "email": "alice@example.com",
+  "password": "securePassword123"
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "expires_at": "2026-04-15T22:30:00Z",
+    "user": {
+      "id": "a1b2c3d4-...",
+      "email": "alice@example.com",
+      "name": "Alice Chen",
+      "role": "holder"
+    }
+  }
+}
+```
+
+**Errors:** `401` (invalid credentials)
+
+---
+
+### 1.3 Get Current User
+
+```
+GET /api/v1/auth/me
+```
+
+**Access:** Authenticated
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "a1b2c3d4-...",
+    "email": "alice@example.com",
+    "name": "Alice Chen",
+    "department": "IT",
+    "role": "holder",
+    "created_at": "2026-04-15T10:30:00Z"
+  }
+}
+```
+
+---
+
+### 1.4 Password Reset — Request
+
+```
+POST /api/v1/auth/password-reset
+```
+
+**Access:** Public
+
+**Request:**
+
+```json
+{
+  "email": "alice@example.com"
+}
+```
+
+**Response:** `202 Accepted` (always, to prevent email enumeration)
+
+```json
+{
+  "data": {
+    "message": "If the email exists, a reset link has been sent."
+  }
+}
+```
+
+---
+
+### 1.5 Password Reset — Confirm
+
+```
+POST /api/v1/auth/password-reset/confirm
+```
+
+**Access:** Public (with valid reset token)
+
+**Request:**
+
+```json
+{
+  "token": "reset-token-from-email",
+  "new_password": "newSecurePassword456"
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "message": "Password has been reset successfully."
+  }
+}
+```
+
+**Errors:** `400` (invalid/expired token), `422` (weak password)
+
+---
+
+## 2. Assets (`/api/v1/assets`)
+
+### 2.1 List Assets
+
+```
+GET /api/v1/assets
+```
+
+**Access:** Manager
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | int | Page number (default: 1) |
+| `per_page` | int | Items per page (default: 20, max: 100) |
+| `q` | string | Full-text search across asset_code, name, model |
+| `status` | string | Filter by status: `in_stock`, `in_use`, `pending_repair`, `under_repair`, `disposed` |
+| `category` | string | Filter by category |
+| `department` | string | Filter by department |
+| `location` | string | Filter by location |
+| `responsible_person_id` | uuid | Filter by assigned holder |
+| `sort` | string | Sort field. Prefix `-` for descending. Default: `-created_at`. Allowed: `created_at`, `name`, `asset_code`, `purchase_date`, `status` |
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid-1",
+      "asset_code": "AST-2026-00001",
+      "name": "MacBook Pro 16\"",
+      "model": "A2991",
+      "category": "computer",
+      "status": "in_use",
+      "location": "Building A, Floor 3",
+      "department": "Engineering",
+      "responsible_person": {
+        "id": "user-uuid",
+        "name": "Alice Chen"
+      },
+      "purchase_date": "2026-01-15",
+      "purchase_amount": "79900.00",
+      "warranty_expiry": "2029-01-15",
+      "created_at": "2026-01-20T08:00:00Z",
+      "version": 3
+    }
+  ],
+  "meta": {
+    "total": 87,
+    "page": 1,
+    "per_page": 20,
+    "total_pages": 5
+  }
+}
+```
+
+---
+
+### 2.2 Get Asset
+
+```
+GET /api/v1/assets/:id
+```
+
+**Access:** Manager, or Holder if they are the `responsible_person`
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "uuid-1",
+    "asset_code": "AST-2026-00001",
+    "name": "MacBook Pro 16\"",
+    "model": "A2991",
+    "specs": "M4 Max, 64GB RAM, 1TB SSD",
+    "category": "computer",
+    "supplier": "Apple Taiwan",
+    "purchase_date": "2026-01-15",
+    "purchase_amount": "79900.00",
+    "location": "Building A, Floor 3",
+    "department": "Engineering",
+    "responsible_person": {
+      "id": "user-uuid",
+      "name": "Alice Chen",
+      "email": "alice@example.com"
+    },
+    "activation_date": "2026-01-20",
+    "warranty_expiry": "2029-01-15",
+    "status": "in_use",
+    "disposal_reason": null,
+    "created_at": "2026-01-20T08:00:00Z",
+    "updated_at": "2026-03-10T14:22:00Z",
+    "version": 3
+  }
+}
+```
+
+**Errors:** `404` (not found or soft-deleted)
+
+---
+
+### 2.3 Register New Asset (FSM T1: → `in_stock`)
+
+```
+POST /api/v1/assets
+```
+
+**Access:** Manager
+
+**Request:**
+
+```json
+{
+  "name": "MacBook Pro 16\"",
+  "model": "A2991",
+  "specs": "M4 Max, 64GB RAM, 1TB SSD",
+  "category": "computer",
+  "supplier": "Apple Taiwan",
+  "purchase_date": "2026-01-15",
+  "purchase_amount": "79900.00",
+  "location": "Building A, Floor 3",
+  "department": "Engineering",
+  "activation_date": "2026-01-20",
+  "warranty_expiry": "2029-01-15"
+}
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `name` | string | yes | 1–200 chars |
+| `model` | string | yes | 1–100 chars |
+| `specs` | string | no | Max 500 chars |
+| `category` | string | yes | One of: `phone`, `computer`, `tablet`, `monitor`, `printer`, `network_equipment`, `other` |
+| `supplier` | string | yes | 1–200 chars |
+| `purchase_date` | string (date) | yes | ISO 8601 date, not in future |
+| `purchase_amount` | string (decimal) | yes | Positive number, max 2 decimal places |
+| `location` | string | no | Max 200 chars |
+| `department` | string | no | Max 100 chars |
+| `activation_date` | string (date) | no | ISO 8601 date |
+| `warranty_expiry` | string (date) | no | ISO 8601 date, must be after `purchase_date` |
+
+**Response:** `201 Created` with `Location: /api/v1/assets/:id`
+
+```json
+{
+  "data": {
+    "id": "new-uuid",
+    "asset_code": "AST-2026-00042",
+    "status": "in_stock",
+    "version": 1,
+    "...": "...all fields..."
+  }
+}
+```
+
+**Side effects:**
+- `asset_code` auto-generated
+- `status` set to `in_stock`
+- `responsible_person_id` is `null`
+- Audit log entry written to `asset_action_histories`
+
+**Errors:** `422` (validation)
+
+---
+
+### 2.4 Update Asset Info
+
+```
+PATCH /api/v1/assets/:id
+```
+
+**Access:** Manager
+
+**Request:** Partial update — only include fields to change plus `version`.
+
+```json
+{
+  "location": "Building B, Floor 1",
+  "department": "Marketing",
+  "version": 3
+}
+```
+
+| Field | Type | Required |
+|-------|------|----------|
+| `version` | int | **yes** (optimistic locking) |
+| All other asset fields | various | no (only changed fields) |
+
+**Constraints:**
+- Cannot change `status` via this endpoint (use FSM action endpoints below)
+- Cannot change `asset_code` (immutable after creation)
+- Cannot change `responsible_person_id` via this endpoint (use assign/unassign)
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "uuid-1",
+    "version": 4,
+    "...": "...updated fields..."
+  }
+}
+```
+
+**Errors:** `409` (version conflict), `422` (validation)
+
+---
+
+### 2.5 Assign Asset to Holder (FSM T2: `in_stock` → `in_use`)
+
+```
+POST /api/v1/assets/:id/assign
+```
+
+**Access:** Manager
+
+**Request:**
+
+```json
+{
+  "responsible_person_id": "holder-user-uuid",
+  "version": 1
+}
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `responsible_person_id` | uuid | yes | Must reference an active user with role `holder` |
+| `version` | int | yes | Current asset version |
+
+**Preconditions (FSM T2):**
+- Asset status is `in_stock`
+- `responsible_person_id` is currently `null`
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "uuid-1",
+    "status": "in_use",
+    "responsible_person": {
+      "id": "holder-user-uuid",
+      "name": "Bob Lin"
+    },
+    "version": 2
+  }
+}
+```
+
+**Side effects:** Audit log entry written.
+
+**Errors:** `409 invalid_transition` (wrong state), `409 conflict` (version mismatch), `422` (invalid holder)
+
+---
+
+### 2.6 Unassign / Reclaim Asset (FSM T5: `in_use` → `in_stock`)
+
+```
+POST /api/v1/assets/:id/unassign
+```
+
+**Access:** Manager
+
+**Request:**
+
+```json
+{
+  "reason": "Employee transfer to another department",
+  "version": 2
+}
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `reason` | string | yes | 1–500 chars |
+| `version` | int | yes | Current asset version |
+
+**Preconditions (FSM T5):**
+- Asset status is `in_use`
+- No active repair requests (`pending_repair` or `under_repair`)
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "uuid-1",
+    "status": "in_stock",
+    "responsible_person": null,
+    "version": 3
+  }
+}
+```
+
+**Errors:** `409 invalid_transition` (active repair exists or wrong state)
+
+---
+
+### 2.7 Scrap Asset (FSM T3: `in_stock` → `disposed`)
+
+```
+POST /api/v1/assets/:id/dispose
+```
+
+**Access:** Manager
+
+**Request:**
+
+```json
+{
+  "disposal_reason": "End of life — exceeded warranty by 2 years, repair cost exceeds replacement",
+  "version": 3
+}
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `disposal_reason` | string | yes | 1–500 chars |
+| `version` | int | yes | Current asset version |
+
+**Preconditions (FSM T3):**
+- Asset status is `in_stock`
+- No active repair requests
+- `responsible_person_id` is `null`
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "uuid-1",
+    "status": "disposed",
+    "disposal_reason": "End of life — exceeded warranty by 2 years, repair cost exceeds replacement",
+    "version": 4
+  }
+}
+```
+
+**Side effects:** Audit log entry written. Asset can no longer transition to any other state.
+
+---
+
+### 2.8 My Assets (Holder View)
+
+```
+GET /api/v1/assets/mine
+```
+
+**Access:** Holder (returns only assets where `responsible_person_id = current_user.id`)
+
+**Query Parameters:** Same as [2.1 List Assets](#21-list-assets) except `responsible_person_id` is fixed to the current user.
+
+**Response:** Same shape as [2.1](#21-list-assets).
+
+---
+
+### 2.9 Asset Action History
+
+```
+GET /api/v1/assets/:id/history
+```
+
+**Access:** Manager
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | int | Page number (default: 1) |
+| `per_page` | int | Items per page (default: 20, max: 100) |
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": [
+    {
+      "id": "history-uuid",
+      "action": "assign",
+      "from_status": "in_stock",
+      "to_status": "in_use",
+      "actor": {
+        "id": "manager-uuid",
+        "name": "Manager Wang"
+      },
+      "metadata": {
+        "responsible_person_id": "holder-uuid",
+        "responsible_person_name": "Alice Chen"
+      },
+      "created_at": "2026-02-01T09:00:00Z"
+    }
+  ],
+  "meta": { "total": 5, "page": 1, "per_page": 20, "total_pages": 1 }
+}
+```
+
+---
+
+## 3. Repair Requests (`/api/v1/repair-requests`)
+
+### 3.1 Submit Repair Request (FSM T4: asset `in_use` → `pending_repair`)
+
+```
+POST /api/v1/repair-requests
+```
+
+**Access:** Holder
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `asset_id` | uuid | yes | Must be an asset assigned to the current user |
+| `fault_description` | string | yes | 1–1000 chars |
+| `images` | file[] | no | Max 5 files, each ≤ 5 MB, JPEG/PNG only |
+
+**Preconditions (FSM T4):**
+- Asset status is `in_use`
+- Asset's `responsible_person_id` matches the current user
+- No existing `pending_review` or `under_repair` request for this asset
+
+**Response:** `201 Created` with `Location: /api/v1/repair-requests/:id`
+
+```json
+{
+  "data": {
+    "id": "repair-uuid",
+    "asset": {
+      "id": "asset-uuid",
+      "asset_code": "AST-2026-00001",
+      "name": "MacBook Pro 16\""
+    },
+    "requester": {
+      "id": "holder-uuid",
+      "name": "Alice Chen"
+    },
+    "status": "pending_review",
+    "fault_description": "Screen flickering when connected to external monitor",
+    "images": [
+      {
+        "id": "img-uuid-1",
+        "url": "/api/v1/images/img-uuid-1",
+        "uploaded_at": "2026-04-15T10:30:00Z"
+      }
+    ],
+    "created_at": "2026-04-15T10:30:00Z",
+    "version": 1
+  }
+}
+```
+
+**Side effects:**
+- Asset status changes to `pending_repair`
+- Asset version incremented
+- Audit log entry written
+
+**Errors:** `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `422` (validation)
+
+---
+
+### 3.2 List Repair Requests
+
+```
+GET /api/v1/repair-requests
+```
+
+**Access:**
+- **Manager:** sees all requests
+- **Holder:** sees only own requests (server-side filter)
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | int | Page number |
+| `per_page` | int | Items per page |
+| `status` | string | `pending_review`, `under_repair`, `completed`, `rejected` |
+| `asset_id` | uuid | Filter by asset |
+| `requester_id` | uuid | Filter by requester (manager only) |
+| `sort` | string | Default: `-created_at`. Allowed: `created_at`, `status` |
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": [
+    {
+      "id": "repair-uuid",
+      "asset": {
+        "id": "asset-uuid",
+        "asset_code": "AST-2026-00001",
+        "name": "MacBook Pro 16\""
+      },
+      "requester": {
+        "id": "holder-uuid",
+        "name": "Alice Chen"
+      },
+      "reviewer": null,
+      "status": "pending_review",
+      "fault_description": "Screen flickering when connected to external monitor",
+      "created_at": "2026-04-15T10:30:00Z",
+      "version": 1
+    }
+  ],
+  "meta": { "total": 12, "page": 1, "per_page": 20, "total_pages": 1 }
+}
+```
+
+---
+
+### 3.3 Get Repair Request
+
+```
+GET /api/v1/repair-requests/:id
+```
+
+**Access:** Manager, or Holder if they are the requester
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "repair-uuid",
+    "asset": {
+      "id": "asset-uuid",
+      "asset_code": "AST-2026-00001",
+      "name": "MacBook Pro 16\""
+    },
+    "requester": {
+      "id": "holder-uuid",
+      "name": "Alice Chen"
+    },
+    "reviewer": {
+      "id": "manager-uuid",
+      "name": "Manager Wang"
+    },
+    "status": "under_repair",
+    "fault_description": "Screen flickering when connected to external monitor",
+    "rejection_reason": null,
+    "repair_date": "2026-04-16",
+    "fault_content": "GPU connector loose due to drop impact",
+    "repair_plan": "Replace GPU ribbon cable and re-seat connector",
+    "repair_cost": "3500.00",
+    "repair_vendor": "Apple Authorized Service — Taipei",
+    "completed_at": null,
+    "images": [
+      {
+        "id": "img-uuid-1",
+        "url": "/api/v1/images/img-uuid-1",
+        "uploaded_at": "2026-04-15T10:30:00Z"
+      }
+    ],
+    "created_at": "2026-04-15T10:30:00Z",
+    "updated_at": "2026-04-16T09:00:00Z",
+    "version": 3
+  }
+}
+```
+
+---
+
+### 3.4 Approve Repair Request (FSM T6: asset `pending_repair` → `under_repair`)
+
+```
+POST /api/v1/repair-requests/:id/approve
+```
+
+**Access:** Manager
+
+**Request:**
+
+```json
+{
+  "version": 1
+}
+```
+
+**Preconditions (FSM T6):**
+- Repair request status is `pending_review`
+- Associated asset status is `pending_repair`
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "repair-uuid",
+    "status": "under_repair",
+    "reviewer": {
+      "id": "manager-uuid",
+      "name": "Manager Wang"
+    },
+    "version": 2
+  }
+}
+```
+
+**Side effects:**
+- Repair request status → `under_repair`
+- Asset status → `under_repair`
+- Both versions incremented
+- `reviewer_id` set to current user
+- Audit log entry written
+
+---
+
+### 3.5 Reject Repair Request (FSM T7: asset `pending_repair` → `in_use`)
+
+```
+POST /api/v1/repair-requests/:id/reject
+```
+
+**Access:** Manager
+
+**Request:**
+
+```json
+{
+  "rejection_reason": "Issue could not be reproduced. Please provide more details.",
+  "version": 1
+}
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `rejection_reason` | string | yes | 1–500 chars |
+| `version` | int | yes | Current repair request version |
+
+**Preconditions (FSM T7):**
+- Repair request status is `pending_review`
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "repair-uuid",
+    "status": "rejected",
+    "rejection_reason": "Issue could not be reproduced. Please provide more details.",
+    "reviewer": {
+      "id": "manager-uuid",
+      "name": "Manager Wang"
+    },
+    "version": 2
+  }
+}
+```
+
+**Side effects:**
+- Repair request status → `rejected`
+- Asset status → `in_use` (returns to normal)
+- Audit log entry written
+
+---
+
+### 3.6 Fill Repair Details
+
+```
+PATCH /api/v1/repair-requests/:id/repair-details
+```
+
+**Access:** Manager
+
+**Request:**
+
+```json
+{
+  "repair_date": "2026-04-16",
+  "fault_content": "GPU connector loose due to drop impact",
+  "repair_plan": "Replace GPU ribbon cable and re-seat connector",
+  "repair_cost": "3500.00",
+  "repair_vendor": "Apple Authorized Service — Taipei",
+  "version": 2
+}
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `repair_date` | string (date) | no | ISO 8601 date |
+| `fault_content` | string | no | Max 1000 chars |
+| `repair_plan` | string | no | Max 1000 chars |
+| `repair_cost` | string (decimal) | no | Non-negative, max 2 decimal places |
+| `repair_vendor` | string | no | Max 200 chars |
+| `version` | int | yes | Current repair request version |
+
+**Preconditions:** Repair request status is `under_repair`.
+
+**Response:** `200 OK` with updated repair request.
+
+**Note:** This endpoint only updates metadata. It does **not** change status. Use [3.7 Complete Repair](#37-complete-repair) to mark as done.
+
+---
+
+### 3.7 Complete Repair (FSM T8: asset `under_repair` → `in_use`)
+
+```
+POST /api/v1/repair-requests/:id/complete
+```
+
+**Access:** Manager
+
+**Request:**
+
+```json
+{
+  "repair_date": "2026-04-20",
+  "fault_content": "GPU connector loose due to drop impact",
+  "repair_plan": "Replaced GPU ribbon cable",
+  "repair_cost": "3500.00",
+  "repair_vendor": "Apple Authorized Service — Taipei",
+  "version": 3
+}
+```
+
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `repair_date` | string (date) | yes | ISO 8601 date |
+| `fault_content` | string | yes | 1–1000 chars |
+| `repair_plan` | string | yes | 1–1000 chars |
+| `repair_cost` | string (decimal) | yes | Non-negative, max 2 decimal places |
+| `repair_vendor` | string | yes | 1–200 chars |
+| `version` | int | yes | Current repair request version |
+
+**Preconditions (FSM T8):**
+- Repair request status is `under_repair`
+- All required repair detail fields provided
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "id": "repair-uuid",
+    "status": "completed",
+    "completed_at": "2026-04-20T15:00:00Z",
+    "version": 4
+  }
+}
+```
+
+**Side effects:**
+- Repair request status → `completed`, `completed_at` set
+- Asset status → `in_use`
+- `responsible_person_id` unchanged
+- Audit log entry written
+
+---
+
+## 4. Images (`/api/v1/images`)
+
+### 4.1 Get Image
+
+```
+GET /api/v1/images/:id
+```
+
+**Access:** Authenticated (any role — images are viewable by all authenticated users per FR-31)
+
+**Response:** `200 OK` — binary image data with appropriate `Content-Type` header (`image/jpeg` or `image/png`).
+
+**Note:** Image upload is handled as part of repair request submission ([3.1](#31-submit-repair-request)). There is no standalone upload endpoint.
+
+---
+
+## 5. Users (`/api/v1/users`)
+
+### 5.1 List Users
+
+```
+GET /api/v1/users
+```
+
+**Access:** Manager (used for asset assignment — look up holders)
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | int | Page number |
+| `per_page` | int | Items per page |
+| `role` | string | Filter by `holder` or `manager` |
+| `department` | string | Filter by department |
+| `q` | string | Search by name or email |
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": [
+    {
+      "id": "user-uuid",
+      "email": "alice@example.com",
+      "name": "Alice Chen",
+      "department": "Engineering",
+      "role": "holder"
+    }
+  ],
+  "meta": { "total": 45, "page": 1, "per_page": 20, "total_pages": 3 }
+}
+```
