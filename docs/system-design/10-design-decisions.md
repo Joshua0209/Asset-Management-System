@@ -16,7 +16,7 @@ Options: Node.js (Express/Fastify), Python (FastAPI/Django), Go (Gin), Java (Spr
 **Q2. Frontend framework?**
 Options: React (Next.js / Vite), Vue 3 (Nuxt), Angular, or server-rendered (HTMX)
 
-→ **React + Next.js**
+→ **React + Vite** — plain SPA is sufficient; no SSR needed since the backend is a separate FastAPI service. Routing via `react-router-dom`, i18n via `react-i18next`.
 
 ---
 

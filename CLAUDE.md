@@ -11,7 +11,7 @@ This repository is a **course homework project** for a cloud computing / softwar
 ```
 docs/                          # Project documentation hub
   requirements.md              # System requirements — source of truth for the domain
-  roadmap.md                   # Implementation roadmap (5-person team, Apr 14 – Jun 2, FastAPI + Next.js)
+  roadmap.md                   # Implementation roadmap (5-person team, Apr 14 – Jun 2, FastAPI + React/Vite)
   system-design/               # Full design document set (read in numbered order)
     README.md                  # Index of all design documents
     00-user-study.md           # Raw user research notes

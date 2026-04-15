@@ -15,7 +15,7 @@ Ship fast. Monolith. Single server. Minimize operational overhead. The architect
 ```
 ┌─────────────────────────────────────────────┐
 │              Frontend (SPA)                 │
-│         React / Vue / Next.js               │
+│           React + Vite (SPA)                │
 ├─────────────────────────────────────────────┤
 │              Backend (Monolith)             │
 │  ┌─────────┐  ┌──────────┐  ┌────────────┐  │
