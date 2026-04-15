@@ -9,7 +9,7 @@ Resolved team discussions on technology and business logic choices.
 **Q1. Backend language/framework?**
 Options: Node.js (Express/Fastify), Python (FastAPI/Django), Go (Gin), Java (Spring Boot)
 
-→ **TBD** — team familiarity should be the primary factor for a course project.
+→ **Python + FastAPI** — chosen for auto-generated OpenAPI docs, Pydantic validation, and async support. ORM: SQLAlchemy + Alembic for migrations.
 
 ---
 
@@ -23,7 +23,7 @@ Options: React (Next.js / Vite), Vue 3 (Nuxt), Angular, or server-rendered (HTMX
 **Q3. ORM vs raw SQL?**
 Options: Prisma, TypeORM, SQLAlchemy, GORM, raw SQL with query builder
 
-→ **ORM** — note: the optimistic locking pattern (`WHERE version = ?`) must work correctly with the chosen ORM.
+→ **SQLAlchemy ORM** (with Alembic for migrations) — the optimistic locking pattern (`WHERE version = ?`) works via SQLAlchemy's built-in `version_id_col` mapper argument.
 
 ---
 
