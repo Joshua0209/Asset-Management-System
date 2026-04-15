@@ -17,7 +17,7 @@ Eliminate single points of failure. The system now serves a real enterprise with
 | Image storage on local disk | Disk full; images lost on server failure | Migrate to S3 |
 | No monitoring | Learn about outages from user complaints | Add CloudWatch + alerting |
 | Manual deployment | Downtime during deploys | Containerize + rolling updates |
-| Search slowing on 200K assets | Queries > 200ms with complex filters | Add proper indexes; consider Redis cache for hot queries |
+| Search slowing on 200K assets | Queries > 200ms with complex filters | Add composite indexes on `(status, category)`, `(department, location)` — sufficient at 4 QPS peak (see Caching Strategy) |
 
 ---
 
@@ -116,10 +116,41 @@ flowchart TD
 
 ## Caching Strategy
 
-At 30,000 DAU and ~4 QPS peak, caching is not strictly necessary for performance. However, if search/filter queries become slow due to complex multi-dimensional filters on 200K assets:
+**Decision: No Redis in Phase 2.** Optimize SQL queries and indexes instead.
 
-- **Option A (recommended for Phase 2):** Optimize SQL queries and indexes first. This is sufficient.
-- **Option B (if measured bottleneck):** Add ElastiCache Redis for caching frequently-accessed asset lists and search results. TTL of 60 seconds. Cache invalidation on write.
+### Why Redis Is Not Needed
+
+At 30,000 DAU (~4 QPS peak, ~1 QPS average), the database alone handles all query patterns comfortably:
+
+| Factor | Phase 2 Value | Why It Rules Out Redis |
+|--------|--------------|------------------------|
+| Peak QPS | ~4.2 | A single FastAPI process handles 500+ QPS. Two nodes provide >1,000 QPS capacity — utilization is under 1%. |
+| Dataset size | ~5 GB (3 years) | Fits entirely in the InnoDB buffer pool (db.t4g.medium ≈ 4 GB RAM). MySQL already serves repeated reads from memory. |
+| Query latency | <10 ms | Composite indexes on `(status, category)`, `(department, location)`, etc. cover every filter combination exposed by the API. |
+| Cache hit rate | Estimated <10% | With 5 filter fields × sort options × pagination, the key space is large relative to 4 QPS. Most cached entries would expire before a second identical request arrives. |
+
+**In short:** MySQL's buffer pool is already acting as an in-memory cache of the working set. Adding Redis would cache data that is already cached, while introducing operational complexity (invalidation logic, monitoring, failover) and ~$50/month in ElastiCache cost (25% of the Phase 2 budget).
+
+### Non-Caching Use Cases Considered
+
+| Use Case | Status | Rationale |
+|----------|--------|-----------|
+| Rate limiting | **Not needed** | At 4 QPS total, no user approaches the 100 req/min limit. Per-node in-memory enforcement (`slowapi`) is sufficient. |
+| Session storage | **Not needed** | JWT-based auth is stateless. Short-lived tokens (1–2 h) with DB-backed refresh tokens avoid shared session state. |
+| Distributed locks | **Not needed** | Optimistic locking via the `version` column handles concurrent writes at the database level. |
+| Pub/Sub (notifications) | **Out of scope** | Real-time notifications are deferred per design decision Q14. |
+| Job queue | **Not needed** | No background processing defined. Image uploads go directly to S3 without post-processing. |
+
+### When to Revisit (Triggers for Adding Redis)
+
+Do not add Redis proactively. Add it only when **measured data** shows one of these:
+
+1. **Slow queries in production** — Enable MySQL slow query log (`long_query_time = 0.1s`). If any endpoint consistently exceeds 100 ms, fix with an index first; only consider caching if indexes are insufficient.
+2. **QPS exceeds ~500 peak** — This would indicate 100× growth beyond Phase 2 estimates, at which point the system should be transitioning to Phase 3 architecture anyway.
+3. **Dataset exceeds buffer pool** — If the active working set no longer fits in RAM, frequently-read data benefits from an external cache.
+4. **Dashboard/aggregation endpoints added** — If a manager dashboard polls `COUNT GROUP BY status` on every page load across all users, caching aggregations with 30–60 s TTL becomes sensible.
+
+Redis is introduced naturally in **Phase 3** (3M DAU, SOA, EKS) where multiple services share a database, the dataset reaches tens of millions of rows, and rate limiting must be enforced across many pods.
 
 ---
 
