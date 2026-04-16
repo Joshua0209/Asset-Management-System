@@ -1,0 +1,55 @@
+# ========================
+# Node / Frontend
+# ========================
+node_modules/
+dist/
+*.local
+.env
+.env.local
+.env.*.local
+
+# Vite
+*.sw?
+
+# ========================
+# Python / Backend
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+*.whl
+venv/
+.venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ========================
+# IDE
+# ========================
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ========================
+# OS
+# ========================
+.DS_Store
+Thumbs.db
+
+# ========================
+# Project-specific
+# ========================
+uploads/
+*.log

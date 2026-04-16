@@ -1,0 +1,14 @@
+# Auto-detect text files and ensure LF line endings
+* text=auto eol=lf
+
+# Lockfile — treat as binary to avoid merge conflicts
+# After resolving conflicts, re-run `pnpm install` to regenerate
+pnpm-lock.yaml -diff merge=binary
+
+# Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
