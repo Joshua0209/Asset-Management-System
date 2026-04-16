@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AMS Prototype v2</title>
+<style>
+:root{
+  --brand:#C8102E;--brand-dk:#A50D24;--navy:#0B3D91;
+  --sb:#111827;--sb2:#1F2937;
+  --n50:#F9FAFB;--n100:#F3F4F6;--n200:#E5E7EB;--n300:#D1D5DB;
+  --n400:#9CA3AF;--n500:#6B7280;--n600:#4B5563;--n700:#374151;--n800:#1F2937;
+  --ok:#16A34A;--ok-bg:#DCFCE7;--ok-b:#86EFAC;
+  --warn:#EA580C;--warn-bg:#FFF7ED;--warn-b:#FCA974;
+  --err:#DC2626;--err-bg:#FEF2F2;--err-b:#FCA5A5;
+  --info:#1D4ED8;--info-bg:#EFF6FF;--info-b:#93C5FD;
+  --ret:#6B7280;--ret-bg:#F9FAFB;
+  --card:#fff;--border:#E5E7EB;--page:#F3F4F6;
+  --font:'Noto Sans TC',system-ui,sans-serif;
+  --mono:'JetBrains Mono','Fira Code',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:#0F172A;min-height:100vh;padding:16px;display:flex;flex-direction:column;align-items:center}
+
+/* ── Shell ── */
+.shell{width:100%;max-width:1280px}
+.shell-bar{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:10px 16px;background:rgba(255,255,255,0.05);border-radius:10px}
+.shell-title{color:#fff;font-size:14px;font-weight:600;flex:1}
+.s-label{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.5);font-size:11px;padding:3px 10px;border-radius:20px}
+.s-back{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.55);font-size:11px;padding:5px 12px;border-radius:20px;border:none;cursor:pointer;transition:.12s}
+.s-back:hover{background:rgba(255,255,255,0.15);color:#fff}
+.breadcrumb{display:flex;gap:5px;align-items:center;font-size:11px;color:rgba(255,255,255,0.35);flex-wrap:wrap}
+.breadcrumb .bc-item{cursor:pointer;color:rgba(255,255,255,0.5);transition:.1s}
+.breadcrumb .bc-item:hover{color:#fff}
+.breadcrumb .bc-sep{opacity:.3}
+.breadcrumb .bc-cur{color:rgba(255,255,255,0.7)}
+
+/* ── Screens ── */
+.screen{display:none;width:100%;min-height:680px;background:var(--page);border-radius:10px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.5);flex-direction:row}
+.screen.active{display:flex;opacity:1}
+
+/* ── Sidebar ── */
+.sb{width:224px;min-width:224px;background:var(--sb);display:flex;flex-direction:column;padding:0}
+.sb-logo{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.06)}
+.sb-mark{width:34px;height:34px;background:var(--brand);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.sb-brand{color:#F9FAFB;font-size:13px;font-weight:600}
+.sb-ver{color:rgba(255,255,255,0.3);font-size:9px;letter-spacing:.4px}
+.sb-sec{padding:14px 16px 5px;color:rgba(255,255,255,0.25);font-size:9px;font-weight:600;letter-spacing:.9px}
+.nav{display:flex;align-items:center;gap:9px;margin:1px 8px;padding:8px 10px;border-radius:5px;cursor:pointer;color:rgba(255,255,255,0.45);font-size:12.5px;transition:.1s;user-select:none;position:relative}
+.nav:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.75)}
+.nav.on{background:rgba(200,16,46,0.18);color:var(--brand)}
+.nav-ic{width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.15);flex-shrink:0;font-size:8px;display:flex;align-items:center;justify-content:center}
+.nav.on .nav-ic{background:var(--brand)}
+.nb{margin-left:auto;background:var(--brand);color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:20px;min-width:18px;text-align:center}
+.nb.warn{background:var(--warn)}
+.sb-bot{margin-top:auto;padding:10px 8px;border-top:1px solid rgba(255,255,255,0.06)}
+.sb-user{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:rgba(255,255,255,0.04)}
+.sb-av{width:28px;height:28px;border-radius:50%;background:#1E3A5F;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#93C5FD;flex-shrink:0}
+.sb-uname{color:#E5E7EB;font-size:12px;font-weight:500}
+.sb-role{color:rgba(255,255,255,0.3);font-size:9.5px}
+.sb-out{margin-left:auto;color:rgba(200,16,46,0.6);font-size:10px;cursor:pointer;padding:2px 4px}
+.sb-out:hover{color:var(--brand)}
+
+/* ── Topbar ── */
+.topbar{height:50px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 22px;gap:12px;flex-shrink:0}
+.tb-title{font-size:14.5px;font-weight:600;color:var(--n800);flex:1}
+.tb-breadcrumb{font-size:11.5px;color:var(--n400);flex:1}
+.tb-breadcrumb span{color:var(--n600);cursor:pointer}
+.lang-toggle{display:flex;background:var(--n100);border-radius:16px;padding:2px;border:1px solid var(--n200)}
+.lt-btn{padding:3px 10px;font-size:10.5px;font-weight:600;cursor:pointer;color:var(--n500);border-radius:12px;transition:.1s}
+.lt-btn.on{background:var(--brand);color:#fff}
+.dark-tog{width:34px;height:18px;background:var(--n300);border-radius:9px;cursor:pointer;position:relative;transition:.2s}
+.dark-tog::after{content:'';width:14px;height:14px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:.2s}
+
+/* ── Main ── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.content{flex:1;overflow-y:auto;padding:20px 22px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 15px;border-radius:4px;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:.12s;font-family:var(--font);white-space:nowrap}
+.btn-p{background:var(--brand);color:#fff}.btn-p:hover{background:var(--brand-dk)}
+.btn-s{background:transparent;border:1.5px solid var(--brand);color:var(--brand)}.btn-s:hover{background:var(--err-bg)}
+.btn-g{background:transparent;border:1px solid var(--n300);color:var(--n600)}.btn-g:hover{background:var(--n100)}
+.btn-ok{background:var(--ok);color:#fff}.btn-ok:hover{background:#15803D}
+.btn-warn{background:var(--warn);color:#fff}.btn-warn:hover{background:#C2410C}
+.btn-err{background:var(--err);color:#fff}.btn-err:hover{background:#B91C1C}
+.btn-navy{background:var(--navy);color:#fff}
+.btn-sm{padding:5px 11px;font-size:11px}
+.btn-xs{padding:3px 8px;font-size:10.5px}
+
+/* ── Cards ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:6px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.kpi{padding:16px 18px;background:var(--card);border:1px solid var(--border);border-radius:6px}
+.kpi-lbl{font-size:10.5px;font-weight:600;color:var(--n500);letter-spacing:.3px;text-transform:uppercase;margin-bottom:6px}
+.kpi-val{font-size:28px;font-weight:700;line-height:1;margin-bottom:3px}
+.kpi-sub{font-size:11px;color:var(--n400)}
+.kpi-bar{height:2.5px;background:var(--n200);border-radius:2px;margin-top:10px;overflow:hidden}
+.kpi-fill{height:2.5px;border-radius:2px}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:600}
+.badge::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+.b-ok{background:var(--ok-bg);color:var(--ok)}
+.b-warn{background:var(--warn-bg);color:var(--warn)}
+.b-err{background:var(--err-bg);color:var(--err)}
+.b-info{background:var(--info-bg);color:var(--info)}
+.b-ret{background:var(--ret-bg);color:var(--ret);border:1px solid var(--n200)}
+.b-done{background:var(--ok-bg);color:var(--ok)}
+
+/* ── Table ── */
+.tcard{background:var(--card);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.thead-bar{display:flex;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);gap:10px}
+.thead-title{font-size:13px;font-weight:600;color:var(--n800);flex:1}
+.search{padding:5px 11px;border:1px solid var(--n300);border-radius:4px;font-size:12px;font-family:var(--font);outline:none;color:var(--n800);width:160px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--n100)}
+th{padding:8px 14px;text-align:left;font-size:10.5px;font-weight:600;color:var(--n700);letter-spacing:.3px;white-space:nowrap}
+td{padding:10px 14px;border-top:1px solid var(--border);color:var(--n600);vertical-align:middle}
+tr:hover td{background:#FAFAFA}
+.mono{font-family:var(--mono);font-size:10.5px;color:var(--navy)}
+
+/* ── Form ── */
+.fl{font-size:11.5px;font-weight:500;color:var(--n600);margin-bottom:3px;display:block}
+.fi{width:100%;padding:7px 11px;border:1px solid var(--n300);border-radius:4px;font-size:12.5px;font-family:var(--font);color:var(--n800);outline:none;transition:.12s}
+.fi:focus{border-color:var(--navy);box-shadow:0 0 0 2px rgba(29,78,216,.1)}
+.fsel{width:100%;padding:7px 11px;border:1px solid var(--n300);border-radius:4px;font-size:12.5px;font-family:var(--font);color:var(--n800);outline:none;background:#fff}
+.fta{width:100%;padding:8px 11px;border:1px solid var(--n300);border-radius:4px;font-size:12.5px;font-family:var(--font);color:var(--n800);resize:none;outline:none}
+.frow{display:grid;gap:13px;margin-bottom:13px}
+.frow.two{grid-template-columns:1fr 1fr}
+.ff{display:flex;flex-direction:column}
+.freq{color:var(--brand)}
+.ferr{border-color:var(--err)!important;box-shadow:0 0 0 2px rgba(220,38,38,.1)!important}
+.errmsg{font-size:10.5px;color:var(--err);margin-top:3px}
+
+/* ── Modal ── */
+.ov{display:none;position:fixed;inset:0;z-index:200;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+.ov.open{display:flex}
+.modal{background:#fff;border-radius:8px;border:1px solid var(--border);max-width:92vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.mh{padding:14px 18px 12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px}
+.mt{font-size:14.5px;font-weight:600;color:var(--n800);flex:1}
+.ms{font-size:10.5px;color:var(--n400);margin-top:2px}
+.mx{font-size:18px;color:var(--n400);cursor:pointer;line-height:1}.mx:hover{color:var(--n800)}
+.mb{padding:16px 18px}
+.mf{padding:12px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;gap:9px}
+.mfn{font-size:11px;color:var(--n400);flex:1}
+
+/* ── Toast ── */
+.toast-wrap{position:fixed;top:18px;right:18px;z-index:300;display:flex;flex-direction:column;gap:8px}
+.toast{display:flex;align-items:flex-start;gap:9px;padding:11px 14px;background:#fff;border-radius:7px;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.12);min-width:250px;max-width:310px;animation:tIn .18s ease}
+@keyframes tIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+.t-bar{width:3px;min-height:34px;border-radius:2px;flex-shrink:0}
+.t-title{font-size:12.5px;font-weight:600;color:var(--n800);margin-bottom:2px}
+.t-msg{font-size:11px;color:var(--n500)}
+
+/* ── Bar chart (horizontal) ── */
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bar-lbl{font-size:11.5px;color:var(--n600);width:80px;text-align:right;flex-shrink:0}
+.bar-track{flex:1;height:18px;background:var(--n100);border-radius:3px;overflow:hidden}
+.bar-fill{height:18px;border-radius:3px;display:flex;align-items:center;padding-left:6px}
+.bar-num{font-size:10.5px;font-weight:600;color:#fff}
+
+/* ── Split pane ── */
+.split{display:grid;gap:14px}
+.split-2{grid-template-columns:320px 1fr}
+.split-3-1{grid-template-columns:1fr 260px}
+
+/* ── Review list ── */
+.rev-list{background:var(--card);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.rev-lh{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--n50)}
+.rev-item{padding:13px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:.08s;border-left:3px solid transparent}
+.rev-item:hover{background:var(--n50)}
+.rev-item.on{background:var(--info-bg);border-left-color:var(--brand)}
+.ri-id{font-family:var(--mono);font-size:9.5px;color:var(--navy);margin-bottom:3px}
+.ri-name{font-size:12px;font-weight:500;color:var(--n800);margin-bottom:2px}
+.ri-meta{font-size:10.5px;color:var(--n400)}
+
+/* ── Kanban ── */
+.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.kb-col{background:var(--n100);border-radius:6px;overflow:hidden}
+.kb-head{padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:3px solid transparent;background:var(--card);border-radius:6px 6px 0 0}
+.kb-title{font-size:13px;font-weight:600;color:var(--n800);flex:1}
+.kb-n{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff}
+.kb-cards{padding:10px;display:flex;flex-direction:column;gap:8px}
+.kbc{background:var(--card);border:1px solid var(--border);border-radius:5px;padding:12px;cursor:pointer;transition:.1s;position:relative;border-top:3px solid transparent}
+.kbc:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.kbc-id{font-family:var(--mono);font-size:9.5px;color:var(--navy);margin-bottom:4px}
+.kbc-title{font-size:12px;font-weight:500;color:var(--n800);margin-bottom:4px}
+.kbc-meta{font-size:10.5px;color:var(--n500)}
+.kbc-footer{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.pri-badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700}
+.pri-urgent{background:var(--err-bg);color:var(--err)}
+.pri-high{background:var(--warn-bg);color:var(--warn)}
+.pri-mid{background:var(--info-bg);color:var(--info)}
+.pri-low{background:var(--ok-bg);color:var(--ok)}
+
+/* ── Timeline ── */
+.tl-item{display:flex;gap:12px;margin-bottom:14px}
+.tl-dot{width:10px;height:10px;border-radius:50%;margin-top:2px;flex-shrink:0}
+.tl-line{width:1px;background:var(--border);margin:12px 0 0 4.5px;flex-shrink:0;min-height:32px}
+.tl-date{font-size:10px;color:var(--n400)}
+.tl-act{font-size:12px;font-weight:500;color:var(--n700)}
+.tl-desc{font-size:11px;color:var(--n500)}
+
+/* ── FSM bar ── */
+.fsm{display:flex;align-items:center;gap:0}
+.fsm-step{display:flex;align-items:center;gap:0;flex:1}
+.fsm-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;z-index:1}
+.fsm-line{flex:1;height:2px;margin:0 -1px}
+.fsm-label{font-size:10px;color:var(--n500);margin-top:4px;text-align:center}
+
+/* ── Detail grid ── */
+.det-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.det-f label{font-size:10.5px;color:var(--n400);display:block;margin-bottom:2px}
+.det-f p{font-size:12.5px;font-weight:500;color:var(--n800)}
+.det-sec-title{font-size:10px;font-weight:700;color:var(--n400);letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase}
+
+/* ── Login ── */
+#sc-login{flex-direction:row;min-height:640px;background:var(--sb)}
+.log-left{flex:1;padding:48px 40px;display:flex;flex-direction:column;justify-content:center}
+.log-logo{display:flex;align-items:center;gap:12px;margin-bottom:44px}
+.log-mark{width:44px;height:44px;background:var(--brand);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff}
+.log-title{color:#F9FAFB;font-size:28px;font-weight:700;margin-bottom:8px}
+.log-sub{color:rgba(255,255,255,0.5);font-size:14px}
+.log-right{width:460px;display:flex;align-items:center;justify-content:center;padding:36px;background:var(--sb2)}
+.log-card{background:#fff;border-radius:8px;padding:28px;width:100%}
+.log-cht{font-size:20px;font-weight:700;color:var(--n800);margin-bottom:4px;text-align:center}
+.log-cdesc{font-size:12.5px;color:var(--n400);text-align:center;margin-bottom:20px}
+.log-link{color:var(--navy);font-size:12px;cursor:pointer;text-decoration:underline}
+
+/* ── Announcements ── */
+.ann-item{padding:10px 13px;border-left:3px solid;border-radius:0 4px 4px 0;margin-bottom:8px}
+.ann-title{font-size:12px;font-weight:600;margin-bottom:3px}
+.ann-body{font-size:11px;line-height:1.5}
+
+/* ── Progress tracker ── */
+.prog-wrap{display:flex;align-items:flex-start;gap:0;padding:8px 0}
+.prog-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;position:relative}
+.prog-step:not(:last-child)::after{content:'';position:absolute;top:7px;left:50%;width:100%;height:2px;background:var(--n200)}
+.prog-step.done::after{background:var(--ok)}
+.prog-step.curr::after{background:var(--n200)}
+.prog-dot{width:16px;height:16px;border-radius:50%;z-index:1;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff}
+.prog-lbl{font-size:10px;text-align:center;color:var(--n500);line-height:1.3;max-width:60px}
+.prog-date{font-size:9.5px;color:var(--n400);text-align:center}
+
+/* ── Image placeholders ── */
+.img-ph{background:var(--n100);border:1px solid var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--n400)}
+
+/* ── Holder nav (different items) ── */
+.holder-badge{margin:8px 16px;background:rgba(29,78,216,.15);border-radius:5px;padding:5px 10px;font-size:10px;font-weight:600;color:#93C5FD;letter-spacing:.3px}
+
+/* ── Notification dot ── */
+.notif-dot{width:6px;height:6px;border-radius:50%;background:var(--warn);position:absolute;top:8px;right:6px}
+</style>
+</head>
+<body>
+<div class="toast-wrap" id="tw"></div>
+
+<!-- ══════ MODALS ══════ -->
+<!-- 新增資產 -->
+<div class="ov" id="m-add">
+<div class="modal" style="width:560px">
+  <div class="mh"><div><div class="mt">新增資產</div><div class="ms">POST /api/v1/assets · FR-10~13</div></div><div class="mx" onclick="cm('m-add')">✕</div></div>
+  <div class="mb">
+    <div class="frow"><div class="ff"><label class="fl">資產名稱 <span class="freq">*</span></label><input class="fi" placeholder="MacBook Pro 16&quot; M4" id="fi-name"><div class="errmsg" id="e-name" style="display:none">必填欄位</div></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">類別 <span class="freq">*</span></label><select class="fsel"><option>筆記型電腦</option><option>桌上型電腦</option><option>螢幕</option><option>鍵盤</option><option>滑鼠</option></select></div><div class="ff"><label class="fl">部門 <span class="freq">*</span></label><input class="fi" placeholder="行銷部"></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">序號 S/N</label><input class="fi" placeholder="C02XK1DZJGH5"></div><div class="ff"><label class="fl">採購金額 (NTD)</label><input class="fi" placeholder="89,000"></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">採購日期</label><input class="fi" type="date" value="2025-04-15"></div><div class="ff"><label class="fl">保固到期</label><input class="fi" type="date" value="2029-04-15"></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">存放地點</label><input class="fi" placeholder="2F 行銷部座位區"></div><div class="ff"><label class="fl">指派使用者</label><select class="fsel"><option value="">（未指派）</option><option>黃美玲</option><option>張偉國</option></select></div></div>
+    <div class="frow"><div class="ff"><label class="fl">備註</label><textarea class="fta" rows="2" placeholder="（選填）"></textarea></div></div>
+  </div>
+  <div class="mf"><div class="mfn">* 為必填欄位</div><button class="btn btn-g" onclick="cm('m-add')">取消</button><button class="btn btn-p" onclick="addAsset()">建立資產</button></div>
+</div>
+</div>
+
+<!-- 編輯資產 -->
+<div class="ov" id="m-edit">
+<div class="modal" style="width:560px">
+  <div class="mh"><div><div class="mt">編輯資產資訊</div><div class="ms">PATCH /api/v1/assets/:id · FR-15 · version=5</div></div><div class="mx" onclick="cm('m-edit')">✕</div></div>
+  <div class="mb">
+    <div style="background:var(--warn-bg);border-radius:4px;padding:8px 12px;font-size:11.5px;color:var(--warn);margin-bottom:13px">⚠ 樂觀鎖定版本 v5，儲存時自動比對。並發衝突時拒絕寫入（FR-29）</div>
+    <div class="frow"><div class="ff"><label class="fl">資產名稱 <span class="freq">*</span></label><input class="fi" value="MacBook Pro 16&quot; M3 Pro"></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">類別</label><select class="fsel"><option selected>筆記型電腦</option><option>桌上型電腦</option><option>螢幕</option></select></div><div class="ff"><label class="fl">部門</label><input class="fi" value="行銷部"></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">序號 S/N</label><input class="fi" value="C02XK1DZJGH5"></div><div class="ff"><label class="fl">廠牌/型號</label><input class="fi" value="Apple / A2991"></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">採購金額</label><input class="fi" value="89,000"></div><div class="ff"><label class="fl">保固到期</label><input class="fi" type="date" value="2028-03-15"></div></div>
+    <div class="frow"><div class="ff"><label class="fl">備註</label><textarea class="fta" rows="2">行銷部設計主力機，已安裝 Adobe Creative Cloud。</textarea></div></div>
+  </div>
+  <div class="mf"><div class="mfn">* 為必填欄位</div><button class="btn btn-g" onclick="cm('m-edit')">取消</button><button class="btn btn-p" onclick="toast('ok','儲存成功','資產資訊已更新，版本 v6');cm('m-edit')">儲存變更</button></div>
+</div>
+</div>
+
+<!-- 指派使用者 -->
+<div class="ov" id="m-assign">
+<div class="modal" style="width:460px">
+  <div class="mh"><div><div class="mt">指派資產給使用者</div><div class="ms">POST /api/v1/assets/:id/assign</div></div><div class="mx" onclick="cm('m-assign')">✕</div></div>
+  <div class="mb">
+    <div style="background:var(--info-bg);border-radius:4px;padding:11px 13px;margin-bottom:14px"><div class="mono" style="font-size:10px;color:var(--navy);margin-bottom:3px">AST-2024-0112</div><div style="font-size:13px;font-weight:500;color:var(--n800)">MacBook Pro 16" M3 Pro</div></div>
+    <div class="ff" style="margin-bottom:12px"><label class="fl">搜尋使用者 <span class="freq">*</span></label><input class="fi" placeholder="姓名、Email 或部門…" style="border-color:var(--navy)"></div>
+    <div id="assign-list">
+      <div onclick="selectU(this)" style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:4px;border:1.5px solid var(--navy);background:var(--info-bg);cursor:pointer;margin-bottom:6px" data-sel="1">
+        <div style="width:28px;height:28px;border-radius:50%;background:#1E3A5F;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#93C5FD">黃</div>
+        <div style="flex:1"><div style="font-size:12.5px;font-weight:500;color:var(--n800)">黃美玲</div><div style="font-size:10.5px;color:var(--n400)">行銷部 · 一般使用者</div></div>
+        <span style="color:var(--ok);font-size:14px">✓</span>
+      </div>
+      <div onclick="selectU(this)" style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:4px;border:1px solid var(--border);cursor:pointer;margin-bottom:6px">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--n100);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--n500)">張</div>
+        <div style="flex:1"><div style="font-size:12.5px;font-weight:500;color:var(--n800)">張偉國</div><div style="font-size:10.5px;color:var(--n400)">財務部 · 一般使用者</div></div>
+      </div>
+      <div onclick="selectU(this)" style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:4px;border:1px solid var(--border);cursor:pointer">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--n100);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--n500)">林</div>
+        <div style="flex:1"><div style="font-size:12.5px;font-weight:500;color:var(--n800)">林建宏</div><div style="font-size:10.5px;color:var(--n400)">行政部 · 資產管理員</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="mf"><button class="btn btn-g" onclick="cm('m-assign')">取消</button><button class="btn btn-p" onclick="toast('ok','指派成功','MacBook Pro 16&quot; M3 Pro 已指派給 黃美玲');cm('m-assign')">確認指派</button></div>
+</div>
+</div>
+
+<!-- 提交維修申請 -->
+<div class="ov" id="m-repair">
+<div class="modal" style="width:540px">
+  <div class="mh"><div><div class="mt">提交維修申請</div><div class="ms">POST /api/v1/repair-requests · FR-20,30</div></div><div class="mx" onclick="cm('m-repair')">✕</div></div>
+  <div class="mb">
+    <div style="background:var(--warn-bg);border-radius:4px;padding:10px 13px;margin-bottom:14px"><div class="mono" style="font-size:10px;color:var(--warn);margin-bottom:3px">AST-2024-0112</div><div style="font-size:13px;font-weight:500;color:var(--n800)">MacBook Pro 16" M3 Pro · 黃美玲</div></div>
+    <div class="frow"><div class="ff"><label class="fl">故障說明 <span class="freq">*</span></label><textarea class="fta" rows="4" id="fi-fault" placeholder="請詳細描述故障情形、發生時間與環境…"></textarea><div class="errmsg" id="e-fault" style="display:none">必填欄位</div></div></div>
+    <div style="border:1.5px dashed var(--n300);border-radius:4px;padding:18px;text-align:center;margin-bottom:12px;cursor:pointer;background:var(--n50)" onclick="toast('info','選擇照片','最多 5 張，每張 ≤ 5MB')">
+      <div style="font-size:13px;color:var(--n400)">拖曳圖片或點擊上傳</div><div style="font-size:10.5px;color:var(--n400);margin-top:3px">JPG/PNG · 最多 5 張 · FR-30</div>
+    </div>
+    <div style="background:var(--info-bg);border-radius:4px;padding:9px 13px;font-size:11.5px;color:var(--info)">提交後資產狀態將更新為「維修中」，管理員將收到審查通知。</div>
+  </div>
+  <div class="mf"><div class="mfn">* 為必填欄位</div><button class="btn btn-g" onclick="cm('m-repair')">取消</button><button class="btn btn-warn" onclick="submitRepair()">提交申請</button></div>
+</div>
+</div>
+
+<!-- 核准申請 -->
+<div class="ov" id="m-approve">
+<div class="modal" style="width:430px">
+  <div class="mh" style="background:var(--ok-bg)"><div><div class="mt" style="color:var(--ok)">確認核准申請</div><div class="ms">POST /api/v1/repair-requests/:id/approve · FR-22,23</div></div><div class="mx" onclick="cm('m-approve')">✕</div></div>
+  <div class="mb">
+    <p style="font-size:13px;color:var(--n600);margin-bottom:12px">確認核准後，資產狀態將自動更新為「維修中」。</p>
+    <div style="background:var(--n50);border:1px solid var(--border);border-radius:4px;padding:11px 14px">
+      <div class="mono" style="font-size:10px;color:var(--navy);margin-bottom:4px">REQ-2025-0041</div>
+      <div style="font-size:13px;font-weight:500;color:var(--n800)">MacBook Pro 14" M4 × 3 · 陳美華 · 行銷部</div>
+    </div>
+  </div>
+  <div class="mf"><button class="btn btn-g" onclick="cm('m-approve')">取消</button><button class="btn btn-ok" onclick="toast('ok','已核准申請','REQ-2025-0041 核准，資產狀態更新為維修中');cm('m-approve')">確認核准</button></div>
+</div>
+</div>
+
+<!-- 拒絕申請 -->
+<div class="ov" id="m-reject">
+<div class="modal" style="width:460px">
+  <div class="mh" style="background:var(--err-bg)"><div><div class="mt" style="color:var(--err)">拒絕申請</div><div class="ms">POST /api/v1/repair-requests/:id/reject · FR-24</div></div><div class="mx" onclick="cm('m-reject')">✕</div></div>
+  <div class="mb">
+    <div style="background:var(--n50);border:1px solid var(--border);border-radius:4px;padding:10px 13px;margin-bottom:13px"><div class="mono" style="font-size:10px;color:var(--navy);margin-bottom:3px">REQ-2025-0041</div><div style="font-size:12.5px;font-weight:500;color:var(--n800)">MacBook Pro 14" M4 × 3 · 陳美華</div></div>
+    <div class="frow"><div class="ff"><label class="fl">拒絕原因 <span class="freq">*</span></label><textarea class="fta" rows="4" placeholder="請說明拒絕原因（申請人可見，1~500 字）…"></textarea></div></div>
+    <div style="background:var(--warn-bg);border-radius:4px;padding:8px 12px;font-size:11.5px;color:var(--warn)">拒絕後資產狀態恢復「正常使用」，流程結束。</div>
+  </div>
+  <div class="mf"><button class="btn btn-g" onclick="cm('m-reject')">取消</button><button class="btn btn-err" onclick="toast('warn','已拒絕申請','REQ-2025-0041 已拒絕，申請人已通知');cm('m-reject')">確認拒絕</button></div>
+</div>
+</div>
+
+<!-- 標記完成 -->
+<div class="ov" id="m-complete">
+<div class="modal" style="width:500px">
+  <div class="mh"><div><div class="mt">填寫維修資訊並標記完成</div><div class="ms">POST /api/v1/repair-requests/:id/complete · FR-26</div></div><div class="mx" onclick="cm('m-complete')">✕</div></div>
+  <div class="mb">
+    <div class="frow"><div class="ff"><label class="fl">維修廠商 <span class="freq">*</span></label><input class="fi" value="顯示器維修中心 — 台北"></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">維修日期 <span class="freq">*</span></label><input class="fi" type="date" value="2025-04-15"></div><div class="ff"><label class="fl">完成日期 <span class="freq">*</span></label><input class="fi" type="date" value="2025-04-17"></div></div>
+    <div class="frow"><div class="ff"><label class="fl">故障原因 <span class="freq">*</span></label><textarea class="fta" rows="2">背光燈條電源線接觸不良，導致螢幕局部暗角</textarea></div></div>
+    <div class="frow"><div class="ff"><label class="fl">維修方式 <span class="freq">*</span></label><textarea class="fta" rows="2">重新焊接燈條電源線，亮度均勻度校準</textarea></div></div>
+    <div class="frow"><div class="ff"><label class="fl">維修費用 (NTD) <span class="freq">*</span></label><input class="fi" value="2,800"></div></div>
+  </div>
+  <div class="mf"><div class="mfn">* 為必填欄位</div><button class="btn btn-g" onclick="cm('m-complete')">取消</button><button class="btn btn-ok" onclick="completeWO()">確認完成</button></div>
+</div>
+</div>
+
+<!-- 報廢 -->
+<div class="ov" id="m-dispose">
+<div class="modal" style="width:420px">
+  <div class="mh" style="background:var(--err-bg)"><div><div class="mt" style="color:var(--err)">確認報廢資產</div><div class="ms">POST /api/v1/assets/:id/dispose</div></div><div class="mx" onclick="cm('m-dispose')">✕</div></div>
+  <div class="mb">
+    <p style="font-size:13px;color:var(--n600);margin-bottom:12px">以下資產將被標記為報廢，此操作無法復原：</p>
+    <div style="background:var(--n50);border:1px solid var(--border);border-radius:4px;padding:11px 14px;margin-bottom:13px"><div class="mono" style="font-size:10px;color:var(--navy);margin-bottom:4px">AST-2022-0187</div><div style="font-size:13px;font-weight:500;color:var(--n800)">Logitech MX Master 3 滑鼠 · 業務部</div></div>
+    <div class="frow"><div class="ff"><label class="fl">報廢原因（選填）</label><textarea class="fta" rows="3" placeholder="說明報廢原因…"></textarea></div></div>
+  </div>
+  <div class="mf"><button class="btn btn-g" onclick="cm('m-dispose')">取消</button><button class="btn btn-err" onclick="toast('info','報廢完成','AST-2022-0187 已標記為報廢');cm('m-dispose')">確認報廢</button></div>
+</div>
+</div>
+
+<!-- ══════ PROTOTYPE SHELL ══════ -->
+<div class="shell">
+<div class="shell-bar">
+  <div class="shell-title">AMS — Interactive Prototype v2</div>
+  <div class="breadcrumb" id="bc"><span class="bc-cur">登入</span></div>
+  <button class="s-back" onclick="goBack()">← 返回</button>
+  <div class="s-label" id="sl">1 / 11</div>
+</div>
+
+<!-- ═══ SCREEN: LOGIN ═══ -->
+<div class="screen" id="sc-login" style="display:flex">
+  <div class="log-left">
+    <div class="log-logo">
+      <div class="log-mark">AMS</div>
+      <div><div style="color:#F9FAFB;font-size:16px;font-weight:700">AssetCore</div><div style="color:rgba(255,255,255,.3);font-size:9px;letter-spacing:.4px">ENTERPRISE · v2.4</div></div>
+    </div>
+    <div class="log-title">資產管理系統</div>
+    <div style="color:rgba(255,255,255,.45);font-size:13px;margin-bottom:8px">Asset Management System</div>
+    <div class="log-sub">統一管理企業資產 · 追蹤生命週期 · 維修申請全流程</div>
+    <div style="display:flex;gap:28px;margin-top:40px">
+      <div><div style="font-size:26px;font-weight:700;color:var(--brand)">324</div><div style="font-size:10.5px;color:rgba(255,255,255,.3);margin-top:2px">總資產數</div></div>
+      <div><div style="font-size:26px;font-weight:700;color:#4ADE80">268</div><div style="font-size:10.5px;color:rgba(255,255,255,.3);margin-top:2px">正常使用</div></div>
+      <div><div style="font-size:26px;font-weight:700;color:var(--warn)">5</div><div style="font-size:10.5px;color:rgba(255,255,255,.3);margin-top:2px">待審查</div></div>
+    </div>
+  </div>
+  <div class="log-right">
+    <div class="log-card">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:14px"><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div></div>
+      <div class="log-cht">歡迎回來</div>
+      <div class="log-cdesc">登入您的帳號以繼續</div>
+      <div class="frow" style="margin-bottom:11px"><div class="ff"><label class="fl">電子郵件</label><input class="fi" value="alice@company.com"></div></div>
+      <div class="frow" style="margin-bottom:10px"><div class="ff"><label class="fl">密碼</label><input class="fi" type="password" value="password123"></div></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--n600);cursor:pointer"><input type="checkbox" checked style="accent-color:var(--brand)"> 記住我</label>
+        <span class="log-link" onclick="go('sc-forgot')">忘記密碼？</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <button class="btn btn-p" style="justify-content:center;padding:10px" onclick="go('sc-dash')">Manager 登入</button>
+        <button class="btn btn-navy" style="justify-content:center;padding:10px" onclick="go('sc-h-dash')">Holder 登入</button>
+      </div>
+      <div style="text-align:center;font-size:11.5px;color:var(--n400);margin-bottom:12px">— 或 —</div>
+      <button class="btn btn-g" style="width:100%;justify-content:center" onclick="toast('info','SSO','企業 SSO 登入功能開發中')">使用企業 SSO 登入</button>
+      <div style="text-align:center;margin-top:14px;font-size:11.5px;color:var(--n400)">尚未有帳號？<span class="log-link" onclick="go('sc-register')">申請帳號</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SCREEN: FORGOT PASSWORD ═══ -->
+<div class="screen" id="sc-forgot">
+  <div class="log-left"><div class="log-logo"><div class="log-mark">AMS</div><div><div style="color:#F9FAFB;font-size:16px;font-weight:700">AssetCore</div></div></div><div class="log-title" style="font-size:22px">忘記密碼</div><div class="log-sub">輸入信箱取得重設連結</div></div>
+  <div class="log-right"><div class="log-card">
+    <div class="log-cht">重設密碼</div><div class="log-cdesc">FR-04 · POST /api/v1/auth/password-reset</div>
+    <div class="frow" style="margin-bottom:13px"><div class="ff"><label class="fl">電子郵件</label><input class="fi" placeholder="alice@company.com"></div></div>
+    <div style="background:var(--info-bg);border-radius:4px;padding:9px 12px;font-size:11.5px;color:var(--info);margin-bottom:14px">基於安全考量，無論信箱是否存在，系統均回傳相同訊息。</div>
+    <button class="btn btn-p" style="width:100%;justify-content:center;padding:10px" onclick="toast('ok','重設連結已寄出','若信箱存在，將收到密碼重設連結');go('sc-login')">發送重設連結</button>
+    <div style="text-align:center;margin-top:12px"><span class="log-link" onclick="go('sc-login')">← 返回登入</span></div>
+  </div></div>
+</div>
+
+<!-- ═══ SCREEN: REGISTER ═══ -->
+<div class="screen" id="sc-register">
+  <div class="log-left"><div class="log-logo"><div class="log-mark">AMS</div><div><div style="color:#F9FAFB;font-size:16px;font-weight:700">AssetCore</div></div></div><div class="log-title" style="font-size:22px">建立帳號</div><div class="log-sub">填寫資訊，管理員審核後開通</div></div>
+  <div class="log-right" style="width:500px"><div class="log-card">
+    <div class="log-cht">帳號申請</div><div class="log-cdesc">FR-01 · POST /api/v1/auth/register</div>
+    <div class="frow two"><div class="ff"><label class="fl">姓名 <span class="freq">*</span></label><input class="fi" placeholder="王小明"></div><div class="ff"><label class="fl">部門 <span class="freq">*</span></label><input class="fi" placeholder="業務部"></div></div>
+    <div class="frow" style="margin-bottom:11px"><div class="ff"><label class="fl">電子郵件 <span class="freq">*</span></label><input class="fi" placeholder="wang@corp.com"></div></div>
+    <div class="frow two"><div class="ff"><label class="fl">密碼 <span class="freq">*</span></label><input class="fi" type="password" placeholder="最少 8 字元"></div><div class="ff"><label class="fl">確認密碼</label><input class="fi" type="password" placeholder="••••••••"></div></div>
+    <div class="frow" style="margin-bottom:14px"><div class="ff"><label class="fl">角色 <span class="freq">*</span></label><select class="fsel"><option>持有者 (Holder)</option><option>管理員 (Manager)</option></select></div></div>
+    <button class="btn btn-p" style="width:100%;justify-content:center;padding:10px" onclick="toast('ok','申請送出','待管理員審核後將寄送確認信');go('sc-login')">送出申請</button>
+    <div style="text-align:center;margin-top:12px"><span class="log-link" onclick="go('sc-login')">← 返回登入</span></div>
+  </div></div>
+</div>
+
+<!-- ═══ MANAGER DASHBOARD ═══ -->
+<div class="screen" id="sc-dash">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav on" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單<div class="nb">324</div></div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查<div class="nb">5</div></div>
+    <div class="nav" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單<div class="nb warn">8</div></div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-title">儀表板</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content">
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-lbl">TOTAL ASSETS</div><div class="kpi-val" style="color:var(--navy)">324</div><div class="kpi-sub">較上月 +8</div><div class="kpi-bar"><div class="kpi-fill" style="width:100%;background:var(--navy)"></div></div></div>
+        <div class="kpi"><div class="kpi-lbl">IN USE</div><div class="kpi-val" style="color:var(--ok)">268</div><div class="kpi-sub">82.7% of total</div><div class="kpi-bar"><div class="kpi-fill" style="width:83%;background:var(--ok)"></div></div></div>
+        <div class="kpi"><div class="kpi-lbl">IN REPAIR</div><div class="kpi-val" style="color:var(--warn)">31</div><div class="kpi-sub">9.6% of total</div><div class="kpi-bar"><div class="kpi-fill" style="width:10%;background:var(--warn)"></div></div></div>
+        <div class="kpi"><div class="kpi-lbl">PENDING REVIEW</div><div class="kpi-val" style="color:var(--brand)">25</div><div class="kpi-sub">5 件需優先處理</div><div class="kpi-bar"><div class="kpi-fill" style="width:8%;background:var(--brand)"></div></div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <!-- Asset Category Distribution -->
+        <div class="card" style="padding:16px">
+          <div style="font-size:13px;font-weight:600;color:var(--n800);margin-bottom:14px">資產類別分布</div>
+          <div class="bar-row"><div class="bar-lbl">筆記型電腦</div><div class="bar-track"><div class="bar-fill" style="width:98%;background:var(--navy)"><span class="bar-num">98</span></div></div></div>
+          <div class="bar-row"><div class="bar-lbl">桌上型電腦</div><div class="bar-track"><div class="bar-fill" style="width:72%;background:#2563EB"><span class="bar-num">72</span></div></div></div>
+          <div class="bar-row"><div class="bar-lbl">螢幕</div><div class="bar-track"><div class="bar-fill" style="width:84%;background:var(--ok)"><span class="bar-num">84</span></div></div></div>
+          <div class="bar-row"><div class="bar-lbl">鍵盤</div><div class="bar-track"><div class="bar-fill" style="width:36%;background:var(--warn)"><span class="bar-num">36</span></div></div></div>
+          <div class="bar-row"><div class="bar-lbl">滑鼠</div><div class="bar-track"><div class="bar-fill" style="width:34%;background:var(--brand)"><span class="bar-num">34</span></div></div></div>
+        </div>
+        <!-- Work Order Summary -->
+        <div class="card" style="padding:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="font-size:13px;font-weight:600;color:var(--n800)">維修工單概況</div>
+            <button class="btn btn-g btn-xs" onclick="go('sc-wo')">More →</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div style="padding:12px;background:rgba(29,78,216,.06);border:1px solid rgba(29,78,216,.15);border-radius:5px"><div style="font-size:11px;color:var(--n500);margin-bottom:4px">今日新增</div><div style="font-size:24px;font-weight:700;color:var(--navy)">4</div></div>
+            <div style="padding:12px;background:rgba(234,88,12,.06);border:1px solid rgba(234,88,12,.15);border-radius:5px"><div style="font-size:11px;color:var(--n500);margin-bottom:4px">待處理</div><div style="font-size:24px;font-weight:700;color:var(--warn)">11<span style="font-size:12px;color:var(--n400)">件</span></div></div>
+            <div style="padding:12px;background:rgba(29,78,216,.06);border:1px solid rgba(29,78,216,.15);border-radius:5px"><div style="font-size:11px;color:var(--n500);margin-bottom:4px">進行中</div><div style="font-size:24px;font-weight:700;color:#2563EB">8</div></div>
+            <div style="padding:12px;background:rgba(22,163,74,.06);border:1px solid rgba(22,163,74,.15);border-radius:5px"><div style="font-size:11px;color:var(--n500);margin-bottom:4px">已完成</div><div style="font-size:24px;font-weight:700;color:var(--ok)">23</div></div>
+          </div>
+        </div>
+      </div>
+      <!-- Pending review + Announcements -->
+      <div style="display:grid;grid-template-columns:1fr 280px;gap:14px">
+        <div class="tcard">
+          <div class="thead-bar"><div class="thead-title">申請審查待審清單 <span style="background:var(--brand);color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:20px;margin-left:4px">5</span></div><button class="btn btn-g btn-xs" onclick="go('sc-review')">查看全部 →</button></div>
+          <table>
+            <thead><tr><th>申請單號</th><th>資產名稱</th><th>申請人</th><th>部門</th><th>優先</th><th>日期</th></tr></thead>
+            <tbody>
+              <tr style="cursor:pointer" onclick="go('sc-review')"><td><span class="mono">REQ-2025-0041</span></td><td style="font-weight:500">MacBook Pro 14" M4 × 3</td><td>陳美華</td><td>行銷部</td><td><span style="background:var(--warn-bg);color:var(--warn);padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600">高</span></td><td style="color:var(--n400)">2025-04-14</td></tr>
+              <tr style="cursor:pointer" onclick="go('sc-review')"><td><span class="mono">REQ-2025-0039</span></td><td style="font-weight:500">Dell 34" 曲面螢幕 × 2</td><td>王大明</td><td>業務部</td><td><span style="background:var(--info-bg);color:var(--info);padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600">中</span></td><td style="color:var(--n400)">2025-04-13</td></tr>
+              <tr style="cursor:pointer" onclick="go('sc-review')"><td><span class="mono">REQ-2025-0038</span></td><td style="font-weight:500">機械式鍵盤 × 10</td><td>林志遠</td><td>工程部</td><td><span style="background:var(--ok-bg);color:var(--ok);padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600">低</span></td><td style="color:var(--n400)">2025-04-12</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Announcements -->
+        <div class="card" style="padding:14px">
+          <div style="font-size:13px;font-weight:600;color:var(--n800);margin-bottom:12px">系統公告</div>
+          <div class="ann-item" style="border-color:var(--warn);background:var(--warn-bg)"><div class="ann-title" style="color:var(--warn)">資產盤點提醒</div><div class="ann-body" style="color:var(--warn)">Q2 截止日 2025-04-30，請各部門確認。</div></div>
+          <div class="ann-item" style="border-color:var(--info);background:var(--info-bg)"><div class="ann-title" style="color:var(--info)">政策更新</div><div class="ann-body" style="color:var(--info)">設備汰換週期由 5 年調整為 4 年。</div></div>
+          <div class="ann-item" style="border-color:var(--ok);background:var(--ok-bg)"><div class="ann-title" style="color:var(--ok)">系統更新完成</div><div class="ann-body" style="color:var(--ok)">v2.4.1 已於 04-10 部署。</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ASSET LIST ═══ -->
+<div class="screen" id="sc-assets">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav on"><div class="nav-ic">▪</div>資產清單<div class="nb">324</div></div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查<div class="nb">5</div></div>
+    <div class="nav" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單<div class="nb warn">8</div></div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-title">資產清單</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div><button class="btn btn-g btn-sm">批次上傳</button><button class="btn btn-s btn-sm" onclick="toast('info','匯出','匯出 CSV 中…')">↑ 匯出報告</button><button class="btn btn-p btn-sm" onclick="om('m-add')">+ 新增資產</button></div>
+    <div class="content">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <input class="search" placeholder="搜尋資產 ID 或名稱…" style="width:200px">
+        <button class="btn btn-g btn-sm">篩選</button>
+        <div style="display:flex;gap:6px;margin-left:4px">
+          <span style="padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;background:var(--info-bg);color:var(--info);border:1px solid var(--info-b);font-weight:500">筆記型電腦</span>
+          <span style="padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;background:var(--n100);color:var(--n500);border:1px solid var(--n200)">桌上型電腦</span>
+          <span style="padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;background:var(--n100);color:var(--n500);border:1px solid var(--n200)">螢幕</span>
+        </div>
+      </div>
+      <div class="tcard">
+        <div style="background:var(--n50);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" style="accent-color:var(--brand)"><span style="font-size:12px;color:var(--n500)">全選 · 已選 0 項</span>
+          <button class="btn btn-g btn-xs" style="margin-left:auto">批量核准</button>
+          <button class="btn btn-g btn-xs">批量報廢</button>
+          <button class="btn btn-g btn-xs" onclick="toast('info','匯出','匯出選取項目中…')">匯出選取</button>
+        </div>
+        <table>
+          <thead><tr><th style="width:24px"></th><th>資產 ID</th><th>資產名稱</th><th>類別</th><th>部門</th><th>狀態</th><th>帳面價值</th><th>最後更新</th><th></th></tr></thead>
+          <tbody>
+            <tr style="cursor:pointer" onclick="go('sc-asset-det')"><td><input type="checkbox" style="accent-color:var(--brand)"></td><td><span class="mono">AST-2024-0112</span></td><td style="font-weight:500">MacBook Pro 16" M3 Pro</td><td style="color:var(--n400)">筆記型電腦</td><td style="color:var(--n400)">行銷部</td><td><span class="badge b-ok">正常使用</span></td><td class="mono">NT$89,000</td><td style="color:var(--n400)">2025-04-12</td><td><button class="btn btn-g btn-xs" onclick="event.stopPropagation();go('sc-asset-det')">詳情</button></td></tr>
+            <tr><td><input type="checkbox" style="accent-color:var(--brand)"></td><td><span class="mono">AST-2024-0098</span></td><td style="font-weight:500">Dell OptiPlex 7010 SFF</td><td style="color:var(--n400)">桌上型電腦</td><td style="color:var(--n400)">財務部</td><td><span class="badge b-warn">維修中</span></td><td class="mono">NT$32,000</td><td style="color:var(--n400)">2025-04-10</td><td><button class="btn btn-g btn-xs">詳情</button></td></tr>
+            <tr><td><input type="checkbox" style="accent-color:var(--brand)"></td><td><span class="mono">AST-2024-0203</span></td><td style="font-weight:500">LG 27UL850 4K 螢幕</td><td style="color:var(--n400)">螢幕</td><td style="color:var(--n400)">人資部</td><td><span class="badge b-info">審查中</span></td><td class="mono">NT$18,500</td><td style="color:var(--n400)">2025-04-14</td><td><button class="btn btn-g btn-xs">詳情</button></td></tr>
+            <tr><td><input type="checkbox" style="accent-color:var(--brand)"></td><td><span class="mono">AST-2023-0441</span></td><td style="font-weight:500">Logitech MX Keys 鍵盤</td><td style="color:var(--n400)">鍵盤</td><td style="color:var(--n400)">資訊部</td><td><span class="badge b-ok">正常使用</span></td><td class="mono">NT$3,200</td><td style="color:var(--n400)">2025-04-08</td><td><button class="btn btn-g btn-xs">詳情</button></td></tr>
+            <tr><td><input type="checkbox" style="accent-color:var(--brand)"></td><td><span class="mono">AST-2022-0187</span></td><td style="font-weight:500">Logitech MX Master 3 滑鼠</td><td style="color:var(--n400)">滑鼠</td><td style="color:var(--n400)">業務部</td><td><span class="badge b-ret">報廢</span></td><td class="mono">NT$2,800</td><td style="color:var(--n400)">2024-12-01</td><td><button class="btn btn-g btn-xs" onclick="event.stopPropagation();om('m-dispose')">詳情</button></td></tr>
+          </tbody>
+        </table>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border)">
+          <span style="font-size:12px;color:var(--n400)">共 324 筆 · 第 1 / 28 頁</span>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-g btn-xs">«</button><button class="btn btn-g btn-xs">‹</button>
+            <button class="btn btn-p btn-xs">1</button><button class="btn btn-g btn-xs">2</button><button class="btn btn-g btn-xs">3</button><span style="padding:3px 6px;font-size:11px;color:var(--n400)">…</span><button class="btn btn-g btn-xs">28</button>
+            <button class="btn btn-g btn-xs">›</button><button class="btn btn-g btn-xs">»</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ASSET DETAIL ═══ -->
+<div class="screen" id="sc-asset-det">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav on" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單<div class="nb">324</div></div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查<div class="nb">5</div></div>
+    <div class="nav" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單<div class="nb warn">8</div></div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-breadcrumb">資產清單 / <span onclick="go('sc-assets')">資產清單</span> / <span>AST-2024-0112</span></div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><button class="btn btn-g btn-sm" onclick="go('sc-assets')">← 返回</button></div>
+      <div style="display:grid;grid-template-columns:1fr 260px;gap:14px">
+        <div>
+          <div class="card" style="margin-bottom:12px">
+            <div style="padding:14px 18px;background:var(--n50);border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between">
+              <div><div style="font-size:16px;font-weight:600;color:var(--n800);margin-bottom:3px">MacBook Pro 16" M3 Pro</div><div style="font-size:11.5px;color:var(--n400)">資產編號 AST-2024-0112</div></div>
+              <span class="badge b-ok">正常使用</span>
+            </div>
+            <div style="display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid var(--border)">
+              <button class="btn btn-g btn-sm" onclick="om('m-edit')">編輯資產</button>
+              <button class="btn btn-g btn-sm" style="color:var(--ok);border-color:var(--ok)" onclick="om('m-assign')">指派使用者</button>
+              <button class="btn btn-g btn-sm" style="color:var(--warn);border-color:var(--warn)" onclick="om('m-repair')">維修申請</button>
+              <button class="btn btn-g btn-sm" style="color:var(--err);border-color:var(--err)" onclick="om('m-dispose')">報廢資產</button>
+            </div>
+            <div style="padding:16px 18px">
+              <div class="det-sec-title" style="margin-bottom:12px">基本資訊</div>
+              <div class="det-grid">
+                <div class="det-f"><label>資產名稱</label><p>MacBook Pro 16" M3 Pro</p></div>
+                <div class="det-f"><label>資產類別</label><p>筆記型電腦</p></div>
+                <div class="det-f"><label>序號 S/N</label><p style="font-family:var(--mono);font-size:11.5px">C02XK1DZJGH5</p></div>
+                <div class="det-f"><label>採購金額</label><p>NT$89,000</p></div>
+                <div class="det-f"><label>採購日期</label><p>2024-03-15</p></div>
+                <div class="det-f"><label>保固到期</label><p>2028-03-15</p></div>
+                <div class="det-f"><label>所屬部門</label><p>行銷部</p></div>
+                <div class="det-f"><label>當前使用者</label><p>黃美玲</p></div>
+                <div class="det-f"><label>廠牌</label><p>Apple</p></div>
+                <div class="det-f"><label>型號</label><p>MacBook Pro A2991</p></div>
+              </div>
+              <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+                <div class="det-sec-title">備註</div>
+                <p style="font-size:12.5px;color:var(--n600)">行銷部設計主力機，已安裝 Adobe Creative Cloud。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Timeline -->
+        <div class="card" style="padding:14px">
+          <div class="det-sec-title" style="margin-bottom:12px">異動紀錄</div>
+          <div class="tl-item"><div><div class="tl-dot" style="background:var(--ok)"></div><div class="tl-line"></div></div><div><div class="tl-date">2025-04-12</div><div class="tl-act">資產指派</div><div class="tl-desc">指派給 黃美玲 · 行銷部</div></div></div>
+          <div class="tl-item"><div><div class="tl-dot" style="background:var(--info)"></div><div class="tl-line"></div></div><div><div class="tl-date">2025-01-20</div><div class="tl-act">維修完成</div><div class="tl-desc">螢幕修復 NT$3,200</div></div></div>
+          <div class="tl-item"><div><div class="tl-dot" style="background:var(--warn)"></div><div class="tl-line"></div></div><div><div class="tl-date">2024-12-05</div><div class="tl-act">維修申請</div><div class="tl-desc">螢幕顯示異常，已送修</div></div></div>
+          <div class="tl-item"><div><div class="tl-dot" style="background:var(--n300)"></div></div><div><div class="tl-date">2024-03-15</div><div class="tl-act">資產建立</div><div class="tl-desc">購入並登記系統</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ REVIEW ═══ -->
+<div class="screen" id="sc-review">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單<div class="nb">324</div></div>
+    <div class="nav on"><div class="nav-ic">▪</div>申請審查<div class="nb">5</div></div>
+    <div class="nav" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單<div class="nb warn">8</div></div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-title">申請審查</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content" style="padding:16px 18px">
+      <div class="split split-2" style="height:calc(100vh - 130px);max-height:620px">
+        <div class="rev-list">
+          <div class="rev-lh"><div style="font-size:13px;font-weight:600;color:var(--n800)">待審清單</div><div class="nb" style="margin-left:auto">5</div></div>
+          <div class="rev-item on"><div class="ri-id">REQ-2025-0041</div><div class="ri-name">MacBook Pro 14" M4 × 3</div><div class="ri-meta">陳美華 · 行銷部 · 2025-04-14</div></div>
+          <div class="rev-item"><div class="ri-id">REQ-2025-0039</div><div class="ri-name">Dell 34" 曲面螢幕 × 2</div><div class="ri-meta">王大明 · 業務部 · 2025-04-13</div></div>
+          <div class="rev-item"><div class="ri-id">REQ-2025-0038</div><div class="ri-name">機械式鍵盤 × 10</div><div class="ri-meta">林志遠 · 工程部 · 2025-04-12</div></div>
+          <div class="rev-item"><div class="ri-id">REQ-2025-0036</div><div class="ri-name">人體工學滑鼠 × 20</div><div class="ri-meta">黃淑芬 · 行政部 · 2025-04-11</div></div>
+          <div class="rev-item"><div class="ri-id">REQ-2025-0033</div><div class="ri-name">USB-C 擴充座 × 5</div><div class="ri-meta">張偉國 · 財務部 · 2025-04-10</div></div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;overflow:hidden">
+          <div style="padding:14px 16px;background:var(--n50);border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between">
+            <div><div style="font-size:15px;font-weight:600;color:var(--n800)">REQ-2025-0041</div><div style="font-size:11px;color:var(--n400);margin-top:2px">申請日期：2025-04-14 · 優先等級：高</div></div>
+            <span class="badge b-info">審查中</span>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:14px 16px">
+            <div style="margin-bottom:14px"><div class="det-sec-title" style="margin-bottom:8px">資產資訊</div><div class="det-grid"><div class="det-f"><label>資產名稱</label><p>MacBook Pro 14" M4</p></div><div class="det-f"><label>數量</label><p>3 台</p></div><div class="det-f"><label>單價</label><p>NT$78,000</p></div><div class="det-f"><label>總金額</label><p>NT$234,000</p></div></div></div>
+            <div style="margin-bottom:14px"><div class="det-sec-title" style="margin-bottom:8px">申請人</div><div style="display:flex;align-items:center;gap:9px"><div style="width:30px;height:30px;border-radius:50%;background:#1E3A5F;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#93C5FD">陳</div><div><div style="font-size:13px;font-weight:500;color:var(--n800)">陳美華</div><div style="font-size:11px;color:var(--n400)">行銷部 · 資深設計師</div></div></div></div>
+            <div style="margin-bottom:14px">
+              <div class="det-sec-title" style="margin-bottom:8px">審查進度</div>
+              <div class="prog-wrap">
+                <div class="prog-step done"><div class="prog-dot" style="background:var(--ok)">✓</div><div class="prog-lbl">提交申請</div><div class="prog-date">04-14</div></div>
+                <div class="prog-step curr"><div class="prog-dot" style="background:var(--brand)"></div><div class="prog-lbl">管理員審查</div><div class="prog-date">進行中</div></div>
+                <div class="prog-step"><div class="prog-dot" style="background:var(--n300)"></div><div class="prog-lbl">財務審查</div><div class="prog-date">待辦</div></div>
+                <div class="prog-step"><div class="prog-dot" style="background:var(--n300)"></div><div class="prog-lbl">核准採購</div><div class="prog-date">待辦</div></div>
+              </div>
+            </div>
+            <div><div class="det-sec-title" style="margin-bottom:6px">備註說明</div><div style="background:var(--n50);border-radius:4px;padding:10px 12px;font-size:12px;color:var(--n600)">行銷部設計團隊擴編，現有設備效能不足，申請升級為 MacBook Pro M4 以提升渲染效率。</div></div>
+          </div>
+          <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border)">
+            <button class="btn btn-ok" onclick="om('m-approve')">核准通過</button>
+            <button class="btn btn-err" onclick="om('m-reject')">拒絕申請</button>
+            <button class="btn btn-g" onclick="toast('info','退回','已退回，申請人請補充說明')">退回修改</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WORK ORDERS KANBAN ═══ -->
+<div class="screen" id="sc-wo">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單<div class="nb">324</div></div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查<div class="nb">5</div></div>
+    <div class="nav on"><div class="nav-ic">▪</div>維修工單<div class="nb warn">8</div></div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-title">維修工單</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content">
+      <div class="kanban">
+        <!-- 待處理 -->
+        <div class="kb-col">
+          <div class="kb-head" style="border-bottom-color:var(--warn)"><div class="kb-title">待處理</div><div class="kb-n" style="background:var(--warn)">3</div></div>
+          <div class="kb-cards">
+            <div class="kbc" style="border-top-color:var(--err);cursor:pointer" onclick="go('sc-wo-pending')">
+              <div class="kbc-id">WO-2025-0088</div><div class="kbc-title">Dell 桌機 HDD 壞軌更換</div><div class="kbc-meta">財務部 · 管理員：王淑芬</div>
+              <div class="kbc-footer"><span class="pri-badge pri-high">高</span><span style="font-size:10.5px;color:var(--n400)">到期 04-20</span><button class="btn btn-g btn-xs">查看</button></div>
+            </div>
+            <div class="kbc" style="border-top-color:var(--err)">
+              <div class="kbc-id">WO-2025-0085</div><div class="kbc-title">MacBook Pro 電池膨脹</div><div class="kbc-meta">行銷部 · 管理員：陳志明</div>
+              <div class="kbc-footer"><span class="pri-badge pri-urgent">緊急</span><span style="font-size:10.5px;color:var(--n400)">到期 04-15</span><button class="btn btn-g btn-xs">查看</button></div>
+            </div>
+            <div class="kbc" style="border-top-color:var(--warn)">
+              <div class="kbc-id">WO-2025-0081</div><div class="kbc-title">HP LaserJet 卡紙排除</div><div class="kbc-meta">行政部 · 管理員：林建宏</div>
+              <div class="kbc-footer"><span class="pri-badge pri-mid">中</span><span style="font-size:10.5px;color:var(--n400)">到期 04-16</span><button class="btn btn-g btn-xs">查看</button></div>
+            </div>
+          </div>
+        </div>
+        <!-- 進行中 -->
+        <div class="kb-col">
+          <div class="kb-head" style="border-bottom-color:var(--info)"><div class="kb-title">進行中</div><div class="kb-n" style="background:var(--info)">2</div></div>
+          <div class="kb-cards">
+            <div class="kbc" style="border-top-color:var(--info);cursor:pointer" onclick="go('sc-wo-prog')">
+              <div class="kbc-id">WO-2025-0079</div><div class="kbc-title">螢幕背光故障維修</div><div class="kbc-meta">業務部 · 管理員：陳志明</div>
+              <div class="kbc-footer"><span class="pri-badge pri-mid">中</span><span style="font-size:10.5px;color:var(--n400)">到期 04-17</span><button class="btn btn-g btn-xs">查看</button></div>
+            </div>
+            <div class="kbc" style="border-top-color:var(--info)">
+              <div class="kbc-id">WO-2025-0076</div><div class="kbc-title">鍵盤按鍵失靈排查</div><div class="kbc-meta">人資部 · 管理員：林建宏</div>
+              <div class="kbc-footer"><span class="pri-badge pri-low">低</span><span style="font-size:10.5px;color:var(--n400)">到期 04-18</span><button class="btn btn-g btn-xs">查看</button></div>
+            </div>
+          </div>
+        </div>
+        <!-- 已完成 -->
+        <div class="kb-col">
+          <div class="kb-head" style="border-bottom-color:var(--ok)"><div class="kb-title">已完成</div><div class="kb-n" style="background:var(--ok)">3</div></div>
+          <div class="kb-cards">
+            <div class="kbc" style="border-top-color:var(--ok);cursor:pointer" onclick="go('sc-wo-done')">
+              <div class="kbc-id">WO-2025-0071</div><div class="kbc-title">ThinkPad 風扇更換</div><div class="kbc-meta">工程部 · 管理員：王淑芬</div>
+              <div class="kbc-footer"><span class="pri-badge pri-mid">中</span><span style="font-size:10.5px;color:var(--n400)">完成 04-10</span><button class="btn btn-g btn-xs">查看</button></div>
+            </div>
+            <div class="kbc" style="border-top-color:var(--ok)">
+              <div class="kbc-id">WO-2025-0068</div><div class="kbc-title">USB Hub 無法辨識</div><div class="kbc-meta">資訊部 · 管理員：陳志明</div>
+              <div class="kbc-footer"><span class="pri-badge pri-low">低</span><span style="font-size:10.5px;color:var(--n400)">完成 04-09</span><button class="btn btn-g btn-xs">查看</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WO DETAIL: PENDING ═══ -->
+<div class="screen" id="sc-wo-pending">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單</div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查<div class="nb">5</div></div>
+    <div class="nav on" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單<div class="nb warn">8</div></div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-breadcrumb">維修工單 / <span onclick="go('sc-wo')">WO-2025-0088</span></div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content">
+      <button class="btn btn-g btn-sm" style="margin-bottom:12px" onclick="go('sc-wo')">← 返回</button>
+      <div style="display:grid;grid-template-columns:1fr 240px;gap:14px">
+        <div class="card">
+          <div style="padding:14px 18px;background:var(--warn-bg);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
+            <div><div style="font-size:15px;font-weight:600;color:var(--n800)">Dell 桌機 HDD 壞軌更換</div><div style="font-size:11px;color:var(--n400);margin-top:2px">WO-2025-0088</div></div>
+            <span class="badge b-warn">待處理</span>
+          </div>
+          <div style="display:flex;gap:8px;padding:10px 18px;border-bottom:1px solid var(--border)">
+            <button class="btn btn-navy btn-sm" onclick="toast('ok','已開始處理','工單狀態更新為進行中')">開始處理</button>
+            <button class="btn btn-g btn-sm" onclick="toast('info','已指派','已指派給 林建宏')">指派負責人</button>
+            <button class="btn btn-g btn-sm" onclick="toast('warn','已關閉','工單 WO-2025-0088 已關閉')">關閉工單</button>
+          </div>
+          <div style="padding:16px 18px">
+            <div class="det-sec-title" style="margin-bottom:10px">處理進度</div>
+            <div class="prog-wrap" style="margin-bottom:16px">
+              <div class="prog-step done"><div class="prog-dot" style="background:var(--ok)">✓</div><div class="prog-lbl">建立工單</div></div>
+              <div class="prog-step curr"><div class="prog-dot" style="background:var(--brand)"></div><div class="prog-lbl">指派負責人</div></div>
+              <div class="prog-step"><div class="prog-dot" style="background:var(--n300)"></div><div class="prog-lbl">維修中</div></div>
+              <div class="prog-step"><div class="prog-dot" style="background:var(--n300)"></div><div class="prog-lbl">完成</div></div>
+            </div>
+            <div class="det-sec-title" style="margin-bottom:10px">工單資訊</div>
+            <div class="det-grid">
+              <div class="det-f"><label>資產名稱</label><p>Dell OptiPlex 7010 SFF</p></div>
+              <div class="det-f"><label>資產編號</label><p class="mono" style="font-size:11.5px">AST-2024-0098</p></div>
+              <div class="det-f"><label>所屬部門</label><p>財務部</p></div>
+              <div class="det-f"><label>優先等級</label><p>高</p></div>
+              <div class="det-f"><label>建立日期</label><p>2025-04-13</p></div>
+              <div class="det-f"><label>預計完成</label><p>2025-04-20</p></div>
+            </div>
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+              <div class="det-sec-title">故障說明</div>
+              <div style="background:var(--n50);border-radius:4px;padding:10px 12px;font-size:12px;color:var(--n600);margin-top:6px">開機時出現 SMART 警告，CrystalDiskInfo 顯示重新映射磁區 98 個，需更換 HDD。</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="padding:13px;margin-bottom:12px">
+            <div class="det-sec-title" style="margin-bottom:9px">故障照片</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div class="img-ph" style="height:68px">IMG_001.jpg</div>
+              <div class="img-ph" style="height:68px">IMG_002.jpg</div>
+            </div>
+          </div>
+          <div class="card" style="padding:13px">
+            <div class="det-sec-title" style="margin-bottom:9px">維修記錄</div>
+            <div style="background:var(--n50);border-radius:4px;padding:10px 12px;font-size:11.5px;color:var(--n400)">尚無維修記錄<br>開始處理後方可填寫</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WO DETAIL: IN PROGRESS ═══ -->
+<div class="screen" id="sc-wo-prog">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單</div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查<div class="nb">5</div></div>
+    <div class="nav on" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單<div class="nb warn">8</div></div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-breadcrumb">維修工單 / <span onclick="go('sc-wo')">WO-2025-0079</span></div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content">
+      <button class="btn btn-g btn-sm" style="margin-bottom:12px" onclick="go('sc-wo')">← 返回</button>
+      <div style="display:grid;grid-template-columns:1fr 240px;gap:14px">
+        <div class="card">
+          <div style="padding:14px 18px;background:var(--info-bg);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
+            <div><div style="font-size:15px;font-weight:600;color:var(--n800)">螢幕背光故障維修</div><div style="font-size:11px;color:var(--n400);margin-top:2px">WO-2025-0079</div></div>
+            <span class="badge b-info">進行中</span>
+          </div>
+          <div style="display:flex;gap:8px;padding:10px 18px;border-bottom:1px solid var(--border)">
+            <button class="btn btn-ok btn-sm" onclick="om('m-complete')">標記完成</button>
+            <button class="btn btn-g btn-sm" onclick="toast('info','已更新','維修資訊儲存成功')">更新維修資訊</button>
+            <button class="btn btn-g btn-sm" onclick="toast('warn','已關閉','工單已關閉')">關閉工單</button>
+          </div>
+          <div style="padding:16px 18px">
+            <div class="det-sec-title" style="margin-bottom:10px">處理進度</div>
+            <div class="prog-wrap" style="margin-bottom:16px">
+              <div class="prog-step done"><div class="prog-dot" style="background:var(--ok)">✓</div><div class="prog-lbl">建立工單</div></div>
+              <div class="prog-step done"><div class="prog-dot" style="background:var(--ok)">✓</div><div class="prog-lbl">指派負責人</div></div>
+              <div class="prog-step curr"><div class="prog-dot" style="background:var(--brand)"></div><div class="prog-lbl">維修中</div></div>
+              <div class="prog-step"><div class="prog-dot" style="background:var(--n300)"></div><div class="prog-lbl">完成</div></div>
+            </div>
+            <div class="det-sec-title" style="margin-bottom:10px">工單資訊</div>
+            <div class="det-grid">
+              <div class="det-f"><label>資產名稱</label><p>HP Z27k G3 4K 螢幕</p></div>
+              <div class="det-f"><label>資產編號</label><p class="mono" style="font-size:11.5px">AST-2024-0315</p></div>
+              <div class="det-f"><label>負責管理員</label><p>陳志明</p></div>
+              <div class="det-f"><label>優先等級</label><p>中</p></div>
+            </div>
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+              <div class="det-sec-title" style="margin-bottom:8px">維修記錄</div>
+              <div class="det-grid">
+                <div class="det-f"><label>維修廠商</label><p>台北顯示器維修中心</p></div>
+                <div class="det-f"><label>維修日期</label><p>2025-04-15（預計）</p></div>
+                <div class="det-f"><label>故障原因</label><p>背光燈條電源線接觸不良</p></div>
+                <div class="det-f"><label>預估費用</label><p>NT$2,800</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="padding:13px;margin-bottom:12px">
+            <div class="det-sec-title" style="margin-bottom:9px">故障照片</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div class="img-ph" style="height:68px">IMG_001.jpg</div>
+              <div class="img-ph" style="height:68px">IMG_002.jpg</div>
+            </div>
+          </div>
+          <div class="card" style="padding:13px">
+            <div class="det-sec-title" style="margin-bottom:9px">處理備註</div>
+            <div class="tl-item"><div><div class="tl-dot" style="background:var(--warn)"></div></div><div><div class="tl-date">2025-04-14</div><div class="tl-act">陳志明</div><div class="tl-desc">已聯繫廠商，04-15 送修</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WO DETAIL: COMPLETED ═══ -->
+<div class="screen" id="sc-wo-done">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單</div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查</div>
+    <div class="nav on" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單</div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-breadcrumb">維修工單 / <span onclick="go('sc-wo')">WO-2025-0071</span> — 已完成</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div><button class="btn btn-g btn-sm" onclick="toast('info','列印','報告已開啟列印')">列印報告</button></div>
+    <div class="content">
+      <button class="btn btn-g btn-sm" style="margin-bottom:12px" onclick="go('sc-wo')">← 返回</button>
+      <div style="display:grid;grid-template-columns:1fr 240px;gap:14px">
+        <div class="card">
+          <div style="padding:14px 18px;background:var(--ok-bg);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
+            <div><div style="font-size:15px;font-weight:600;color:var(--n800)">ThinkPad 風扇更換</div><div style="font-size:11px;color:var(--n400);margin-top:2px">WO-2025-0071 · 完成時間：2025-04-10 16:45</div></div>
+            <span class="badge b-ok">已完成</span>
+          </div>
+          <div style="padding:16px 18px">
+            <div class="det-sec-title" style="margin-bottom:10px">處理進度</div>
+            <div class="prog-wrap" style="margin-bottom:16px">
+              <div class="prog-step done"><div class="prog-dot" style="background:var(--ok)">✓</div><div class="prog-lbl">建立工單</div></div>
+              <div class="prog-step done"><div class="prog-dot" style="background:var(--ok)">✓</div><div class="prog-lbl">指派負責人</div></div>
+              <div class="prog-step done"><div class="prog-dot" style="background:var(--ok)">✓</div><div class="prog-lbl">維修中</div></div>
+              <div class="prog-step done"><div class="prog-dot" style="background:var(--ok)">✓</div><div class="prog-lbl">完成</div></div>
+            </div>
+            <div class="det-sec-title" style="margin-bottom:10px">工單資訊</div>
+            <div class="det-grid">
+              <div class="det-f"><label>資產名稱</label><p>Lenovo ThinkPad T14 Gen 4</p></div>
+              <div class="det-f"><label>資產編號</label><p class="mono" style="font-size:11.5px">AST-2023-0220</p></div>
+              <div class="det-f"><label>負責管理員</label><p>王淑芬</p></div>
+              <div class="det-f"><label>建立日期</label><p>2025-04-06</p></div>
+            </div>
+            <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+              <div class="det-sec-title" style="margin-bottom:8px">完整維修記錄</div>
+              <div class="det-grid">
+                <div class="det-f"><label>維修廠商</label><p>聯想授權服務中心</p></div>
+                <div class="det-f"><label>維修日期</label><p>2025-04-08 ～ 04-10</p></div>
+                <div class="det-f"><label>故障原因</label><p>風扇軸承磨損，CPU 溫度 95°C+</p></div>
+                <div class="det-f"><label>維修方式</label><p>更換原廠風扇，重塗散熱膏</p></div>
+                <div class="det-f"><label>實際費用</label><p>NT$1,850</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="padding:13px;margin-bottom:12px">
+            <div class="det-sec-title" style="margin-bottom:9px">維修照片</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div class="img-ph" style="height:60px">IMG_001</div><div class="img-ph" style="height:60px">IMG_002</div>
+              <div class="img-ph" style="height:60px">IMG_003</div><div class="img-ph" style="height:60px">IMG_004</div>
+            </div>
+          </div>
+          <div class="card" style="padding:13px">
+            <div class="det-sec-title" style="margin-bottom:9px">異動時間軸</div>
+            <div class="tl-item"><div><div class="tl-dot" style="background:var(--navy)"></div><div class="tl-line"></div></div><div><div class="tl-date">2025-04-06</div><div class="tl-act">工單建立</div></div></div>
+            <div class="tl-item"><div><div class="tl-dot" style="background:var(--info)"></div><div class="tl-line"></div></div><div><div class="tl-date">2025-04-06</div><div class="tl-act">指派給王淑芬</div></div></div>
+            <div class="tl-item"><div><div class="tl-dot" style="background:var(--warn)"></div><div class="tl-line"></div></div><div><div class="tl-date">2025-04-08</div><div class="tl-act">送修廠商</div></div></div>
+            <div class="tl-item"><div><div class="tl-dot" style="background:var(--ok)"></div></div><div><div class="tl-date">2025-04-10</div><div class="tl-act">維修完成</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ USER ASSETS ═══ -->
+<div class="screen" id="sc-users">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單</div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查<div class="nb">5</div></div>
+    <div class="nav" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單</div>
+    <div class="sb-sec">管理</div>
+    <div class="nav on"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav" onclick="go('sc-settings')"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-breadcrumb">使用者管理 / 黃美玲 / 持有資產</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content">
+      <button class="btn btn-g btn-sm" style="margin-bottom:12px" onclick="toast('info','返回','使用者列表')">← 返回</button>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:14px">
+        <!-- User card -->
+        <div class="card" style="padding:16px;align-self:start">
+          <div style="width:60px;height:60px;border-radius:50%;background:#1E3A5F;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#93C5FD;margin:0 auto 10px">黃</div>
+          <div style="text-align:center;font-size:14px;font-weight:600;color:var(--n800);margin-bottom:3px">黃美玲</div>
+          <div style="text-align:center;font-size:11px;color:var(--n400);margin-bottom:12px">huang.meiling@corp.com</div>
+          <div style="background:var(--n100);border-radius:4px;padding:4px 10px;text-align:center;font-size:10.5px;font-weight:600;color:var(--n500);margin-bottom:14px">一般使用者</div>
+          <div style="border-top:1px solid var(--border);padding-top:12px">
+            <div class="det-f" style="margin-bottom:8px"><label>部門</label><p>行銷部</p></div>
+            <div class="det-f" style="margin-bottom:8px"><label>加入日期</label><p>2023-08-01</p></div>
+            <div class="det-f"><label>帳號狀態</label><p style="color:var(--ok)">啟用</p></div>
+          </div>
+          <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px">
+            <div style="font-size:10.5px;font-weight:600;color:var(--n400);margin-bottom:8px">資產持有摘要</div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:11.5px;color:var(--n600)">總持有</span><span style="font-size:13px;font-weight:700;color:var(--navy)">3</span></div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font-size:11.5px;color:var(--n600)">正常使用</span><span style="font-size:13px;font-weight:700;color:var(--ok)">2</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:11.5px;color:var(--n600)">維修中</span><span style="font-size:13px;font-weight:700;color:var(--warn)">1</span></div>
+          </div>
+          <div style="margin-top:14px;display:flex;flex-direction:column;gap:7px">
+            <button class="btn btn-ok btn-sm" style="justify-content:center" onclick="om('m-assign')">指派新資產</button>
+            <button class="btn btn-g btn-sm" style="justify-content:center" onclick="toast('info','編輯','開啟編輯使用者')">編輯使用者</button>
+          </div>
+        </div>
+        <!-- Asset table -->
+        <div class="tcard">
+          <div class="thead-bar"><div class="thead-title">黃美玲的持有資產 <span style="color:var(--n400);font-weight:400">（共 3 項）</span></div><button class="btn btn-g btn-sm" style="color:var(--warn);border-color:var(--warn)" onclick="toast('warn','批量收回','確認收回黃美玲的所有資產？')">批量收回全部</button></div>
+          <table>
+            <thead><tr><th>資產 ID</th><th>資產名稱</th><th>類別</th><th>狀態</th><th>領用日期</th><th>帳面價值</th><th></th></tr></thead>
+            <tbody>
+              <tr style="cursor:pointer" onclick="go('sc-asset-det')"><td><span class="mono">AST-2024-0112</span></td><td style="font-weight:500">MacBook Pro 16" M3 Pro</td><td style="color:var(--n400)">筆記型電腦</td><td><span class="badge b-ok">正常使用</span></td><td style="color:var(--n400)">2024-03-15</td><td class="mono">NT$89,000</td><td><button class="btn btn-g btn-xs" style="color:var(--warn);border-color:var(--warn)" onclick="event.stopPropagation();toast('warn','收回確認','確認從黃美玲收回 MacBook Pro？')">收回</button></td></tr>
+              <tr><td><span class="mono">AST-2024-0203</span></td><td style="font-weight:500">LG 27UL850 4K 螢幕</td><td style="color:var(--n400)">螢幕</td><td><span class="badge b-ok">正常使用</span></td><td style="color:var(--n400)">2024-03-15</td><td class="mono">NT$18,500</td><td><button class="btn btn-g btn-xs" style="color:var(--warn);border-color:var(--warn)" onclick="toast('warn','收回確認','確認從黃美玲收回 LG 螢幕？')">收回</button></td></tr>
+              <tr><td><span class="mono">AST-2024-0098</span></td><td style="font-weight:500">Dell OptiPlex 7010 SFF</td><td style="color:var(--n400)">桌上型電腦</td><td><span class="badge b-warn">維修中</span></td><td style="color:var(--n400)">2023-11-20</td><td class="mono">NT$32,000</td><td><button class="btn btn-g btn-xs" disabled style="opacity:.4">維修中</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SETTINGS ═══ -->
+<div class="screen" id="sc-settings">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-dash')"><div class="nav-ic">▪</div>儀表板</div>
+    <div class="nav" onclick="go('sc-assets')"><div class="nav-ic">▪</div>資產清單</div>
+    <div class="nav" onclick="go('sc-review')"><div class="nav-ic">▪</div>申請審查</div>
+    <div class="nav" onclick="go('sc-wo')"><div class="nav-ic">▪</div>維修工單</div>
+    <div class="sb-sec">管理</div>
+    <div class="nav" onclick="go('sc-users')"><div class="nav-ic">▪</div>使用者管理</div>
+    <div class="nav on"><div class="nav-ic">▪</div>系統設定</div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av">陳</div><div><div class="sb-uname">陳志明</div><div class="sb-role">資產管理員</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-title">系統設定</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content">
+      <div style="display:grid;grid-template-columns:180px 1fr;gap:14px">
+        <div class="card" style="padding:8px">
+          <div style="padding:8px 12px;border-radius:4px;background:var(--info-bg);color:var(--info);font-size:12.5px;font-weight:500;margin-bottom:4px;cursor:pointer">一般設定</div>
+          <div style="padding:8px 12px;border-radius:4px;color:var(--n500);font-size:12.5px;cursor:pointer" onmouseover="this.style.background='var(--n50)'" onmouseout="this.style.background=''">通知設定</div>
+          <div style="padding:8px 12px;border-radius:4px;color:var(--n500);font-size:12.5px;cursor:pointer" onmouseover="this.style.background='var(--n50)'" onmouseout="this.style.background=''">安全性</div>
+          <div style="padding:8px 12px;border-radius:4px;color:var(--n500);font-size:12.5px;cursor:pointer" onmouseover="this.style.background='var(--n50)'" onmouseout="this.style.background=''">資產分類</div>
+          <div style="padding:8px 12px;border-radius:4px;color:var(--n500);font-size:12.5px;cursor:pointer" onmouseover="this.style.background='var(--n50)'" onmouseout="this.style.background=''">工作流程</div>
+          <div style="padding:8px 12px;border-radius:4px;color:var(--n500);font-size:12.5px;cursor:pointer" onmouseover="this.style.background='var(--n50)'" onmouseout="this.style.background=''">稽核日誌</div>
+          <div style="padding:8px 12px;border-radius:4px;color:var(--n500);font-size:12.5px;cursor:pointer" onmouseover="this.style.background='var(--n50)'" onmouseout="this.style.background=''">API 設定</div>
+        </div>
+        <div class="card" style="padding:20px">
+          <div style="font-size:16px;font-weight:600;color:var(--n800);margin-bottom:4px">一般設定</div>
+          <div style="font-size:11.5px;color:var(--n400);margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border)">系統基本資訊與地區設定</div>
+          <div style="font-size:11.5px;font-weight:600;color:var(--n400);letter-spacing:.4px;margin-bottom:12px">系統基本資訊</div>
+          <div class="frow two"><div class="ff"><label class="fl">系統名稱</label><input class="fi" value="AssetCore Enterprise AMS"></div><div class="ff"><label class="fl">系統版本</label><input class="fi" value="v2.4.1 (Build 20250410)" readonly style="background:var(--n50)"></div></div>
+          <div class="frow two"><div class="ff"><label class="fl">組織名稱</label><input class="fi" value="XX 股份有限公司"></div><div class="ff"><label class="fl">組織代碼</label><input class="fi" value="CORP-TW-001"></div></div>
+          <div style="font-size:11.5px;font-weight:600;color:var(--n400);letter-spacing:.4px;margin:16px 0 12px;padding-top:14px;border-top:1px solid var(--border)">地區與語系</div>
+          <div class="frow two"><div class="ff"><label class="fl">預設語言</label><select class="fsel"><option>繁體中文 (zh-TW)</option><option>English (en)</option></select></div><div class="ff"><label class="fl">時區</label><select class="fsel"><option>Asia/Taipei (UTC+8)</option></select></div></div>
+          <div class="frow two"><div class="ff"><label class="fl">日期格式</label><select class="fsel"><option>YYYY-MM-DD</option><option>MM/DD/YYYY</option></select></div><div class="ff"><label class="fl">貨幣單位</label><select class="fsel"><option>新台幣 (NTD)</option></select></div></div>
+          <div style="font-size:11.5px;font-weight:600;color:var(--n400);letter-spacing:.4px;margin:16px 0 12px;padding-top:14px;border-top:1px solid var(--border)">資料保留政策</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font-size:13px;color:var(--n700)">自動封存已報廢資產（180 天後）</span><div style="width:40px;height:22px;background:var(--ok);border-radius:11px;cursor:pointer;position:relative" onclick="this.style.background=this.style.background==''||this.style.background=='var(--ok)'?'var(--n300)':'var(--ok)'"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px;transition:.2s"></div></div></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font-size:13px;color:var(--n700)">審查紀錄永久保留</span><div style="width:40px;height:22px;background:var(--ok);border-radius:11px;cursor:pointer;position:relative"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px"></div></div></div>
+          <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;color:var(--n700)">啟用資產生命週期提醒</span><div style="width:40px;height:22px;background:var(--n300);border-radius:11px;cursor:pointer;position:relative"><div style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px"></div></div></div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)">
+            <button class="btn btn-g">取消</button>
+            <button class="btn btn-p" onclick="toast('ok','設定已儲存','系統設定更新成功')">儲存設定</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ HOLDER DASHBOARD ═══ -->
+<div class="screen" id="sc-h-dash">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="holder-badge">持有者 Holder</div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav on"><div class="nav-ic">▪</div>我的設備</div>
+    <div class="nav" onclick="go('sc-h-repairs')"><div class="nav-ic">▪</div>我的維修申請<div class="nb">2</div></div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av" style="background:#1E3A5F;color:#93C5FD">佳</div><div><div class="sb-uname">佳慧</div><div class="sb-role">業務助理</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-title">首頁概覽</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div></div>
+    <div class="content">
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-lbl">我的設備</div><div class="kpi-val" style="color:var(--navy)">3</div><div class="kpi-sub">已登記在名下</div></div>
+        <div class="kpi"><div class="kpi-lbl">正常使用</div><div class="kpi-val" style="color:var(--ok)">2</div><div class="kpi-sub">可正常使用</div></div>
+        <div class="kpi"><div class="kpi-lbl">維修中</div><div class="kpi-val" style="color:var(--warn)">1</div><div class="kpi-sub">送修中</div></div>
+        <div class="kpi"><div class="kpi-lbl">待確認申請</div><div class="kpi-val" style="color:var(--brand)">2</div><div class="kpi-sub">等待審核</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div class="tcard">
+          <div class="thead-bar"><div class="thead-title">我的設備</div></div>
+          <table>
+            <thead><tr><th>設備名稱</th><th>類別</th><th>狀態</th><th></th></tr></thead>
+            <tbody>
+              <tr><td style="font-weight:500">MacBook Pro 16"</td><td style="color:var(--n400)">筆電</td><td><span class="badge b-ok">正常使用</span></td><td><button class="btn btn-warn btn-xs" onclick="om('m-repair')">申請維修</button></td></tr>
+              <tr><td style="font-weight:500">LG 4K 螢幕</td><td style="color:var(--n400)">螢幕</td><td><span class="badge b-ok">正常使用</span></td><td><button class="btn btn-warn btn-xs" onclick="om('m-repair')">申請維修</button></td></tr>
+              <tr><td style="font-weight:500">Dell OptiPlex</td><td style="color:var(--n400)">桌機</td><td><span class="badge b-warn">維修中</span></td><td><button class="btn btn-g btn-xs" disabled style="opacity:.4">維修中</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="tcard">
+          <div class="thead-bar"><div class="thead-title">我的維修申請</div><button class="btn btn-g btn-xs" onclick="go('sc-h-repairs')">查看全部 →</button></div>
+          <table>
+            <thead><tr><th>申請單號</th><th>設備</th><th>狀態</th></tr></thead>
+            <tbody>
+              <tr><td><span class="mono">REQ-2025-0038</span></td><td>MacBook Pro 螢幕</td><td><span class="badge b-info">審查中</span></td></tr>
+              <tr><td><span class="mono">REQ-2025-0021</span></td><td>Dell 桌機</td><td><span class="badge b-warn">維修中</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style="background:var(--warn-bg);border:1px solid var(--warn-b);border-radius:6px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-size:14px;font-weight:600;color:var(--n800);margin-bottom:3px">設備出問題了？</div><div style="font-size:12.5px;color:var(--n600)">填寫故障說明與照片，提交維修申請。</div></div>
+        <button class="btn btn-warn" onclick="om('m-repair')">+ 提交維修申請</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ HOLDER REPAIRS ═══ -->
+<div class="screen" id="sc-h-repairs">
+  <div class="sb">
+    <div class="sb-logo"><div class="sb-mark">AMS</div><div><div class="sb-brand">AssetCore</div><div class="sb-ver">ENTERPRISE · v2.4</div></div></div>
+    <div class="holder-badge">持有者 Holder</div>
+    <div class="sb-sec">MAIN</div>
+    <div class="nav" onclick="go('sc-h-dash')"><div class="nav-ic">▪</div>我的設備</div>
+    <div class="nav on"><div class="nav-ic">▪</div>我的維修申請<div class="nb">2</div></div>
+    <div class="sb-bot"><div class="sb-user"><div class="sb-av" style="background:#1E3A5F;color:#93C5FD">佳</div><div><div class="sb-uname">佳慧</div><div class="sb-role">業務助理</div></div><div class="sb-out" onclick="go('sc-login')">登出</div></div></div>
+  </div>
+  <div class="main">
+    <div class="topbar"><div class="tb-title">我的維修申請</div><div class="lang-toggle"><div class="lt-btn on">ZH</div><div class="lt-btn">EN</div></div><div class="dark-tog"></div><button class="btn btn-warn btn-sm" onclick="om('m-repair')">+ 新增申請</button></div>
+    <div class="content">
+      <div style="display:flex;gap:7px;margin-bottom:14px">
+        <span style="padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;background:var(--info-bg);color:var(--info);border:1.5px solid var(--info-b);font-weight:500">全部</span>
+        <span style="padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;border:1px solid var(--border);color:var(--n500)">審查中</span>
+        <span style="padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;border:1px solid var(--border);color:var(--n500)">維修中</span>
+        <span style="padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;border:1px solid var(--border);color:var(--n500)">已完成</span>
+        <span style="padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;border:1px solid var(--border);color:var(--n500)">拒絕</span>
+      </div>
+      <div class="tcard">
+        <table>
+          <thead><tr><th>申請單號</th><th>設備名稱</th><th>資產 ID</th><th>狀態</th><th>提交日期</th><th>完成日期</th><th>維修費用</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><span class="mono">REQ-2025-0038</span></td><td style="font-weight:500">MacBook Pro 螢幕異常</td><td><span class="mono">AST-2024-0112</span></td><td><span class="badge b-info">審查中</span></td><td style="color:var(--n400)">2025-04-14</td><td style="color:var(--n300)">—</td><td style="color:var(--n300)">—</td><td><button class="btn btn-g btn-xs">詳情</button></td></tr>
+            <tr><td><span class="mono">REQ-2025-0021</span></td><td style="font-weight:500">Dell 桌機無法開機</td><td><span class="mono">AST-2024-0098</span></td><td><span class="badge b-warn">維修中</span></td><td style="color:var(--n400)">2025-03-22</td><td style="color:var(--n300)">—</td><td style="color:var(--n300)">—</td><td><button class="btn btn-g btn-xs">詳情</button></td></tr>
+            <tr><td><span class="mono">REQ-2024-0187</span></td><td style="font-weight:500">LG 螢幕背光閃爍</td><td><span class="mono">AST-2024-0203</span></td><td><span class="badge b-done">已完成</span></td><td style="color:var(--n400)">2024-11-05</td><td style="color:var(--n400)">2024-11-08</td><td class="mono">NT$2,100</td><td><button class="btn btn-g btn-xs">詳情</button></td></tr>
+            <tr><td><span class="mono">REQ-2024-0092</span></td><td style="font-weight:500">MacBook 鍵盤失靈</td><td><span class="mono">AST-2024-0112</span></td><td><span class="badge b-err">拒絕</span></td><td style="color:var(--n400)">2024-08-20</td><td style="color:var(--n300)">—</td><td style="color:var(--n300)">—</td><td><button class="btn btn-g btn-xs">詳情</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end shell -->
+
+<script>
+const SCREENS={
+  'sc-login':      {l:'登入',                 i:1},
+  'sc-forgot':     {l:'忘記密碼',             i:2},
+  'sc-register':   {l:'帳號申請',             i:3},
+  'sc-dash':       {l:'管理員 · 儀表板',      i:4},
+  'sc-assets':     {l:'管理員 · 資產清單',    i:5},
+  'sc-asset-det':  {l:'管理員 · 資產詳情',    i:6},
+  'sc-review':     {l:'管理員 · 申請審查',    i:7},
+  'sc-wo':         {l:'管理員 · 維修工單',     i:8},
+  'sc-wo-pending': {l:'工單 · 待處理',        i:9},
+  'sc-wo-prog':    {l:'工單 · 進行中',        i:10},
+  'sc-wo-done':    {l:'工單 · 已完成',        i:11},
+  'sc-users':      {l:'管理員 · 使用者資產', i:12},
+  'sc-settings':   {l:'管理員 · 系統設定',   i:13},
+  'sc-h-dash':     {l:'持有者 · 首頁',        i:14},
+  'sc-h-repairs':  {l:'持有者 · 維修申請',   i:15},
+};
+const total=Object.keys(SCREENS).length;
+let hist=['sc-login'];
+
+function go(id){
+  if(!document.getElementById(id))return;
+  document.querySelectorAll('.screen').forEach(s=>{s.style.display='none';s.classList.remove('active')});
+  const el=document.getElementById(id);
+  el.style.display='flex';
+  el.classList.add('active');
+  if(hist[hist.length-1]!==id)hist.push(id);
+  updateShell(id);
+}
+function goBack(){
+  if(hist.length>1){hist.pop();const p=hist[hist.length-1];go(p);}
+}
+function updateShell(id){
+  const info=SCREENS[id]||{l:id,i:'?'};
+  document.getElementById('sl').textContent=`${info.i} / ${total}`;
+  const bc=document.getElementById('bc');
+  bc.innerHTML=hist.map((h,i)=>{
+    const inf=SCREENS[h]||{l:h};
+    return i<hist.length-1
+      ?`<span class="bc-item" onclick="go('${h}')">${inf.l}</span><span class="bc-sep">/</span>`
+      :`<span class="bc-cur">${inf.l}</span>`;
+  }).join('');
+}
+
+function om(id){document.getElementById(id).classList.add('open')}
+function cm(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}));
+
+function toast(type,title,msg,dur=3200){
+  const tw=document.getElementById('tw');
+  const el=document.createElement('div');
+  el.className='toast';
+  const cols={ok:'var(--ok)',info:'var(--info)',warn:'var(--warn)',err:'var(--err)'};
+  el.innerHTML=`<div class="t-bar" style="background:${cols[type]||'var(--n400)'}"></div><div><div class="t-title">${title}</div><div class="t-msg">${msg}</div></div>`;
+  tw.appendChild(el);
+  setTimeout(()=>el.remove(),dur);
+}
+
+// Form validation
+function addAsset(){
+  const n=document.getElementById('fi-name');
+  const e=document.getElementById('e-name');
+  if(!n.value.trim()){n.classList.add('ferr');e.style.display='block';return;}
+  n.classList.remove('ferr');e.style.display='none';
+  cm('m-add');toast('ok','資產建立成功','系統已自動產生唯一資產編號 AST-2024-0413');
+}
+function submitRepair(){
+  const f=document.getElementById('fi-fault');
+  const ef=document.getElementById('e-fault');
+  if(!f.value.trim()){f.classList.add('ferr');ef.style.display='block';return;}
+  f.classList.remove('ferr');ef.style.display='none';
+  cm('m-repair');go('sc-h-repairs');
+  toast('ok','維修申請已提交','REQ-2025-0042 建立，管理員將盡快審查');
+}
+function completeWO(){
+  cm('m-complete');go('sc-wo-done');
+  toast('ok','維修完成','WO-2025-0079 已標記完成，資產狀態更新為正常使用');
+}
+function selectU(el){
+  document.querySelectorAll('#assign-list > div').forEach(d=>{
+    d.style.borderColor='var(--border)';d.style.background='';
+    const chk=d.querySelector('span:last-child');if(chk)chk.style.display='none';
+  });
+  el.style.borderColor='var(--navy)';el.style.background='var(--info-bg)';
+  const chk=el.querySelector('span:last-child');if(chk)chk.style.display='block';
+}
+</script>
+</body>
+</html>
