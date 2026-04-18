@@ -1,0 +1,79 @@
+:root {
+  font-family: "Space Grotesk", "Noto Sans TC", sans-serif;
+  color: #14213d;
+  background:
+    radial-gradient(circle at top left, rgba(244, 162, 97, 0.3), transparent 32%),
+    linear-gradient(135deg, #f7f3e8, #d9e8ff);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.hero-card {
+  width: min(720px, 100%);
+  padding: 40px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgba(20, 33, 61, 0.16);
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.75rem;
+  color: #9a3412;
+}
+
+.hero-card h1 {
+  margin: 0 0 16px;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 0.95;
+}
+
+.description {
+  margin: 0 0 24px;
+  max-width: 46ch;
+  line-height: 1.6;
+}
+
+.links {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  border: 1px solid rgba(20, 33, 61, 0.12);
+}
+
+@media (max-width: 640px) {
+  .hero-card {
+    padding: 28px;
+  }
+}
