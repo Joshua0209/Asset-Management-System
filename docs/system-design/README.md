@@ -21,3 +21,4 @@
 | [11-asset-fsm.md](./11-asset-fsm.md) | Asset finite state machine — state diagram and transition table |
 | [12-api-design.md](./12-api-design.md) | REST API contract — endpoints, request/response shapes, RBAC, error codes |
 | [13-design-tokens.md](./13-design-tokens.md) | UI design tokens — TSMC-inspired color system, typography, spacing, motion, dark mode |
+| [14-sequence-diagrams.md](./14-sequence-diagrams.md) | Sequence diagrams — full repair lifecycle and optimistic locking conflict |

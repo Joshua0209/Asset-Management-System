@@ -28,6 +28,7 @@ docs/                          # Project documentation hub
     11-asset-fsm.md            # Asset finite state machine — states and transitions
     12-api-design.md           # REST API contract — endpoints, RBAC, error codes
     13-design-tokens.md        # UI design tokens — colors, typography, spacing, motion
+    14-sequence-diagrams.md    # Sequence diagrams — repair lifecycle, optimistic locking conflict
 ```
 
 ## Domain
