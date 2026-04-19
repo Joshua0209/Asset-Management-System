@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-import hashlib
+import logging
+import os
+import sys
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -11,6 +13,9 @@ from app.models.asset import Asset, AssetStatus
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 DEPARTMENTS = ["IT", "HR", "Finance", "Operations"]
 LOCATIONS = ["Taipei HQ", "Hsinchu Office", "Taichung Branch"]
@@ -40,7 +45,9 @@ FAULT_DESCRIPTIONS = [
 
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    import bcrypt
+
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def build_users() -> list[User]:
@@ -106,6 +113,9 @@ def build_repair_requests(
     holders_by_id = {holder.id: holder for holder in holders}
     in_use_assets = [item for item in assets if item.status == AssetStatus.IN_USE][:10]
     for index, asset in enumerate(in_use_assets):
+        assert asset.responsible_person_id is not None, (
+            f"IN_USE asset {asset.asset_code} has no responsible_person_id; seed data is inconsistent."
+        )
         manager = managers[index % len(managers)]
         holder = holders_by_id[asset.responsible_person_id]
         status_cycle = [
@@ -156,37 +166,48 @@ def build_images(repair_requests: list[RepairRequest]) -> list[RepairImage]:
 
 
 def main() -> None:
+    if os.environ.get("AMS_SEED_CONFIRM") != "1":
+        logger.error(
+            "Set AMS_SEED_CONFIRM=1 to confirm seeding. "
+            "This operation deletes ALL data in the target database."
+        )
+        sys.exit(1)
+
     with SessionLocal() as session:
-        session.execute(delete(RepairImage))
-        session.execute(delete(RepairRequest))
-        session.execute(delete(Asset))
-        session.execute(delete(User))
-        session.commit()
+        try:
+            session.execute(delete(RepairImage))
+            session.execute(delete(RepairRequest))
+            session.execute(delete(Asset))
+            session.execute(delete(User))
 
-        users = build_users()
-        session.add_all(users)
-        session.flush()
+            users = build_users()
+            session.add_all(users)
+            session.flush()
 
-        managers = [user for user in users if user.role == UserRole.MANAGER]
-        holders = [user for user in users if user.role == UserRole.HOLDER]
+            managers = [user for user in users if user.role == UserRole.MANAGER]
+            holders = [user for user in users if user.role == UserRole.HOLDER]
 
-        assets = build_assets(holders)
-        session.add_all(assets)
-        session.flush()
+            assets = build_assets(holders)
+            session.add_all(assets)
+            session.flush()
 
-        repair_requests = build_repair_requests(assets, holders, managers)
-        session.add_all(repair_requests)
-        session.flush()
+            repair_requests = build_repair_requests(assets, holders, managers)
+            session.add_all(repair_requests)
+            session.flush()
 
-        images = build_images(repair_requests)
-        session.add_all(images)
-        session.commit()
+            images = build_images(repair_requests)
+            session.add_all(images)
 
-        print("Seed complete:")
-        print(f"- users: {len(users)}")
-        print(f"- assets: {len(assets)}")
-        print(f"- repair_requests: {len(repair_requests)}")
-        print(f"- repair_images: {len(images)}")
+            session.commit()
+            logger.info("Seed complete:")
+            logger.info("  users: %d", len(users))
+            logger.info("  assets: %d", len(assets))
+            logger.info("  repair_requests: %d", len(repair_requests))
+            logger.info("  repair_images: %d", len(images))
+        except Exception:
+            session.rollback()
+            logger.error("Seed failed. Database has been rolled back.", exc_info=True)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

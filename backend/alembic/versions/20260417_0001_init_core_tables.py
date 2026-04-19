@@ -137,6 +137,6 @@ def downgrade() -> None:
     op.drop_index("ix_users_email", table_name="users")
     op.drop_table("users")
 
-    repair_status_enum.drop(op.get_bind(), checkfirst=False)
-    asset_status_enum.drop(op.get_bind(), checkfirst=False)
-    user_role_enum.drop(op.get_bind(), checkfirst=False)
+    repair_status_enum.drop(op.get_bind(), checkfirst=True)
+    asset_status_enum.drop(op.get_bind(), checkfirst=True)
+    user_role_enum.drop(op.get_bind(), checkfirst=True)
