@@ -16,7 +16,7 @@ class AssetCreate(APIModel):
     category: str = Field(min_length=1, max_length=100)
     supplier: str = Field(min_length=1, max_length=120)
     purchase_date: date
-    purchase_amount: Decimal
+    purchase_amount: Decimal = Field(ge=0, max_digits=15, decimal_places=2)
     location: str = Field(min_length=1, max_length=120)
     department: str = Field(min_length=1, max_length=100)
     activation_date: date | None = None
@@ -37,7 +37,7 @@ class AssetRead(APIModel):
     department: str
     activation_date: date | None
     warranty_expiry: date | None
-    status: AssetStatus | str
+    status: AssetStatus
     responsible_person_id: str | None
     disposal_reason: str | None
     version: int
