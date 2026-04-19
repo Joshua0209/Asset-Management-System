@@ -6,6 +6,27 @@ Week 1 foundation for the Asset Management System course project. This repositor
 - `frontend/`: React + Vite monorepo frontend shell
 - `docs/`: requirements, roadmap, and design references
 
+## Week 1 Progress
+
+### Backend
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Monorepo setup | ✅ Done | `backend/` + `frontend/` layout; OpenAPI auto-generated at `/docs` |
+| FastAPI scaffold + MySQL schema | ✅ Done | All 4 tables (`users`, `assets`, `repair_requests`, `repair_images`) via Alembic migration; `version` column on all mutable tables for optimistic locking |
+| Seed script with demo data | ✅ Done | 50 assets, 2 managers + 2 holders, 10 repair requests across all status states |
+| CI pipeline (lint + type-check + tests) | ❌ Missing | `ruff`, `mypy`, and `pytest` are configured in `pyproject.toml` but no GitHub Actions workflow file exists yet |
+
+### Frontend
+
+| Task | Status | Notes |
+|------|--------|-------|
+| React + Vite project in monorepo | ✅ Done | TypeScript strict mode enabled; `react-router-dom` v6 installed |
+| UI library setup | ❌ Missing | No UI library (Ant Design or shadcn) added yet |
+| i18n framework (`react-i18next`) | ❌ Missing | Not installed or configured |
+| Layout: sidebar nav + header | ❌ Missing | `App.tsx` is a static placeholder; no layout shell or routing structure |
+| CI pipeline (ESLint + type-check) | ❌ Missing | No ESLint config and no GitHub Actions workflow file |
+
 ## Repository layout
 
 ```text
