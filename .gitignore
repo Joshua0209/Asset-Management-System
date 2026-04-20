@@ -19,4 +19,5 @@ backend/.coverage
 backend/.env
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 backend/alembic/versions/__pycache__/
