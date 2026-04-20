@@ -17,7 +17,7 @@ def _make_user(
 ) -> User:
     user = User(
         email=email,
-        password_hash="$2b$12$placeholder_hash_for_tests",  # NOSONAR - test fixture, not a real credential
+        password_hash="$2b$12$placeholder_hash_for_tests",  # NOSONAR
         name=name,
         role=role,
         department="IT",
