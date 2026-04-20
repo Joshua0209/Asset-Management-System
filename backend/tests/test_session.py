@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import get_db
