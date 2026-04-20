@@ -4,6 +4,6 @@
 #
 # Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
-/backend/      @Joshua0209 @jnes0824
-/frontend/     @chueh0000 @emma3617 @Mimi94Mimi
+# Backend and frontend reviewer assignment is handled by .github/workflows/assign-reviewers.yml
+# (round-robin, one reviewer per team per PR).
 /.github/      @Joshua0209

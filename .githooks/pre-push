@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(git rev-parse --show-toplevel)
+VENV="$ROOT/.venv/bin"
+
+if [[ ! -x "$VENV/python" ]]; then
+  echo "ERROR: virtualenv not found at $ROOT/.venv — run setup first" >&2
+  exit 1
+fi
+
+echo "╔══════════════════════════════════════╗"
+echo "║   CI gate — running before push      ║"
+echo "╚══════════════════════════════════════╝"
+
+echo ""
+echo "▶ backend: ruff"
+"$VENV/ruff" check "$ROOT/backend"
+
+echo "▶ backend: mypy"
+"$VENV/mypy" --config-file "$ROOT/backend/pyproject.toml" "$ROOT/backend/app"
+
+echo "▶ backend: pytest"
+"$VENV/pytest" --tb=short -q "$ROOT/backend"
+
+echo ""
+echo "▶ frontend: eslint"
+(cd "$ROOT/frontend" && npm run lint --silent)
+
+echo "▶ frontend: typecheck"
+(cd "$ROOT/frontend" && npm run typecheck --silent)
+
+echo "▶ frontend: vitest"
+(cd "$ROOT/frontend" && npm run test --silent)
+
+echo ""
+echo "✓ All CI checks passed — push allowed."

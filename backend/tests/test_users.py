@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.user import User, UserRole
@@ -17,7 +19,7 @@ def _make_user(
 ) -> User:
     user = User(
         email=email,
-        password_hash="hashed_securely",
+        password_hash="$2b$12$placeholder_hash_for_tests",  # NOSONAR
         name=name,
         role=role,
         department="IT",
@@ -67,3 +69,8 @@ class TestListUsers:
         response = client.get("/api/v1/users")
         names = [u["name"] for u in response.json()["data"]]
         assert names == sorted(names)
+
+    def test_returns_503_on_db_error(self, client: TestClient, db_session: Session) -> None:
+        with patch.object(db_session, "scalars", side_effect=SQLAlchemyError("DB error")):
+            response = client.get("/api/v1/users")
+        assert response.status_code == 503

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.asset import Asset, AssetStatus
@@ -77,6 +79,11 @@ class TestListAssets:
         response = client.get("/api/v1/assets")
         item = response.json()["data"][0]
         assert "password_hash" not in item
+
+    def test_returns_503_on_db_error(self, client: TestClient, db_session: Session) -> None:
+        with patch.object(db_session, "scalars", side_effect=SQLAlchemyError("DB error")):
+            response = client.get("/api/v1/assets")
+        assert response.status_code == 503
 
 
 class TestRegisterAsset:

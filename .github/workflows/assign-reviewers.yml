@@ -1,0 +1,43 @@
+name: Assign Reviewers
+on:
+  pull_request:
+    types: [opened, reopened]
+jobs:
+  assign:
+    name: Round-robin reviewer assignment
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@60a0d83138ddfe5c24f4ef83c2cd7fc045c9c8a5 # v7
+        with:
+          script: |
+            const backend  = ['Joshua0209', 'jnes0824'];
+            const frontend = ['chueh0000', 'emma3617', 'Mimi94Mimi'];
+            const pr     = context.payload.pull_request.number;
+            const author = context.payload.pull_request.user.login;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              pull_number: pr,
+            });
+            const paths = files.map(f => f.filename);
+            const touchesBackend  = paths.some(p => p.startsWith('backend/'));
+            const touchesFrontend = paths.some(p => p.startsWith('frontend/'));
+            function pick(pool) {
+              const eligible = pool.filter(u => u !== author);
+              if (eligible.length === 0) return null;
+              return eligible[pr % eligible.length];
+            }
+            const reviewers = [
+              touchesBackend  ? pick(backend)  : null,
+              touchesFrontend ? pick(frontend) : null,
+            ].filter(Boolean);
+            if (reviewers.length > 0) {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                pull_number: pr,
+                reviewers,
+              });
+            }

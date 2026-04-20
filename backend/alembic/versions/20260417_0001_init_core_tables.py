@@ -16,6 +16,8 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
+_USERS_PK = "users.id"
+
 
 user_role_enum = sa.Enum("holder", "manager", name="user_role")
 asset_status_enum = sa.Enum(
@@ -74,7 +76,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
-        sa.ForeignKeyConstraint(["responsible_person_id"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["responsible_person_id"], [_USERS_PK], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("asset_code"),
     )
@@ -106,8 +108,8 @@ def upgrade() -> None:
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
         sa.ForeignKeyConstraint(["asset_id"], ["assets.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["requester_id"], ["users.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["reviewer_id"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["requester_id"], [_USERS_PK], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["reviewer_id"], [_USERS_PK], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_repair_requests_asset_id", "repair_requests", ["asset_id"], unique=False)
