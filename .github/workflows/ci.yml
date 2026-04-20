@@ -85,8 +85,8 @@ jobs:
       - name: Semgrep
         run: semgrep scan --config p/owasp-top-ten --error
 
-  sonarqube-backend:
-    name: SonarQube backend
+  sonarqube:
+    name: SonarQube quality gate
     runs-on: ubuntu-latest
     needs: backend
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
@@ -99,26 +99,8 @@ jobs:
         with:
           name: backend-coverage
           path: backend
-      - name: SonarQube scan (backend)
+      - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@v5
-        with:
-          projectBaseDir: backend
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
-
-  sonarqube-frontend:
-    name: SonarQube frontend
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: SonarQube scan (frontend)
-        uses: SonarSource/sonarqube-scan-action@v5
-        with:
-          projectBaseDir: frontend
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
