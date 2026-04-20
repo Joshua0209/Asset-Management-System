@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.asset import Asset, AssetStatus
@@ -89,6 +91,11 @@ class TestListRepairRequests:
 
         response = client.get("/api/v1/repair-requests")
         assert response.json()["data"] == []
+
+    def test_returns_503_on_db_error(self, client: TestClient, db_session: Session) -> None:
+        with patch.object(db_session, "scalars", side_effect=SQLAlchemyError("DB error")):
+            response = client.get("/api/v1/repair-requests")
+        assert response.status_code == 503
 
     def test_results_ordered_newest_first(self, client: TestClient, db_session: Session) -> None:
         holder = _make_user(db_session)
