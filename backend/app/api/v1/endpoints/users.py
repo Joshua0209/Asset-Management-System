@@ -1,4 +1,5 @@
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -13,9 +14,11 @@ from app.schemas.user import UserRead
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+DbSession = Annotated[Session, Depends(get_db)]
 
-@router.get("", response_model=ListResponse[UserRead], summary="List users")
-def list_users(db: Session = Depends(get_db)) -> ListResponse[UserRead]:
+
+@router.get("", summary="List users")
+def list_users(db: DbSession) -> ListResponse[UserRead]:
     try:
         users = db.scalars(
             select(User).where(User.deleted_at.is_(None)).order_by(User.name)

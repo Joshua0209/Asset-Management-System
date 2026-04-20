@@ -16,7 +16,7 @@ _PURCHASE_DATE = date(2026, 1, 1)
 def _make_user(session: Session, name: str = "Holder", role: UserRole = UserRole.HOLDER) -> User:
     user = User(
         email=f"{name.lower().replace(' ', '')}@example.com",
-        password_hash="hashed",
+        password_hash="$2b$12$placeholder_hash_for_tests",  # NOSONAR - test fixture, not a real credential
         name=name,
         role=role,
         department="IT",

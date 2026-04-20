@@ -1,4 +1,5 @@
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -13,9 +14,11 @@ from app.schemas.common import DataResponse, ListResponse
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+DbSession = Annotated[Session, Depends(get_db)]
 
-@router.get("", response_model=ListResponse[AssetRead], summary="List assets")
-def list_assets(db: Session = Depends(get_db)) -> ListResponse[AssetRead]:
+
+@router.get("", summary="List assets")
+def list_assets(db: DbSession) -> ListResponse[AssetRead]:
     try:
         assets = db.scalars(
             select(Asset).where(Asset.deleted_at.is_(None)).order_by(Asset.asset_code)
@@ -29,8 +32,8 @@ def list_assets(db: Session = Depends(get_db)) -> ListResponse[AssetRead]:
         ) from exc
 
 
-@router.post("", response_model=DataResponse[AssetRead], summary="Register an asset")
-def register_asset(payload: AssetCreate, db: Session = Depends(get_db)) -> DataResponse[AssetRead]:
+@router.post("", summary="Register an asset")
+def register_asset(payload: AssetCreate, db: DbSession) -> DataResponse[AssetRead]:
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Asset registration will be available in Week 2.",

@@ -1,4 +1,5 @@
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -13,9 +14,11 @@ from app.schemas.repair_request import RepairRequestRead
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+DbSession = Annotated[Session, Depends(get_db)]
 
-@router.get("", response_model=ListResponse[RepairRequestRead], summary="List repair requests")
-def list_repair_requests(db: Session = Depends(get_db)) -> ListResponse[RepairRequestRead]:
+
+@router.get("", summary="List repair requests")
+def list_repair_requests(db: DbSession) -> ListResponse[RepairRequestRead]:
     try:
         requests = db.scalars(
             select(RepairRequest)

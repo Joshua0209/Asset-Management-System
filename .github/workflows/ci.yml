@@ -79,7 +79,7 @@ jobs:
     name: SAST (semgrep OWASP top-10)
     runs-on: ubuntu-latest
     container:
-      image: returntocorp/semgrep
+      image: semgrep/semgrep:1.160.0
     steps:
       - uses: actions/checkout@v4
       - name: Semgrep
