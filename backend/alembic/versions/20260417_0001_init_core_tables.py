@@ -7,9 +7,9 @@ Create Date: 2026-04-17 00:00:00.000000
 
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "20260417_0001"
 down_revision = None
@@ -79,7 +79,12 @@ def upgrade() -> None:
         sa.UniqueConstraint("asset_code"),
     )
     op.create_index("ix_assets_status", "assets", ["status"], unique=False)
-    op.create_index("ix_assets_responsible_person_id", "assets", ["responsible_person_id"], unique=False)
+    op.create_index(
+        "ix_assets_responsible_person_id",
+        "assets",
+        ["responsible_person_id"],
+        unique=False,
+    )
 
     op.create_table(
         "repair_requests",
@@ -106,7 +111,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_repair_requests_asset_id", "repair_requests", ["asset_id"], unique=False)
-    op.create_index("ix_repair_requests_requester_id", "repair_requests", ["requester_id"], unique=False)
+    op.create_index(
+        "ix_repair_requests_requester_id",
+        "repair_requests",
+        ["requester_id"],
+        unique=False,
+    )
     op.create_index("ix_repair_requests_status", "repair_requests", ["status"], unique=False)
 
     op.create_table(
@@ -118,7 +128,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["repair_request_id"], ["repair_requests.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_repair_images_repair_request_id", "repair_images", ["repair_request_id"], unique=False)
+    op.create_index(
+        "ix_repair_images_repair_request_id",
+        "repair_images",
+        ["repair_request_id"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:

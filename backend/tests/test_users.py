@@ -57,7 +57,11 @@ class TestListUsers:
         assert "password_hash" not in user_data
 
     def test_users_ordered_by_name(self, client: TestClient, db_session: Session) -> None:
-        for name, email in [("Charlie", "c@example.com"), ("Alice", "a@example.com"), ("Bob", "b@example.com")]:
+        for name, email in [
+            ("Charlie", "c@example.com"),
+            ("Alice", "a@example.com"),
+            ("Bob", "b@example.com"),
+        ]:
             _make_user(db_session, name=name, email=email, role=UserRole.HOLDER)
 
         response = client.get("/api/v1/users")
