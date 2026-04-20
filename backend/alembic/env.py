@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
 from app.models import asset, repair_image, repair_request, user  # noqa: F401
@@ -49,7 +49,8 @@ def run_migrations_online() -> None:
                 context.run_migrations()
     except Exception as exc:
         print(
-            f"Migration failed. Ensure DATABASE_URL is set and the server is reachable. Error: {exc}",
+            "Migration failed. Ensure DATABASE_URL is set and the server is reachable. "
+            f"Error: {exc}",
             file=sys.stderr,
         )
         sys.exit(1)

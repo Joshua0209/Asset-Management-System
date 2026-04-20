@@ -114,7 +114,8 @@ def build_repair_requests(
     in_use_assets = [item for item in assets if item.status == AssetStatus.IN_USE][:10]
     for index, asset in enumerate(in_use_assets):
         assert asset.responsible_person_id is not None, (
-            f"IN_USE asset {asset.asset_code} has no responsible_person_id; seed data is inconsistent."
+            f"IN_USE asset {asset.asset_code} has no responsible_person_id; "
+            "seed data is inconsistent."
         )
         manager = managers[index % len(managers)]
         holder = holders_by_id[asset.responsible_person_id]
