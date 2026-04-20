@@ -83,7 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Semgrep
-        run: semgrep ci --config p/owasp-top-ten --error
+        run: semgrep scan --config p/owasp-top-ten --error
 
   sonarqube-backend:
     name: SonarQube backend
