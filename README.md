@@ -74,6 +74,21 @@ npm run dev
 
 The frontend dev server defaults to `http://localhost:5173`.
 
+## Pre-commit hooks (recommended)
+
+`gitleaks` runs in CI to block any commit with secrets, but you should also run it locally before pushing:
+
+```bash
+pip install pre-commit
+pre-commit install        # one-time per clone
+pre-commit run --all-files  # optional: scan everything once
+```
+
+Hooks configured in [.pre-commit-config.yaml](.pre-commit-config.yaml):
+- **gitleaks** — secret scan
+- **ruff** — lint + autofix on backend Python files
+- standard hygiene (trailing whitespace, EOF newline, merge-conflict markers, large files)
+
 ## Environment
 
 Backend defaults are stored in [backend/.env.example](/Users/jnes0/cloud_native/Asset-Management-System/backend/.env.example:1).
