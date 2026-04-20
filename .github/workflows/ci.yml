@@ -11,6 +11,7 @@ jobs:
   backend:
     name: Backend (ruff + mypy + pytest)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     defaults:
       run:
         working-directory: backend
@@ -41,6 +42,7 @@ jobs:
   frontend:
     name: Frontend (eslint + tsc + vitest + build)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     defaults:
       run:
         working-directory: frontend
@@ -71,6 +73,7 @@ jobs:
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -81,6 +84,7 @@ jobs:
   sast:
     name: SAST (semgrep OWASP top-10)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     container:
       image: semgrep/semgrep:1.160.0
     steps:
