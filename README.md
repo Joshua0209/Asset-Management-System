@@ -15,7 +15,7 @@ Week 1 foundation for the Asset Management System course project. This repositor
 | Monorepo setup | ✅ Done | `backend/` + `frontend/` layout; OpenAPI auto-generated at `/docs` |
 | FastAPI scaffold + MySQL schema | ✅ Done | All 4 tables (`users`, `assets`, `repair_requests`, `repair_images`) via Alembic migration; `version` column on all mutable tables for optimistic locking |
 | Seed script with demo data | ✅ Done | 50 assets, 2 managers + 2 holders, 10 repair requests across all status states |
-| CI pipeline (lint + type-check + tests) | ❌ Missing | `ruff`, `mypy`, and `pytest` are configured in `pyproject.toml` but no GitHub Actions workflow file exists yet |
+| CI pipeline (lint + type-check + tests) | ✅ Done | `ruff` + `mypy` + `pytest` run on every push/PR via `.github/workflows/ci.yml` |
 
 ### Frontend
 
@@ -25,7 +25,7 @@ Week 1 foundation for the Asset Management System course project. This repositor
 | UI library setup | ❌ Missing | No UI library (Ant Design or shadcn) added yet |
 | i18n framework (`react-i18next`) | ❌ Missing | Not installed or configured |
 | Layout: sidebar nav + header | ❌ Missing | `App.tsx` is a static placeholder; no layout shell or routing structure |
-| CI pipeline (ESLint + type-check) | ❌ Missing | No ESLint config and no GitHub Actions workflow file |
+| CI pipeline (ESLint + type-check) | ✅ Done | ESLint 9 (flat config) + `tsc --noEmit` + `vite build` run on every push/PR via `.github/workflows/ci.yml` |
 
 ## Repository layout
 
