@@ -1,0 +1,9 @@
+# Path-based reviewer auto-assignment.
+# When a PR touches one of these paths, the listed users are automatically
+# requested for review on PR open. Last-matching pattern wins.
+#
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+/backend/      @Joshua0209 @jnes0824
+/frontend/     @chueh0000 @emma3617 @Mimi94Mimi
+/.github/      @Joshua0209

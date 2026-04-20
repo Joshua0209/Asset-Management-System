@@ -89,6 +89,12 @@ Hooks configured in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 - **ruff** — lint + autofix on backend Python files
 - standard hygiene (trailing whitespace, EOF newline, merge-conflict markers, large files)
 
+## Reviewer auto-assignment
+
+PRs are auto-assigned reviewers via [.github/CODEOWNERS](.github/CODEOWNERS) based on the paths changed:
+- `backend/**` → @Joshua0209 @jnes0824
+- `frontend/**` → @chueh0000 @emma3617 @Mimi94Mimi
+
 ## Environment
 
 Backend defaults are stored in [backend/.env.example](/Users/jnes0/cloud_native/Asset-Management-System/backend/.env.example:1).
