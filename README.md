@@ -89,6 +89,15 @@ Hooks configured in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 - **ruff** — lint + autofix on backend Python files
 - standard hygiene (trailing whitespace, EOF newline, merge-conflict markers, large files)
 
+## SonarQube
+
+Quality gate runs on every PR and on `main` pushes via the `sonarqube` job in CI.
+Configuration lives in [sonar-project.properties](sonar-project.properties).
+
+Required GitHub Actions secrets:
+- `SONAR_TOKEN` — user token from SonarQube → My Account → Security
+- `SONAR_HOST_URL` — your SonarQube server URL (omit for SonarCloud)
+
 ## Reviewer auto-assignment
 
 PRs are auto-assigned reviewers via [.github/CODEOWNERS](.github/CODEOWNERS) based on the paths changed:
