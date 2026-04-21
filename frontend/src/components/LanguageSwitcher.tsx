@@ -14,7 +14,9 @@ export function LanguageSwitcher() {
 
   const handleChange = (lng: SupportedLanguage) => {
     if (lng !== current) {
-      void i18n.changeLanguage(lng);
+      i18n.changeLanguage(lng).catch((error) => {
+        console.error("Failed to change language:", error);
+      });
     }
   };
 
