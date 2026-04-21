@@ -9,7 +9,7 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - uses: actions/github-script@60a0d83138ddfe5c24f4ef83c2cd7fc045c9c8a5 # v7
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.0.1
         with:
           script: |
             const backend  = ['Joshua0209', 'jnes0824'];
