@@ -18,15 +18,6 @@
       "label": "Language"
     }
   },
-  "home": {
-    "eyebrow": "Asset Management System",
-    "title": "Week 1 monorepo scaffold is ready.",
-    "description": "FastAPI provides the shared OpenAPI contract, while React + Vite is prepared for the Week 2 feature work.",
-    "links": {
-      "apiDocs": "Open API Docs",
-      "health": "Health Check"
-    }
-  },
   "validation": {
     "required": "This field is required",
     "emailInvalid": "Please enter a valid email"
