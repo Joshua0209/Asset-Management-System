@@ -2,6 +2,8 @@ import { Layout, Space, Button, Typography } from 'antd';
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { layout } from '@/styles/tokens';
 
 const { Header } = Layout;
@@ -10,6 +12,7 @@ const { Text } = Typography;
 export function AppHeader() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleLogout = () => {
     logout();
@@ -28,7 +31,8 @@ export function AppHeader() {
         borderBottom: '1px solid #f0f0f0',
       }}
     >
-      <Space>
+      <Space size="middle">
+        <LanguageSwitcher />
         {user && (
           <Space>
             <UserOutlined />
@@ -36,7 +40,7 @@ export function AppHeader() {
           </Space>
         )}
         <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>
-          Logout
+          {t('common.logout')}
         </Button>
       </Space>
     </Header>

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { DashboardOutlined, LaptopOutlined, ToolOutlined, HomeOutlined } from '@ant-design/icons';
+import { DashboardOutlined, LaptopOutlined, HomeOutlined, ToolOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { UserRole } from '@/types/user';
 import { layout } from '@/styles/tokens';
 
@@ -11,31 +12,32 @@ interface SidebarProps {
   role: UserRole;
 }
 
-const managerMenuItems = [
-  {
-    key: '/manager/dashboard',
-    icon: <DashboardOutlined />,
-    label: 'Dashboard',
-  },
-  {
-    key: '/manager/assets',
-    icon: <LaptopOutlined />,
-    label: 'Asset Management',
-  },
-];
-
-const holderMenuItems = [
-  {
-    key: '/holder/dashboard',
-    icon: <HomeOutlined />,
-    label: 'My Dashboard',
-  },
-];
-
 export function Sidebar({ role }: SidebarProps) {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const managerMenuItems = [
+    {
+      key: '/manager/dashboard',
+      icon: <DashboardOutlined />,
+      label: t('sidebar.managerDashboard'),
+    },
+    {
+      key: '/manager/assets',
+      icon: <LaptopOutlined />,
+      label: t('sidebar.assetManagement'),
+    },
+  ];
+
+  const holderMenuItems = [
+    {
+      key: '/holder/dashboard',
+      icon: <HomeOutlined />,
+      label: t('sidebar.myDashboard'),
+    },
+  ];
 
   const menuItems = role === 'manager' ? managerMenuItems : holderMenuItems;
 

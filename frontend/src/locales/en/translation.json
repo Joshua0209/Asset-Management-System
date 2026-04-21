@@ -1,0 +1,47 @@
+{
+  "common": {
+    "welcome": "Welcome",
+    "login": "Login",
+    "logout": "Logout",
+    "dashboard": "Dashboard",
+    "assets": "Assets",
+    "repairs": "Repairs",
+    "loading": "Loading...",
+    "search": "Search",
+    "actions": "Actions"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign In",
+    "forgotPassword": "Forgot password?"
+  },
+  "sidebar": {
+    "managerDashboard": "Dashboard",
+    "assetManagement": "Asset Management",
+    "myDashboard": "My Dashboard"
+  },
+  "login": {
+    "title": "Asset Management System",
+    "subtitle": "資產管理系統",
+    "emailPlaceholder": "Email",
+    "passwordPlaceholder": "Password",
+    "emailRequired": "Please enter your email",
+    "emailInvalid": "Please enter a valid email",
+    "passwordRequired": "Please enter your password",
+    "loginButton": "Login",
+    "loginFailed": "Login failed. Please check your credentials."
+  },
+  "managerDashboard": {
+    "title": "Manager Dashboard",
+    "description": "Asset overview and pending actions will appear here."
+  },
+  "holderDashboard": {
+    "title": "My Dashboard",
+    "description": "Your assigned assets and repair requests will appear here."
+  },
+  "assetList": {
+    "title": "Asset Management",
+    "description": "Asset table with search and filters will appear here."
+  }
+}

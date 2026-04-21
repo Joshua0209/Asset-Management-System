@@ -1,14 +1,17 @@
 import { Button, Card, Form, Input, Typography, Space, App } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/authStore';
 import { authApi } from '@/api/endpoints/auth';
+import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { colors } from '@/styles/tokens';
 
 const { Title, Text } = Typography;
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const setAuth = useAuthStore((s) => s.setAuth);
   const { message } = App.useApp();
 
@@ -19,7 +22,7 @@ export function LoginPage() {
       setAuth(user, access_token);
       navigate(user.role === 'manager' ? '/manager' : '/holder');
     } catch {
-      message.error('Login failed. Please check your credentials.');
+      message.error(t('login.loginFailed'));
     }
   };
 
@@ -31,38 +34,43 @@ export function LoginPage() {
         alignItems: 'center',
         justifyContent: 'center',
         background: colors.neutral[50],
+        position: 'relative',
       }}
     >
+      <div style={{ position: 'absolute', top: 24, right: 24 }}>
+        <LanguageSwitcher />
+      </div>
+
       <Card style={{ width: 400, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
         <Space direction="vertical" size="large" style={{ width: '100%', textAlign: 'center' }}>
           <div>
             <Title level={3} style={{ margin: 0, color: colors.brand.primary }}>
-              Asset Management System
+              {t('login.title')}
             </Title>
-            <Text type="secondary">資產管理系統</Text>
+            <Text type="secondary">{t('login.subtitle')}</Text>
           </div>
 
           <Form layout="vertical" onFinish={onFinish} autoComplete="off">
             <Form.Item
               name="email"
               rules={[
-                { required: true, message: 'Please enter your email' },
-                { type: 'email', message: 'Please enter a valid email' },
+                { required: true, message: t('login.emailRequired') },
+                { type: 'email', message: t('login.emailInvalid') },
               ]}
             >
-              <Input prefix={<UserOutlined />} placeholder="Email" size="large" />
+              <Input prefix={<UserOutlined />} placeholder={t('login.emailPlaceholder')} size="large" />
             </Form.Item>
 
             <Form.Item
               name="password"
-              rules={[{ required: true, message: 'Please enter your password' }]}
+              rules={[{ required: true, message: t('login.passwordRequired') }]}
             >
-              <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
+              <Input.Password prefix={<LockOutlined />} placeholder={t('login.passwordPlaceholder')} size="large" />
             </Form.Item>
 
             <Form.Item>
               <Button type="primary" htmlType="submit" size="large" block>
-                Login
+                {t('login.loginButton')}
               </Button>
             </Form.Item>
           </Form>
