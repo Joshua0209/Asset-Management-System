@@ -21,7 +21,8 @@ export function LanguageSwitcher() {
   };
 
   return (
-    <div className="lang-switcher" role="group" aria-label={t("common.language.label")}>
+    <fieldset className="lang-switcher">
+      <legend className="lang-switcher__legend">{t("common.language.label")}</legend>
       <span
         className="lang-switcher__thumb"
         style={{ transform: `translateX(${activeIndex * 100}%)` }}
@@ -38,6 +39,6 @@ export function LanguageSwitcher() {
           {LANGUAGE_LABELS[lng]}
         </button>
       ))}
-    </div>
+    </fieldset>
   );
 }
