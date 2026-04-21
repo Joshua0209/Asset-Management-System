@@ -1,0 +1,43 @@
+{
+  "common": {
+    "button": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "submit": "Submit",
+      "confirm": "Confirm",
+      "delete": "Delete",
+      "edit": "Edit"
+    },
+    "nav": {
+      "assets": "Assets",
+      "repairs": "Repair Requests",
+      "users": "Users",
+      "logout": "Log out"
+    },
+    "language": {
+      "label": "Language"
+    }
+  },
+  "home": {
+    "eyebrow": "Asset Management System",
+    "title": "Week 1 monorepo scaffold is ready.",
+    "description": "FastAPI provides the shared OpenAPI contract, while React + Vite is prepared for the Week 2 feature work.",
+    "links": {
+      "apiDocs": "Open API Docs",
+      "health": "Health Check"
+    }
+  },
+  "validation": {
+    "required": "This field is required",
+    "emailInvalid": "Please enter a valid email"
+  },
+  "errors": {
+    "unauthorized": "Please sign in again",
+    "forbidden": "You don't have permission to perform this action",
+    "notFound": "Resource not found",
+    "conflict": "This record was modified by someone else. Please refresh and try again.",
+    "validationError": "Invalid input",
+    "rateLimitExceeded": "Too many requests. Please try again later.",
+    "serverError": "Something went wrong. Please try again later."
+  }
+}
