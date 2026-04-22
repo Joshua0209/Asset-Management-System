@@ -4,7 +4,7 @@ import {
   DashboardOutlined,
   AppstoreOutlined,
   CheckSquareOutlined,
-  BulbOutlined,
+  SunOutlined,
   MoonOutlined,
   MenuUnfoldOutlined,
   MenuFoldOutlined,
@@ -68,7 +68,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
           <div style={{ paddingRight: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
             <Button
               type="text"
-              icon={isDarkMode ? <BulbOutlined /> : <MoonOutlined />}
+              icon={isDarkMode ? <SunOutlined /> : <MoonOutlined />}
               onClick={toggleTheme}
               style={{ fontSize: '16px' }}
             />
