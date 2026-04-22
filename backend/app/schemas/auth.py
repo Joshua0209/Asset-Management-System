@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import EmailStr, Field, field_validator
 
 from app.core.security import WeakPasswordError, validate_password_policy
+from app.models.user import UserRole
 from app.schemas.common import APIModel
 
 
@@ -27,3 +30,21 @@ class RegisterRequest(APIModel):
         except WeakPasswordError as exc:
             raise ValueError(str(exc)) from exc
         return value
+
+
+class LoginRequest(APIModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+
+class LoginUser(APIModel):
+    id: str
+    email: EmailStr
+    name: str
+    role: UserRole
+
+
+class LoginResponse(APIModel):
+    token: str
+    expires_at: datetime
+    user: LoginUser
