@@ -15,9 +15,25 @@ import jwt
 from app.core.config import get_settings
 from app.models.user import UserRole
 
+_PASSWORD_MIN_LEN = 8
+
 
 class InvalidTokenError(Exception):
     """Raised when an access token is missing, expired, tampered, or signed with a foreign key."""
+
+
+class WeakPasswordError(ValueError):
+    """Raised when a plaintext password fails the project password policy."""
+
+
+def validate_password_policy(plain_password: str) -> None:
+    """Per api-design §1.1: min 8 chars, at least 1 letter and 1 digit."""
+    if len(plain_password) < _PASSWORD_MIN_LEN:
+        raise WeakPasswordError(f"Password must be at least {_PASSWORD_MIN_LEN} characters")
+    if not any(c.isalpha() for c in plain_password):
+        raise WeakPasswordError("Password must contain at least one letter")
+    if not any(c.isdigit() for c in plain_password):
+        raise WeakPasswordError("Password must contain at least one digit")
 
 
 @dataclass(frozen=True)
