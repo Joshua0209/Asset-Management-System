@@ -23,8 +23,8 @@ Course project for a cloud computing / software engineering class. The repositor
 |------|--------|-------|
 | React + Vite project | ✅ | TypeScript strict mode; `react-router-dom` v6 |
 | i18n framework | ✅ | `react-i18next` + `i18next-browser-languagedetector`; language switcher in `src/components/LanguageSwitcher.tsx`; locales under `src/i18n/locales/` |
-| UI library | ❌ | No Ant Design / shadcn yet |
-| Layout shell (sidebar + header) | ❌ | `App.tsx` still a placeholder; no routing shell |
+| UI library | ✅ | Ant Design (`antd`) and `@ant-design/icons` integrated; `ConfigProvider` utilized for native light/dark mode toggling |
+| Layout shell (sidebar + header) | ✅ | Global layout using Ant Design's Layout components with collapsible sidebar, navigation, and theme toggle |
 | CI: lint + type-check + tests + build | ✅ | ESLint 9 (flat config) + `tsc --noEmit` + `vitest` + `vite build` |
 
 ## Repository layout
@@ -39,8 +39,10 @@ Course project for a cloud computing / software engineering class. The repositor
 │   ├── public
 │   └── src
 │       ├── components
-│       └── i18n
-│           └── locales
+│       │   └── layout
+│       ├── i18n
+│       │   └── locales
+│       └── pages
 └── docs
     └── system-design
 ```

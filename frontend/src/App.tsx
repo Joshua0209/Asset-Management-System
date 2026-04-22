@@ -1,23 +1,40 @@
+import React, { useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { ConfigProvider, theme } from 'antd';
+import MainLayout from './components/layout/MainLayout';
+import Dashboard from './pages/Dashboard';
+import AssetList from './pages/AssetList';
+import Reviews from './pages/Reviews';
+
+// Initialize i18n
+import './i18n';
+
 function App() {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
   return (
-    <main className="app-shell">
-      <section className="hero-card">
-        <p className="eyebrow">Asset Management System</p>
-        <h1>Week 1 monorepo scaffold is ready.</h1>
-        <p className="description">
-          FastAPI provides the shared OpenAPI contract, while React + Vite is prepared for the
-          Week 2 feature work.
-        </p>
-        <div className="links">
-          <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer">
-            Open API Docs
-          </a>
-          <a href="http://localhost:8000/health" target="_blank" rel="noreferrer">
-            Health Check
-          </a>
-        </div>
-      </section>
-    </main>
+    <ConfigProvider
+      theme={{
+        algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        token: {
+          colorPrimary: '#1677ff',
+        },
+      }}
+    >
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<MainLayout isDarkMode={isDarkMode} toggleTheme={toggleTheme} />}>
+            <Route index element={<Dashboard />} />
+            <Route path="assets" element={<AssetList />} />
+            <Route path="reviews" element={<Reviews />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ConfigProvider>
   );
 }
 
