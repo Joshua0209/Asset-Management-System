@@ -2,36 +2,22 @@ import { render, screen } from "@testing-library/react";
 import App from "../App";
 
 describe("App", () => {
-  it("renders the asset management system heading", () => {
+  it("renders the manager dashboard heading", () => {
     render(<App />);
-    expect(screen.getByText(/Asset Management System/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Manager Dashboard/i })).toBeInTheDocument();
   });
 
-  it("renders the scaffold ready h1", () => {
+  it("renders the sidebar menu items", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Week 1 monorepo scaffold is ready."
-    );
+    // Use getByRole to target the menu items specifically
+    expect(screen.getByRole("menuitem", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /asset list/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /reviews/i })).toBeInTheDocument();
   });
 
-  it("renders the description paragraph", () => {
+  it("renders the language switcher", () => {
     render(<App />);
-    expect(screen.getByText(/FastAPI provides the shared OpenAPI contract/i)).toBeInTheDocument();
-  });
-
-  it("renders API docs link", () => {
-    render(<App />);
-    expect(screen.getByRole("link", { name: /open api docs/i })).toHaveAttribute(
-      "href",
-      "http://localhost:8000/docs"
-    );
-  });
-
-  it("renders health check link", () => {
-    render(<App />);
-    expect(screen.getByRole("link", { name: /health check/i })).toHaveAttribute(
-      "href",
-      "http://localhost:8000/health"
-    );
+    expect(screen.getByText("中")).toBeInTheDocument();
+    expect(screen.getByText("EN")).toBeInTheDocument();
   });
 });

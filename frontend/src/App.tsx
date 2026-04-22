@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
 import MainLayout from './components/layout/MainLayout';
 import Dashboard from './pages/Dashboard';
@@ -9,7 +9,7 @@ import Reviews from './pages/Reviews';
 // Initialize i18n
 import './i18n';
 
-function App() {
+const RootLayout: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   const toggleTheme = () => {
@@ -25,17 +25,34 @@ function App() {
         },
       }}
     >
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<MainLayout isDarkMode={isDarkMode} toggleTheme={toggleTheme} />}>
-            <Route index element={<Dashboard />} />
-            <Route path="assets" element={<AssetList />} />
-            <Route path="reviews" element={<Reviews />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <MainLayout isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
     </ConfigProvider>
   );
+};
+
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <RootLayout />,
+    children: [
+      {
+        index: true,
+        element: <Dashboard />,
+      },
+      {
+        path: 'assets',
+        element: <AssetList />,
+      },
+      {
+        path: 'reviews',
+        element: <Reviews />,
+      },
+    ],
+  },
+]);
+
+function App() {
+  return <RouterProvider router={router} />;
 }
 
 export default App;
