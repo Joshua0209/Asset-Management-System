@@ -5,6 +5,8 @@ from collections.abc import Generator
 
 # Must be set before any app module is imported, since session.py calls get_settings() at load time.
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-do-not-use-in-production")
+os.environ.setdefault("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "720")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

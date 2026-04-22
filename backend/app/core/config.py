@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     database_url: str  # required — must be set via DATABASE_URL env var or .env
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
+    jwt_secret: str  # required — must be set via JWT_SECRET env var or .env
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expires_minutes: int = 720  # 12h, matches api-design §1.2 example
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
