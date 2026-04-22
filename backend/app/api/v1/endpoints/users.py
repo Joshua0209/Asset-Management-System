@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.deps import ManagerUser
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.common import ListResponse
@@ -18,7 +19,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("", summary="List users")
-def list_users(db: DbSession) -> ListResponse[UserRead]:
+def list_users(db: DbSession, _current: ManagerUser) -> ListResponse[UserRead]:
     try:
         users = db.scalars(
             select(User).where(User.deleted_at.is_(None)).order_by(User.name)

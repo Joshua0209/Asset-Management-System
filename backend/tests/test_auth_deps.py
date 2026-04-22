@@ -30,7 +30,9 @@ class TestUsersEndpointRequiresAuth:
         )
         assert response.status_code == 401
 
-    def test_expired_token_returns_401(self, client: TestClient, make_user: Callable[..., User]) -> None:
+    def test_expired_token_returns_401(
+        self, client: TestClient, make_user: Callable[..., User]
+    ) -> None:
         u = make_user(role=UserRole.MANAGER)
         token, _ = create_access_token(subject=u.id, role=u.role, expires_minutes=-1)
         response = client.get("/api/v1/users", headers={"Authorization": f"Bearer {token}"})
