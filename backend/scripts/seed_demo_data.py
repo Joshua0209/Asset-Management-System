@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from sqlalchemy import delete
 
+from app.core.security import hash_password
 from app.db.session import SessionLocal
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_image import RepairImage
@@ -42,12 +43,6 @@ FAULT_DESCRIPTIONS = [
     "Wi-Fi disconnects several times a day.",
     "Keyboard keys sometimes stop responding.",
 ]
-
-
-def hash_password(password: str) -> str:
-    import bcrypt
-
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def build_users() -> list[User]:
