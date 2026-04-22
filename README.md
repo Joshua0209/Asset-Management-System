@@ -53,8 +53,8 @@ Course project for a cloud computing / software engineering class. The repositor
 
 | Task | Status | Notes |
 |------|--------|-------|
-| UI library pick + setup | ⏳ **Must land Mon** | Carry-over from Week 1. Default to shadcn if team undecided by Mon EOD |
-| Layout shell (sidebar + header) | ⏳ Mon–Tue | Carry-over from Week 1. Role-aware menu, not yet enforced |
+| UI library | ✅ | Ant Design (`antd`) and `@ant-design/icons` integrated; `ConfigProvider` utilized for native light/dark mode toggling |
+| Layout shell (sidebar + header) | ✅ | Global layout using Ant Design's Layout components with collapsible sidebar, navigation, and theme toggle |
 | Login / Register pages | ⏳ Tue–Wed | Connected to real auth API; zh-TW + en strings |
 | Auth guard + role-based routing | ⏳ Wed–Thu | Redirect holder away from manager-only pages |
 | Asset list page (table + pagination) | ⏳ Wed–Fri | Manager sees all; holder sees own assets |
