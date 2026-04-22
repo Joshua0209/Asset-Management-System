@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expires_minutes: int = 720  # 12h, matches api-design §1.2 example
 
+    # Bootstrap manager — seeded by scripts/seed_demo_data.py so the first
+    # manager exists without a chicken-and-egg problem (Decision A2).
+    bootstrap_manager_email: str = "admin@example.com"
+    bootstrap_manager_password: str = "ChangeMe123"
+    bootstrap_manager_name: str = "Bootstrap Manager"
+    bootstrap_manager_department: str = "IT"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

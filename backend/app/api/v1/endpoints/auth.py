@@ -8,11 +8,17 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser
+from app.api.deps import CurrentUser, ManagerUser
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.auth import LoginRequest, LoginResponse, LoginUser, RegisterRequest
+from app.schemas.auth import (
+    AdminCreateUserRequest,
+    LoginRequest,
+    LoginResponse,
+    LoginUser,
+    RegisterRequest,
+)
 from app.schemas.common import DataResponse
 from app.schemas.user import UserRead
 
@@ -99,3 +105,55 @@ def login(payload: LoginRequest, db: DbSession) -> DataResponse[LoginResponse]:
 @router.get("/me", summary="Get the authenticated user's profile")
 def me(current_user: CurrentUser) -> DataResponse[UserRead]:
     return DataResponse(data=UserRead.model_validate(current_user))
+
+
+@router.post(
+    "/users",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a user of any role (manager-only)",
+)
+def admin_create_user(
+    payload: AdminCreateUserRequest,
+    db: DbSession,
+    _actor: ManagerUser,
+) -> DataResponse[UserRead]:
+    """Decision A2 escape hatch: managers create both holders and managers here.
+
+    Public /auth/register is holder-only; this endpoint is how the team adds
+    additional managers once the bootstrap manager has logged in.
+    """
+    existing = db.scalar(
+        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already registered",
+        )
+
+    user = User(
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        name=payload.name,
+        role=payload.role,
+        department=payload.department,
+    )
+    try:
+        db.add(user)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already registered",
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Failed to create user via admin endpoint: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to create user. Please try again later.",
+        ) from exc
+
+    db.refresh(user)
+    return DataResponse(data=UserRead.model_validate(user))
