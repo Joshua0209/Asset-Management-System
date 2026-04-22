@@ -1,31 +1,31 @@
 # Asset Management System
 
-Week 1 foundation for the Asset Management System course project. This repository now includes:
+Course project for a cloud computing / software engineering class. The repository is a monorepo containing:
 
-- `backend/`: FastAPI app scaffold, SQLAlchemy models, Alembic migrations, and demo seed script
-- `frontend/`: React + Vite monorepo frontend shell
-- `docs/`: requirements, roadmap, and design references
+- `backend/` — FastAPI app, SQLAlchemy models, Alembic migrations, demo seed script
+- `frontend/` — React + Vite + TypeScript shell with i18n
+- `docs/` — requirements, roadmap, and full system-design document set
 
-## Week 1 Progress
+## Progress
 
 ### Backend
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Monorepo setup | ✅ Done | `backend/` + `frontend/` layout; OpenAPI auto-generated at `/docs` |
-| FastAPI scaffold + MySQL schema | ✅ Done | All 4 tables (`users`, `assets`, `repair_requests`, `repair_images`) via Alembic migration; `version` column on all mutable tables for optimistic locking |
-| Seed script with demo data | ✅ Done | 50 assets, 2 managers + 2 holders, 10 repair requests across all status states |
-| CI pipeline (lint + type-check + tests) | ✅ Done | `ruff` + `mypy` + `pytest` run on every push/PR via `.github/workflows/ci.yml` |
+| Monorepo setup | ✅ | `backend/` + `frontend/`; OpenAPI at `/docs` |
+| FastAPI scaffold + MySQL schema | ✅ | 4 tables (`users`, `assets`, `repair_requests`, `repair_images`) via Alembic; `version` column for optimistic locking |
+| Seed script with demo data | ✅ | 50 assets, 2 managers + 2 holders, 10 repair requests across all statuses |
+| CI: lint + type-check + tests | ✅ | `ruff` + `mypy --strict` + `pytest --cov` on every push/PR |
 
 ### Frontend
 
 | Task | Status | Notes |
 |------|--------|-------|
-| React + Vite project in monorepo | ✅ Done | TypeScript strict mode enabled; `react-router-dom` v6 installed |
-| UI library setup | ❌ Missing | No UI library (Ant Design or shadcn) added yet |
-| i18n framework (`react-i18next`) | ❌ Missing | Not installed or configured |
-| Layout: sidebar nav + header | ❌ Missing | `App.tsx` is a static placeholder; no layout shell or routing structure |
-| CI pipeline (ESLint + type-check) | ✅ Done | ESLint 9 (flat config) + `tsc --noEmit` + `vite build` run on every push/PR via `.github/workflows/ci.yml` |
+| React + Vite project | ✅ | TypeScript strict mode; `react-router-dom` v6 |
+| i18n framework | ✅ | `react-i18next` + `i18next-browser-languagedetector`; language switcher in `src/components/LanguageSwitcher.tsx`; locales under `src/i18n/locales/` |
+| UI library | ❌ | No Ant Design / shadcn yet |
+| Layout shell (sidebar + header) | ❌ | `App.tsx` still a placeholder; no routing shell |
+| CI: lint + type-check + tests + build | ✅ | ESLint 9 (flat config) + `tsc --noEmit` + `vitest` + `vite build` |
 
 ## Repository layout
 
@@ -38,7 +38,11 @@ Week 1 foundation for the Asset Management System course project. This repositor
 ├── frontend
 │   ├── public
 │   └── src
+│       ├── components
+│       └── i18n
+│           └── locales
 └── docs
+    └── system-design
 ```
 
 ## Quick start
@@ -62,7 +66,7 @@ python scripts/seed_demo_data.py
 uvicorn app.main:app --reload
 ```
 
-FastAPI docs will be available at `http://localhost:8000/docs`.
+FastAPI docs: `http://localhost:8000/docs`.
 
 ### 2. Frontend
 
@@ -72,41 +76,75 @@ npm install
 npm run dev
 ```
 
-The frontend dev server defaults to `http://localhost:5173`.
+Dev server: `http://localhost:5173`.
 
-## Pre-commit hooks (recommended)
+## Scripts reference
 
-`gitleaks` runs in CI to block any commit with secrets, but you should also run it locally before pushing:
+### Backend (run from `backend/`)
+
+| Command | Description |
+|---------|-------------|
+| `ruff check .` | Lint |
+| `mypy app` | Strict type-check |
+| `pytest --cov=app --cov-report=term --cov-report=xml` | Tests with coverage |
+| `alembic upgrade head` | Apply migrations |
+| `python scripts/seed_demo_data.py` | Load demo data |
+| `uvicorn app.main:app --reload` | Dev server |
+
+### Frontend (run from `frontend/`)
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Vite dev server (HMR) |
+| `npm run build` | `tsc && vite build` — production build with type check |
+| `npm run preview` | Preview production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Vitest (run once) |
+| `npm run test:coverage` | Vitest with V8 coverage |
+
+## Pre-commit hooks
 
 ```bash
 pip install pre-commit
-pre-commit install        # one-time per clone
-pre-commit run --all-files  # optional: scan everything once
+pre-commit install           # one-time per clone
+pre-commit run --all-files   # optional: scan everything once
 ```
 
-Hooks configured in [.pre-commit-config.yaml](.pre-commit-config.yaml):
+Hooks in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 - **gitleaks** — secret scan
 - **ruff** — lint + autofix on backend Python files
 - standard hygiene (trailing whitespace, EOF newline, merge-conflict markers, large files)
 
-## SonarQube
+## CI pipeline
 
-Quality gate runs on every PR and on `main` pushes via the `sonarqube` job in CI.
-Configuration lives in [sonar-project.properties](sonar-project.properties).
+`.github/workflows/ci.yml` runs five jobs on every push and PR:
 
-Required GitHub Actions secrets:
-- `SONAR_TOKEN` — user token from SonarQube → My Account → Security
-- `SONAR_HOST_URL` — your SonarQube server URL (omit for SonarCloud)
+| Job | Tool(s) |
+|-----|---------|
+| `backend` | ruff → mypy → pytest (uploads `coverage.xml`) |
+| `frontend` | ESLint → tsc → vitest (uploads `lcov.info`) → vite build |
+| `secrets` | gitleaks |
+| `sast` | Semgrep (OWASP top-10 ruleset) |
+| `sonarqube` | SonarCloud quality gate (consumes coverage artifacts) |
+
+### SonarQube / SonarCloud
+
+Config: [sonar-project.properties](sonar-project.properties). Host is hardcoded to `https://sonarcloud.io` in the workflow.
+
+Required GitHub Actions secret:
+- `SONAR_TOKEN` — user token from SonarCloud → My Account → Security
 
 ## Reviewer auto-assignment
 
-PRs are auto-assigned reviewers via [.github/CODEOWNERS](.github/CODEOWNERS) based on the paths changed:
-- `backend/**` → @Joshua0209 @jnes0824
-- `frontend/**` → @chueh0000 @emma3617 @Mimi94Mimi
+Round-robin assignment runs on PR open/reopen via [.github/workflows/assign-reviewers.yml](.github/workflows/assign-reviewers.yml):
+- Touches `backend/**` → one of @Joshua0209, @jnes0824
+- Touches `frontend/**` → one of @chueh0000, @emma3617, @Mimi94Mimi
+- The PR author is excluded from their own pool
+- Selection is deterministic (`pr_number % eligible.length`)
+
+[.github/CODEOWNERS](.github/CODEOWNERS) only covers `/.github/` changes; team review is workflow-driven.
 
 ## Environment
 
-Backend defaults are stored in [backend/.env.example](/Users/jnes0/cloud_native/Asset-Management-System/backend/.env.example:1).
-Update `DATABASE_URL` to point to your local MySQL instance before running migrations or seed data.
-If you use the bundled [docker-compose.yml](/Users/jnes0/cloud_native/Asset-Management-System/docker-compose.yml:1),
-the default `DATABASE_URL` already matches the container settings.
+Backend defaults live in [backend/.env.example](backend/.env.example). Update `DATABASE_URL` to point at your MySQL instance before running migrations or the seed script. The bundled [docker-compose.yml](docker-compose.yml) matches the default `DATABASE_URL`.
