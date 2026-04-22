@@ -8,7 +8,9 @@ Course project for a cloud computing / software engineering class. The repositor
 
 ## Progress
 
-### Backend
+### Week 1 — Foundation & CI Setup (Apr 14–18) — Mostly done
+
+**Backend**
 
 | Task | Status | Notes |
 |------|--------|-------|
@@ -17,15 +19,50 @@ Course project for a cloud computing / software engineering class. The repositor
 | Seed script with demo data | ✅ | 50 assets, 2 managers + 2 holders, 10 repair requests across all statuses |
 | CI: lint + type-check + tests | ✅ | `ruff` + `mypy --strict` + `pytest --cov` on every push/PR |
 
-### Frontend
+**Frontend**
 
 | Task | Status | Notes |
 |------|--------|-------|
 | React + Vite project | ✅ | TypeScript strict mode; `react-router-dom` v6 |
 | i18n framework | ✅ | `react-i18next` + `i18next-browser-languagedetector`; language switcher in `src/components/LanguageSwitcher.tsx`; locales under `src/i18n/locales/` |
-| UI library | ❌ | No Ant Design / shadcn yet |
-| Layout shell (sidebar + header) | ❌ | `App.tsx` still a placeholder; no routing shell |
+| UI library | ❌ (carry-over → Week 2) | No Ant Design / shadcn yet — open team decision |
+| Layout shell (sidebar + header) | ❌ (carry-over → Week 2) | `App.tsx` still a placeholder; no routing shell |
 | CI: lint + type-check + tests + build | ✅ | ESLint 9 (flat config) + `tsc --noEmit` + `vitest` + `vite build` |
+
+**CI & Security Gates**
+
+| Task | Status | Notes |
+|------|--------|-------|
+| GitHub Actions workflow | ✅ | 5 jobs: backend, frontend, secrets, sast, sonarqube |
+| gitleaks (pre-commit + CI) | ✅ | Secret scanning from day 1 |
+| Semgrep SAST | ✅ | OWASP top-10 rules |
+| SonarCloud quality gate | ✅ (pulled from Week 5) | Consumes FE+BE coverage; BLOCKER/CRITICAL/MAJOR findings resolved |
+| Reviewer auto-assignment | ✅ (bonus) | Round-robin by path ownership |
+
+### Week 2 — Auth & Core Features Start (Apr 21–25) — Planned
+
+**Backend**
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Auth API (register, login, JWT) | ⏳ Planned | RBAC middleware (`holder` vs `manager`); reuse bcrypt hashing from seed script |
+| Asset CRUD APIs (create, read, update, list) | ⏳ Planned | Pagination + basic filtering; replace current 501 on `POST /assets` |
+| Repair Request APIs (submit + list) | ⏳ Planned | Server-side FSM validation per `docs/system-design/11-asset-fsm.md` |
+
+**Frontend**
+
+| Task | Status | Notes |
+|------|--------|-------|
+| UI library pick + setup | ⏳ **Must land Mon** | Carry-over from Week 1. Default to shadcn if team undecided by Mon EOD |
+| Layout shell (sidebar + header) | ⏳ Mon–Tue | Carry-over from Week 1. Role-aware menu, not yet enforced |
+| Login / Register pages | ⏳ Tue–Wed | Connected to real auth API; zh-TW + en strings |
+| Auth guard + role-based routing | ⏳ Wed–Thu | Redirect holder away from manager-only pages |
+| Asset list page (table + pagination) | ⏳ Wed–Fri | Manager sees all; holder sees own assets |
+| Repair request submit form | ⏳ Thu–Fri | Asset ID, fault description, image upload (max 5) |
+
+**Week 2 milestone (`M2 — Auth + CRUD Basics`):** login/register end-to-end · manager registers an asset · holder views own assets · holder submits a repair request · RBAC enforced on FE + BE.
+
+> Full weekly plan, risks, and resource allocation live in [docs/roadmap.md](docs/roadmap.md).
 
 ## Repository layout
 
