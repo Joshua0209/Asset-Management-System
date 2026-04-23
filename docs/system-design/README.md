@@ -20,4 +20,7 @@
 | [10-design-decisions.md](./10-design-decisions.md) | Resolved team decisions on stack, storage, business logic, scope |
 | [11-asset-fsm.md](./11-asset-fsm.md) | Asset finite state machine — state diagram and transition table |
 | [12-api-design.md](./12-api-design.md) | REST API contract — endpoints, request/response shapes, RBAC, error codes |
-| [13-design-tokens.md](./13-design-tokens.md) | UI design tokens — TSMC-inspired color system, typography, spacing, motion, dark mode |
+
+---
+
+> **Design system** (tokens, TSMC visual direction, "does this feel TSMC?" checklist): [`docs/designs/DESIGN.md`](../designs/DESIGN.md)

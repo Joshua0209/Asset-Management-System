@@ -1,24 +1,33 @@
+# ── OS / editor ──────────────────────────────────────────────────────────────
 .DS_Store
-.claude/
+.idea/
+.vscode/
+
+# ── Secrets / env ─────────────────────────────────────────────────────────────
 .env
 .env.*
 !.env.example
+
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.egg-info/
+.venv/
+venv/
+
+# ── Python test / quality tools ───────────────────────────────────────────────
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
-.venv/
-venv/
-backend/.venv/
-backend/.pytest_cache/
-backend/.mypy_cache/
-backend/.coverage
-backend/coverage.xml
-backend/.env
+coverage.xml
+htmlcov/
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/
-backend/alembic/versions/__pycache__/
+frontend/*.tsbuildinfo
+
+# ── Claude Code ───────────────────────────────────────────────────────────────
+.claude/

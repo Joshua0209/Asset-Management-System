@@ -18,7 +18,7 @@ When a question can be answered from one of these, read it before guessing:
 | DB schema, indexes, locking | `docs/system-design/07-database-design.md` |
 | REST contract + RBAC + error codes | `docs/system-design/12-api-design.md` |
 | Asset state machine | `docs/system-design/11-asset-fsm.md` |
-| Design tokens (colors, spacing, type) | `docs/system-design/13-design-tokens.md` |
+| Design system (colors, typography, spacing, motion) | `docs/designs/DESIGN.md` + `docs/designs/design-tokens.json` |
 | Resolved team decisions | `docs/system-design/10-design-decisions.md` |
 
 The full index is `docs/system-design/README.md`; docs are numbered and meant to be read in order.
@@ -35,7 +35,7 @@ Core modules: asset basic-info management, and the repair request workflow (appl
 
 - **Backend**: FastAPI + SQLAlchemy + Alembic + MySQL 8. Mutable tables carry a `version` column — use **optimistic locking**, not `SELECT … FOR UPDATE`, for concurrent writes.
 - **Frontend**: React 18 + Vite + TypeScript strict + React Router v6. i18n is `react-i18next` with a browser language detector; locale files live in `frontend/src/i18n/locales/`. Any new user-visible string must have zh-TW + en entries.
-- **No UI library yet.** If picking one, confirm with the team — it's an open decision, not a gap to silently fill.
+- **UI library: Ant Design v6** (`antd` + `@ant-design/icons`). Dark/light mode via `ConfigProvider`. TSMC visual direction (palette, typography, spacing) is defined in `docs/designs/DESIGN.md` — follow those constraints when building components on top of Ant Design defaults.
 
 ## CI + tooling gotchas
 

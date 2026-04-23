@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-locale="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AMS — Design Preview (TSMC)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── Tokens (mirror design-tokens.json / 13-design-tokens.md) ─────── */
+    :root {
+      --rgb-brand-primary: 200 16 46;
+      --rgb-brand-secondary: 11 61 145;
+
+      --color-brand-primary: rgb(var(--rgb-brand-primary));
+      --color-brand-primary-hover: rgb(180 14 41);
+      --color-brand-secondary: rgb(var(--rgb-brand-secondary));
+
+      --neutral-50:  #F8F9FA;
+      --neutral-100: #F1F3F5;
+      --neutral-200: #E9ECEF;
+      --neutral-300: #DEE2E6;
+      --neutral-400: #ADB5BD;
+      --neutral-500: #868E96;
+      --neutral-600: #495057;
+      --neutral-700: #343A40;
+      --neutral-800: #212529;
+      --neutral-900: #0D1117;
+
+      --color-success: #2E7D32;  --color-success-light: #E8F5E9;
+      --color-warning: #E65100;  --color-warning-light: #FFF3E0;
+      --color-error:   #C62828;  --color-error-light:   #FFEBEE;
+      --color-info:    #0B3D91;  --color-info-light:    #E3F2FD;
+
+      --color-status-active:          #2E7D32;
+      --color-status-in-repair:       #E65100;
+      --color-status-pending:         #0B3D91;
+      --color-status-rejected:        #C62828;
+      --color-status-decommissioned:  #616161;
+
+      --color-bg-primary:   #FFFFFF;
+      --color-bg-secondary: #F8F9FA;
+      --color-bg-tertiary:  #F1F3F5;
+      --color-bg-elevated:  #FFFFFF;
+
+      --color-border-default: #DEE2E6;
+      --color-border-muted:   #E9ECEF;
+      --color-border-strong:  #ADB5BD;
+
+      --color-text-primary:   #212529;
+      --color-text-secondary: #495057;
+      --color-text-tertiary:  #868E96;
+      --color-text-on-brand:  #FFFFFF;
+
+      --font-display: "Inter", "Noto Sans TC", system-ui, sans-serif;
+      --font-primary: "Inter", "Noto Sans TC", system-ui, sans-serif;
+      --font-mono:    "JetBrains Mono", Consolas, monospace;
+
+      --text-xs:.75rem; --text-sm:.875rem; --text-base:1rem; --text-lg:1.125rem;
+      --text-xl:1.25rem; --text-2xl:1.5rem; --text-3xl:1.875rem; --text-4xl:2.25rem;
+
+      --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem;
+      --space-5:1.25rem; --space-6:1.5rem; --space-8:2rem; --space-10:2.5rem;
+      --space-12:3rem; --space-16:4rem; --space-20:5rem;
+
+      --radius-none:0; --radius-sm:2px; --radius-md:4px; --radius-lg:6px;
+      --radius-xl:8px; --radius-full:9999px;
+
+      --shadow-xs: 0 1px 2px rgb(0 0 0 / .05);
+      --shadow-sm: 0 1px 3px rgb(0 0 0 / .08);
+      --shadow-md: 0 4px 6px rgb(0 0 0 / .07);
+      --shadow-lg: 0 10px 15px rgb(0 0 0 / .08);
+      --shadow-xl: 0 20px 25px rgb(0 0 0 / .10);
+      --shadow-focus: 0 0 0 3px rgb(var(--rgb-brand-secondary) / .30);
+
+      --duration-fast: 150ms;
+      --duration-normal: 250ms;
+      --easing-default: cubic-bezier(.4,0,.2,1);
+    }
+
+    :root[data-theme="dark"] {
+      --rgb-brand-primary: 229 56 79;
+      --rgb-brand-secondary: 74 144 217;
+      --color-brand-primary-hover: rgb(240 79 100);
+
+      --color-bg-primary:   #0D1117;
+      --color-bg-secondary: #161B22;
+      --color-bg-tertiary:  #21262D;
+      --color-bg-elevated:  #1C2128;
+      --color-border-default: #30363D;
+      --color-border-muted:   #21262D;
+      --color-text-primary:   #E6EDF3;
+      --color-text-secondary: #8B949E;
+      --color-text-tertiary:  #6E7681;
+
+      --color-success: #3FB950; --color-success-light: #0D2818;
+      --color-warning: #D29922; --color-warning-light: #2D1B00;
+      --color-error:   #F85149; --color-error-light:   #3D1114;
+      --color-info:    #58A6FF; --color-info-light:    #0D2240;
+
+      --color-status-active:          #3FB950;
+      --color-status-in-repair:       #D29922;
+      --color-status-pending:         #58A6FF;
+      --color-status-rejected:        #F85149;
+      --color-status-decommissioned:  #8B949E;
+
+      --shadow-sm: 0 0 0 1px rgb(255 255 255 / .04), 0 1px 3px rgb(0 0 0 / .30);
+      --shadow-md: 0 0 0 1px rgb(255 255 255 / .04), 0 4px 6px rgb(0 0 0 / .40);
+      --shadow-lg: 0 0 0 1px rgb(255 255 255 / .04), 0 10px 15px rgb(0 0 0 / .50);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 0ms !important;
+        animation-duration: 0ms !important;
+      }
+    }
+
+    /* ─── Base layout ───────────────────────────────────────────────── */
+    * { box-sizing: border-box; }
+    html { font-size: 16px; }
+    body {
+      margin: 0;
+      font-family: var(--font-primary);
+      font-size: var(--text-base);
+      line-height: 1.6;
+      color: var(--color-text-primary);
+      background: var(--color-bg-primary);
+      transition: background var(--duration-normal) var(--easing-default),
+                  color var(--duration-normal) var(--easing-default);
+    }
+    .tabular { font-variant-numeric: tabular-nums lining-nums; }
+
+    /* ─── Top bar ───────────────────────────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 56px;
+      padding: 0 var(--space-6);
+      background: var(--color-bg-primary);
+      border-bottom: 1px solid var(--color-border-default);
+      position: sticky; top: 0; z-index: 20;
+    }
+    .brand {
+      display: flex; align-items: center; gap: var(--space-3);
+      font-family: var(--font-display);
+      font-size: var(--text-lg);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .brand-mark {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--color-brand-primary);
+      color: #fff;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 14px;
+      border-radius: var(--radius-sm);
+    }
+    .topbar-actions { display: flex; gap: var(--space-2); align-items: center; }
+
+    .seg {
+      display: inline-flex;
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .seg button {
+      background: transparent; border: 0;
+      padding: var(--space-2) var(--space-3);
+      color: var(--color-text-secondary);
+      font: inherit; cursor: pointer;
+      transition: background var(--duration-fast) var(--easing-default);
+    }
+    .seg button:hover { background: var(--color-bg-secondary); }
+    .seg button[aria-pressed="true"] {
+      background: var(--color-brand-primary);
+      color: var(--color-text-on-brand);
+    }
+
+    /* ─── Page shell ────────────────────────────────────────────────── */
+    main {
+      max-width: 1200px; margin: 0 auto;
+      padding: var(--space-12) var(--space-6);
+    }
+    .hero h1 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(2rem, 1.2rem + 3vw, 3rem);
+      line-height: 1.15;
+      letter-spacing: -0.015em;
+      margin: 0 0 var(--space-4);
+      color: var(--color-text-primary);
+    }
+    .hero p {
+      color: var(--color-text-secondary);
+      max-width: 65ch;
+      margin: 0 0 var(--space-2);
+    }
+    .hero .rule {
+      width: 48px; height: 3px;
+      background: var(--color-brand-primary);
+      margin-bottom: var(--space-6);
+    }
+
+    section { margin-top: var(--space-16); }
+    section > h2 {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: var(--text-2xl);
+      margin: 0 0 var(--space-2);
+      letter-spacing: -0.005em;
+    }
+    section > .kicker {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--color-brand-primary);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: var(--space-2);
+    }
+    section > p.lede {
+      color: var(--color-text-secondary);
+      max-width: 65ch;
+      margin: 0 0 var(--space-8);
+    }
+
+    /* ─── Swatch grid ───────────────────────────────────────────────── */
+    .swatches {
+      display: grid; gap: var(--space-4);
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    }
+    .swatch {
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--color-bg-secondary);
+    }
+    .swatch .chip {
+      height: 72px;
+    }
+    .swatch .meta {
+      padding: var(--space-3) var(--space-4);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .swatch .name {
+      font-weight: 600;
+      font-size: var(--text-sm);
+    }
+    .swatch .val {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+    }
+
+    /* ─── Type scale ────────────────────────────────────────────────── */
+    .typescale {
+      display: flex; flex-direction: column; gap: var(--space-4);
+      border-top: 1px solid var(--color-border-default);
+    }
+    .typescale .row {
+      display: grid;
+      grid-template-columns: 80px 80px 1fr;
+      gap: var(--space-6);
+      align-items: baseline;
+      padding: var(--space-4) 0;
+      border-bottom: 1px solid var(--color-border-default);
+    }
+    .typescale .row .tag {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+    }
+    .typescale .row .px {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      color: var(--color-text-tertiary); text-align: right;
+    }
+    .typescale .row .sample { font-family: var(--font-display); }
+    .typescale .row.body .sample { font-family: var(--font-primary); }
+
+    /* ─── Spacing + Radius + Shadow strips ──────────────────────────── */
+    .strip {
+      display: grid; gap: var(--space-4);
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+    .strip .cell {
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      background: var(--color-bg-secondary);
+      display: flex; flex-direction: column; align-items: center;
+      gap: var(--space-3);
+    }
+    .strip .cell .label {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+    }
+    .strip .cell .name {
+      font-weight: 600; font-size: var(--text-sm);
+    }
+    .space-demo {
+      background: var(--color-brand-primary);
+      height: 8px; border-radius: var(--radius-sm);
+    }
+    .radius-demo {
+      width: 56px; height: 56px;
+      background: var(--color-brand-primary);
+      border: 1px solid transparent;
+    }
+    .shadow-demo {
+      width: 56px; height: 56px;
+      background: var(--color-bg-primary);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border-muted);
+    }
+
+    /* ─── Buttons ───────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      height: 40px;
+      border-radius: var(--radius-md);
+      font: inherit; font-weight: 600; font-size: var(--text-sm);
+      cursor: pointer;
+      transition: background var(--duration-fast) var(--easing-default),
+                  border-color var(--duration-fast) var(--easing-default),
+                  box-shadow var(--duration-fast) var(--easing-default);
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+    .btn--primary {
+      background: var(--color-brand-primary);
+      color: var(--color-text-on-brand);
+    }
+    .btn--primary:hover { background: var(--color-brand-primary-hover); }
+
+    .btn--secondary {
+      background: transparent;
+      border-color: var(--color-brand-primary);
+      color: var(--color-brand-primary);
+    }
+    .btn--secondary:hover {
+      background: rgb(var(--rgb-brand-primary) / .08);
+    }
+
+    .btn--ghost {
+      background: transparent;
+      color: var(--color-text-primary);
+    }
+    .btn--ghost:hover { background: var(--color-bg-secondary); }
+
+    .btn--danger {
+      background: var(--color-error);
+      color: #fff;
+    }
+    .btn--danger:hover { filter: brightness(0.92); }
+
+    .btn[disabled] {
+      opacity: .5; cursor: not-allowed; pointer-events: none;
+    }
+
+    .btn-group { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+
+    /* ─── Badges ───────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      padding: 2px var(--space-3);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      line-height: 1.6;
+    }
+    .badge::before {
+      content: ""; display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+    .badge--active     { color: var(--color-status-active);         background: color-mix(in srgb, var(--color-status-active) 12%, transparent); }
+    .badge--repair     { color: var(--color-status-in-repair);      background: color-mix(in srgb, var(--color-status-in-repair) 12%, transparent); }
+    .badge--pending    { color: var(--color-status-pending);        background: color-mix(in srgb, var(--color-status-pending) 12%, transparent); }
+    .badge--rejected   { color: var(--color-status-rejected);       background: color-mix(in srgb, var(--color-status-rejected) 12%, transparent); }
+    .badge--decom      { color: var(--color-status-decommissioned); background: color-mix(in srgb, var(--color-status-decommissioned) 14%, transparent); }
+
+    .badge-row { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+
+    /* ─── Forms ─────────────────────────────────────────────────────── */
+    .field { display: flex; flex-direction: column; gap: var(--space-2); }
+    .field label { font-size: var(--text-sm); font-weight: 500; color: var(--color-text-primary); }
+    .field .help { font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .input, .select, .textarea {
+      font: inherit; font-size: var(--text-sm);
+      padding: var(--space-2) var(--space-3);
+      height: 40px;
+      background: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+      transition: border-color var(--duration-fast) var(--easing-default),
+                  box-shadow var(--duration-fast) var(--easing-default);
+    }
+    .textarea { height: auto; min-height: 80px; resize: vertical; font-family: inherit; }
+    .input:focus, .select:focus, .textarea:focus {
+      outline: none;
+      border-color: var(--color-brand-secondary);
+      box-shadow: var(--shadow-focus);
+    }
+    .input::placeholder { color: var(--color-text-tertiary); }
+    .input[aria-invalid="true"] { border-color: var(--color-error); }
+
+    /* ─── Cards ─────────────────────────────────────────────────────── */
+    .cards {
+      display: grid; gap: var(--space-6);
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    }
+    .card {
+      background: var(--color-bg-elevated);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      display: flex; flex-direction: column; gap: var(--space-3);
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow var(--duration-fast) var(--easing-default),
+                  transform var(--duration-fast) var(--easing-default);
+    }
+    .card:hover { box-shadow: var(--shadow-md); }
+    .card .id {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+    }
+    .card .title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: var(--text-lg);
+      letter-spacing: -0.005em;
+    }
+    .card .meta { color: var(--color-text-secondary); font-size: var(--text-sm); }
+    .card .footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; }
+
+    /* ─── KPI tiles ─────────────────────────────────────────────────── */
+    .kpis {
+      display: grid; gap: var(--space-6);
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .kpi {
+      border: 1px solid var(--color-border-default);
+      background: var(--color-bg-elevated);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+    }
+    .kpi .label {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-text-tertiary);
+      margin-bottom: var(--space-3);
+    }
+    .kpi .value {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: var(--text-3xl);
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+    }
+    .kpi .delta {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      margin-top: var(--space-2);
+    }
+    .kpi .delta.up   { color: var(--color-success); }
+    .kpi .delta.down { color: var(--color-error); }
+
+    /* ─── Table ─────────────────────────────────────────────────────── */
+    .tablewrap {
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--color-bg-primary);
+    }
+    table.ams {
+      width: 100%; border-collapse: collapse;
+      font-size: var(--text-sm);
+    }
+    table.ams thead th {
+      text-align: left;
+      padding: var(--space-3) var(--space-4);
+      font-weight: 600;
+      font-size: var(--text-xs);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--color-text-secondary);
+      background: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border-default);
+    }
+    table.ams tbody td {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--color-border-muted);
+      color: var(--color-text-primary);
+      vertical-align: middle;
+    }
+    table.ams tbody tr:last-child td { border-bottom: 0; }
+    table.ams tbody tr:hover td { background: var(--color-bg-secondary); }
+    table.ams td.id { font-family: var(--font-mono); color: var(--color-text-secondary); }
+    table.ams td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ─── Alerts ────────────────────────────────────────────────────── */
+    .alerts { display: flex; flex-direction: column; gap: var(--space-3); }
+    .alert {
+      display: flex; gap: var(--space-3); align-items: flex-start;
+      padding: var(--space-3) var(--space-4);
+      border-left: 3px solid;
+      border-radius: var(--radius-md);
+    }
+    .alert .body { flex: 1; font-size: var(--text-sm); }
+    .alert strong { font-weight: 600; margin-right: var(--space-2); }
+    .alert--success { background: var(--color-success-light); border-color: var(--color-success); color: var(--color-text-primary); }
+    .alert--warning { background: var(--color-warning-light); border-color: var(--color-warning); color: var(--color-text-primary); }
+    .alert--error   { background: var(--color-error-light);   border-color: var(--color-error);   color: var(--color-text-primary); }
+    .alert--info    { background: var(--color-info-light);    border-color: var(--color-info);    color: var(--color-text-primary); }
+
+    /* ─── Mini asset-detail preview ─────────────────────────────────── */
+    .detail {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: var(--space-8);
+    }
+    @media (max-width: 768px) { .detail { grid-template-columns: 1fr; } }
+    .detail .panel {
+      background: var(--color-bg-elevated);
+      border: 1px solid var(--color-border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+    }
+    .detail .panel h3 {
+      font-family: var(--font-display);
+      font-weight: 600; font-size: var(--text-lg);
+      margin: 0 0 var(--space-4);
+    }
+    .detail dl { margin: 0; display: grid; grid-template-columns: 1fr 2fr; gap: var(--space-2) var(--space-4); }
+    .detail dt { color: var(--color-text-secondary); font-size: var(--text-sm); }
+    .detail dd { margin: 0; font-size: var(--text-sm); }
+
+    /* ─── Footer ────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--color-border-default);
+      padding: var(--space-8) var(--space-6);
+      color: var(--color-text-tertiary);
+      font-size: var(--text-xs);
+      text-align: center;
+      margin-top: var(--space-20);
+    }
+    footer code {
+      font-family: var(--font-mono);
+      color: var(--color-text-secondary);
+    }
+
+    /* ─── Bilingual toggle (i18n via CSS attribute selectors) ───────── */
+    [data-locale="en"] [data-zh] { display: none; }
+    [data-locale="zh"] [data-en] { display: none; }
+
+    :root[data-locale="zh"] {
+      --font-display: "Noto Sans TC", "Inter", system-ui, sans-serif;
+      --font-primary: "Noto Sans TC", "Inter", system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">A</span>
+    <span data-en>Asset Management</span>
+    <span data-zh>資產管理系統</span>
+  </div>
+  <div class="topbar-actions">
+    <div class="seg" role="group" aria-label="Locale">
+      <button type="button" aria-pressed="true" data-set-locale="en">EN</button>
+      <button type="button" aria-pressed="false" data-set-locale="zh">中文</button>
+    </div>
+    <div class="seg" role="group" aria-label="Theme">
+      <button type="button" aria-pressed="true"  data-set-theme="light"><span data-en>Light</span><span data-zh>淺色</span></button>
+      <button type="button" aria-pressed="false" data-set-theme="dark"><span data-en>Dark</span><span data-zh>深色</span></button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <div class="hero">
+    <div class="rule" aria-hidden="true"></div>
+    <h1>
+      <span data-en>Design System Preview</span>
+      <span data-zh>設計系統預覽</span>
+    </h1>
+    <p>
+      <span data-en>TSMC-inspired design language for the Asset Management System. Every value on this page maps to a token in <code>design-tokens.json</code>; every decision is justified in <code>DESIGN.md</code>.</span>
+      <span data-zh>為資產管理系統打造的 TSMC 風格設計語言。本頁所有數值皆對應 <code>design-tokens.json</code> 中的 token；每項決策均於 <code>DESIGN.md</code> 說明。</span>
+    </p>
+  </div>
+
+  <!-- ─── 1. Color ─────────────────────────────────────────────── -->
+  <section id="color">
+    <div class="kicker">01</div>
+    <h2><span data-en>Color</span><span data-zh>色彩</span></h2>
+    <p class="lede">
+      <span data-en>80% neutral, 15% structural, 5% brand/semantic. Red is an accent, never a surface.</span>
+      <span data-zh>80% 中性色，15% 結構色，15% 品牌/語意色。紅色是強調色，絕非大面積底色。</span>
+    </p>
+
+    <h3 style="margin-top:var(--space-6);font-size:var(--text-sm);font-weight:600;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.08em">
+      <span data-en>Brand &amp; Semantic</span><span data-zh>品牌與語意</span>
+    </h3>
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:var(--color-brand-primary)"></div><div class="meta"><span class="name">brand-primary</span><span class="val">#C8102E</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--color-brand-secondary)"></div><div class="meta"><span class="name">brand-secondary</span><span class="val">#0B3D91</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--color-success)"></div><div class="meta"><span class="name">success</span><span class="val">#2E7D32</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--color-warning)"></div><div class="meta"><span class="name">warning</span><span class="val">#E65100</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--color-error)"></div><div class="meta"><span class="name">error</span><span class="val">#C62828</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--color-info)"></div><div class="meta"><span class="name">info</span><span class="val">#0B3D91</span></div></div>
+    </div>
+
+    <h3 style="margin-top:var(--space-8);font-size:var(--text-sm);font-weight:600;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.08em">
+      <span data-en>Neutral Scale</span><span data-zh>中性色階</span>
+    </h3>
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:var(--neutral-50)"></div><div class="meta"><span class="name">neutral-50</span><span class="val">#F8F9FA</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-100)"></div><div class="meta"><span class="name">neutral-100</span><span class="val">#F1F3F5</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-200)"></div><div class="meta"><span class="name">neutral-200</span><span class="val">#E9ECEF</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-300)"></div><div class="meta"><span class="name">neutral-300</span><span class="val">#DEE2E6</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-400)"></div><div class="meta"><span class="name">neutral-400</span><span class="val">#ADB5BD</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-500)"></div><div class="meta"><span class="name">neutral-500</span><span class="val">#868E96</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-600)"></div><div class="meta"><span class="name">neutral-600</span><span class="val">#495057</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-700)"></div><div class="meta"><span class="name">neutral-700</span><span class="val">#343A40</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-800)"></div><div class="meta"><span class="name">neutral-800</span><span class="val">#212529</span></div></div>
+      <div class="swatch"><div class="chip" style="background:var(--neutral-900)"></div><div class="meta"><span class="name">neutral-900</span><span class="val">#0D1117</span></div></div>
+    </div>
+
+    <h3 style="margin-top:var(--space-8);font-size:var(--text-sm);font-weight:600;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.08em">
+      <span data-en>Asset Status (domain-specific)</span><span data-zh>資產狀態（領域專用）</span>
+    </h3>
+    <div class="badge-row">
+      <span class="badge badge--active"><span data-en>In Use</span><span data-zh>正常使用</span></span>
+      <span class="badge badge--repair"><span data-en>In Repair</span><span data-zh>維修中</span></span>
+      <span class="badge badge--pending"><span data-en>Pending Review</span><span data-zh>審查中</span></span>
+      <span class="badge badge--rejected"><span data-en>Rejected</span><span data-zh>拒絕</span></span>
+      <span class="badge badge--decom"><span data-en>Decommissioned</span><span data-zh>報廢</span></span>
+    </div>
+  </section>
+
+  <!-- ─── 2. Typography ────────────────────────────────────────── -->
+  <section id="type">
+    <div class="kicker">02</div>
+    <h2><span data-en>Typography</span><span data-zh>字型</span></h2>
+    <p class="lede">
+      <span data-en>All-sans: Inter (EN) + Noto Sans TC (ZH). Verified from tsmc.com — Nimrod MT is logo-only, not a web font. Hierarchy is weight-driven (700 for display, 400 for body). Tabular numerals throughout.</span>
+      <span data-zh>全無襯線字體：英文採 Inter，中文採 Noto Sans TC。已對照 tsmc.com 確認 — Nimrod MT 僅限 logo，不作為網頁字型。層級以字重區分（700 為標題，400 為內文）。所有數字皆等寬。</span>
+    </p>
+
+    <div class="typescale">
+      <div class="row">          <span class="tag">text-4xl</span><span class="px">36 / 700</span><span class="sample" style="font-size:var(--text-4xl);font-weight:700"><span data-en>Display</span><span data-zh>標題</span></span></div>
+      <div class="row">          <span class="tag">text-3xl</span><span class="px">30 / 700</span><span class="sample" style="font-size:var(--text-3xl);font-weight:700"><span data-en>Dashboard KPI</span><span data-zh>儀表板數值</span></span></div>
+      <div class="row">          <span class="tag">text-2xl</span><span class="px">24 / 600</span><span class="sample" style="font-size:var(--text-2xl);font-weight:600"><span data-en>Page heading</span><span data-zh>頁面標題</span></span></div>
+      <div class="row">          <span class="tag">text-xl</span> <span class="px">20 / 600</span><span class="sample" style="font-size:var(--text-xl);font-weight:600"><span data-en>Section heading</span><span data-zh>區段標題</span></span></div>
+      <div class="row">          <span class="tag">text-lg</span> <span class="px">18 / 500</span><span class="sample" style="font-size:var(--text-lg);font-weight:500"><span data-en>Card title</span><span data-zh>卡片標題</span></span></div>
+      <div class="row body">     <span class="tag">text-base</span><span class="px">16 / 400</span><span class="sample" style="font-size:var(--text-base)"><span data-en>Body text. The quick brown fox jumps over the lazy dog.</span><span data-zh>內文文字。敏捷的棕色狐狸跳過了懶狗。</span></span></div>
+      <div class="row body">     <span class="tag">text-sm</span> <span class="px">14 / 400</span><span class="sample" style="font-size:var(--text-sm);color:var(--color-text-secondary)"><span data-en>Secondary / table cell text.</span><span data-zh>次要文字，如表格內容。</span></span></div>
+      <div class="row body">     <span class="tag">text-xs</span> <span class="px">12 / 400</span><span class="sample" style="font-size:var(--text-xs);color:var(--color-text-tertiary)"><span data-en>Captions, timestamps, helper copy.</span><span data-zh>說明文字、時間戳記。</span></span></div>
+      <div class="row body">     <span class="tag">mono</span>     <span class="px">14 / 500</span><span class="sample tabular" style="font-family:var(--font-mono);font-size:var(--text-sm)">AMS-2026-00042 · 1,284,750 · 14:32:07</span></div>
+    </div>
+  </section>
+
+  <!-- ─── 3. Spacing ───────────────────────────────────────────── -->
+  <section id="space">
+    <div class="kicker">03</div>
+    <h2><span data-en>Spacing</span><span data-zh>間距</span></h2>
+    <p class="lede">
+      <span data-en>8px base scale. Every edge should align to 4px or 8px increments.</span>
+      <span data-zh>以 8px 為基準。所有邊距皆對齊 4px 或 8px 的整數倍。</span>
+    </p>
+    <div class="strip">
+      <div class="cell"><div class="space-demo" style="width:4px"></div> <span class="name">space-1</span><span class="label">4px</span></div>
+      <div class="cell"><div class="space-demo" style="width:8px"></div> <span class="name">space-2</span><span class="label">8px</span></div>
+      <div class="cell"><div class="space-demo" style="width:12px"></div><span class="name">space-3</span><span class="label">12px</span></div>
+      <div class="cell"><div class="space-demo" style="width:16px"></div><span class="name">space-4</span><span class="label">16px</span></div>
+      <div class="cell"><div class="space-demo" style="width:24px"></div><span class="name">space-6</span><span class="label">24px</span></div>
+      <div class="cell"><div class="space-demo" style="width:32px"></div><span class="name">space-8</span><span class="label">32px</span></div>
+      <div class="cell"><div class="space-demo" style="width:48px"></div><span class="name">space-12</span><span class="label">48px</span></div>
+      <div class="cell"><div class="space-demo" style="width:64px"></div><span class="name">space-16</span><span class="label">64px</span></div>
+    </div>
+  </section>
+
+  <!-- ─── 4. Radius ────────────────────────────────────────────── -->
+  <section id="radius">
+    <div class="kicker">04</div>
+    <h2><span data-en>Border Radius</span><span data-zh>圓角</span></h2>
+    <p class="lede">
+      <span data-en>Sharp precision. Default is 4px. Nothing rounder than 8px except pills and avatars.</span>
+      <span data-zh>銳利而精準。預設 4px。除徽章與頭像外，圓角不超過 8px。</span>
+    </p>
+    <div class="strip">
+      <div class="cell"><div class="radius-demo" style="border-radius:0"></div>      <span class="name">radius-none</span><span class="label">0</span></div>
+      <div class="cell"><div class="radius-demo" style="border-radius:2px"></div>    <span class="name">radius-sm</span>  <span class="label">2px</span></div>
+      <div class="cell"><div class="radius-demo" style="border-radius:4px"></div>    <span class="name">radius-md</span>  <span class="label">4px · default</span></div>
+      <div class="cell"><div class="radius-demo" style="border-radius:6px"></div>    <span class="name">radius-lg</span>  <span class="label">6px</span></div>
+      <div class="cell"><div class="radius-demo" style="border-radius:8px"></div>    <span class="name">radius-xl</span>  <span class="label">8px</span></div>
+      <div class="cell"><div class="radius-demo" style="border-radius:9999px"></div> <span class="name">radius-full</span><span class="label">pill</span></div>
+    </div>
+  </section>
+
+  <!-- ─── 5. Shadow ────────────────────────────────────────────── -->
+  <section id="shadow">
+    <div class="kicker">05</div>
+    <h2><span data-en>Elevation</span><span data-zh>陰影層次</span></h2>
+    <p class="lede">
+      <span data-en>Near-invisible shadows. Dark mode replaces shadow with a 1px luminance hairline.</span>
+      <span data-zh>近乎隱形的陰影。深色模式下以 1px 亮度邊線替代。</span>
+    </p>
+    <div class="strip">
+      <div class="cell"><div class="shadow-demo" style="box-shadow:var(--shadow-xs)"></div><span class="name">shadow-xs</span></div>
+      <div class="cell"><div class="shadow-demo" style="box-shadow:var(--shadow-sm)"></div><span class="name">shadow-sm</span></div>
+      <div class="cell"><div class="shadow-demo" style="box-shadow:var(--shadow-md)"></div><span class="name">shadow-md</span></div>
+      <div class="cell"><div class="shadow-demo" style="box-shadow:var(--shadow-lg)"></div><span class="name">shadow-lg</span></div>
+      <div class="cell"><div class="shadow-demo" style="box-shadow:var(--shadow-xl)"></div><span class="name">shadow-xl</span></div>
+    </div>
+  </section>
+
+  <!-- ─── 6. Buttons ───────────────────────────────────────────── -->
+  <section id="buttons">
+    <div class="kicker">06</div>
+    <h2><span data-en>Buttons</span><span data-zh>按鈕</span></h2>
+    <p class="lede">
+      <span data-en>Primary is red. Same size across variants — hierarchy comes from fill, not scale.</span>
+      <span data-zh>主要按鈕為紅色。所有變體尺寸一致，層級由填色區分而非大小。</span>
+    </p>
+    <div class="btn-group">
+      <button class="btn btn--primary"><span data-en>Primary</span><span data-zh>主要</span></button>
+      <button class="btn btn--secondary"><span data-en>Secondary</span><span data-zh>次要</span></button>
+      <button class="btn btn--ghost"><span data-en>Ghost</span><span data-zh>淡化</span></button>
+      <button class="btn btn--danger"><span data-en>Delete</span><span data-zh>刪除</span></button>
+      <button class="btn btn--primary" disabled><span data-en>Disabled</span><span data-zh>已停用</span></button>
+    </div>
+  </section>
+
+  <!-- ─── 7. Forms ─────────────────────────────────────────────── -->
+  <section id="forms">
+    <div class="kicker">07</div>
+    <h2><span data-en>Forms</span><span data-zh>表單</span></h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--space-6);max-width:720px">
+      <div class="field">
+        <label for="f-asset"><span data-en>Asset name</span><span data-zh>資產名稱</span></label>
+        <input id="f-asset" class="input" placeholder="e.g. ThinkPad X1" />
+      </div>
+      <div class="field">
+        <label for="f-cat"><span data-en>Category</span><span data-zh>類別</span></label>
+        <select id="f-cat" class="select">
+          <option data-en>Laptop</option><option data-zh>筆記型電腦</option>
+          <option data-en>Monitor</option><option data-zh>螢幕</option>
+          <option data-en>Phone</option><option data-zh>手機</option>
+        </select>
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label for="f-notes"><span data-en>Notes</span><span data-zh>備註</span></label>
+        <textarea id="f-notes" class="textarea" placeholder=""></textarea>
+        <span class="help"><span data-en>Max 500 characters.</span><span data-zh>上限 500 字。</span></span>
+      </div>
+      <div class="field">
+        <label for="f-err"><span data-en>Serial</span><span data-zh>序號</span></label>
+        <input id="f-err" class="input" value="SN-invalid!" aria-invalid="true" />
+        <span class="help" style="color:var(--color-error)"><span data-en>Only letters and digits allowed.</span><span data-zh>僅接受英文字母與數字。</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── 8. Cards / KPIs ──────────────────────────────────────── -->
+  <section id="cards">
+    <div class="kicker">08</div>
+    <h2><span data-en>Cards &amp; KPIs</span><span data-zh>卡片與指標</span></h2>
+    <div class="kpis">
+      <div class="kpi">
+        <div class="label"><span data-en>Total Assets</span><span data-zh>資產總數</span></div>
+        <div class="value tabular">1,284</div>
+        <div class="delta up tabular">+12 <span data-en>this week</span><span data-zh>本週</span></div>
+      </div>
+      <div class="kpi">
+        <div class="label"><span data-en>In Repair</span><span data-zh>維修中</span></div>
+        <div class="value tabular" style="color:var(--color-status-in-repair)">23</div>
+        <div class="delta down tabular">-4 <span data-en>vs last week</span><span data-zh>較上週</span></div>
+      </div>
+      <div class="kpi">
+        <div class="label"><span data-en>Pending Review</span><span data-zh>待審查</span></div>
+        <div class="value tabular" style="color:var(--color-status-pending)">7</div>
+        <div class="delta tabular" style="color:var(--color-text-tertiary)">—</div>
+      </div>
+      <div class="kpi">
+        <div class="label"><span data-en>Decommissioned YTD</span><span data-zh>年度報廢</span></div>
+        <div class="value tabular">142</div>
+        <div class="delta up tabular">+18%</div>
+      </div>
+    </div>
+
+    <div class="cards" style="margin-top:var(--space-8)">
+      <article class="card">
+        <span class="id">AMS-2026-00042</span>
+        <span class="title"><span data-en>ThinkPad X1 Carbon</span><span data-zh>ThinkPad X1 Carbon</span></span>
+        <span class="meta"><span data-en>Assigned to Lin, Wei-Ming</span><span data-zh>配發予 林偉明</span></span>
+        <div class="footer">
+          <span class="badge badge--active"><span data-en>In Use</span><span data-zh>正常使用</span></span>
+          <button class="btn btn--ghost" style="height:32px;padding:var(--space-1) var(--space-3);font-size:var(--text-xs)"><span data-en>View</span><span data-zh>檢視</span></button>
+        </div>
+      </article>
+      <article class="card">
+        <span class="id">AMS-2026-00108</span>
+        <span class="title"><span data-en>Dell UltraSharp 27"</span><span data-zh>Dell UltraSharp 27 吋</span></span>
+        <span class="meta"><span data-en>Awaiting manager approval</span><span data-zh>等待主管核准</span></span>
+        <div class="footer">
+          <span class="badge badge--pending"><span data-en>Pending</span><span data-zh>審查中</span></span>
+          <button class="btn btn--ghost" style="height:32px;padding:var(--space-1) var(--space-3);font-size:var(--text-xs)"><span data-en>View</span><span data-zh>檢視</span></button>
+        </div>
+      </article>
+      <article class="card">
+        <span class="id">AMS-2026-00073</span>
+        <span class="title"><span data-en>iPhone 15 Pro</span><span data-zh>iPhone 15 Pro</span></span>
+        <span class="meta"><span data-en>Screen replacement — ETA 3 days</span><span data-zh>螢幕更換中 — 預計 3 天</span></span>
+        <div class="footer">
+          <span class="badge badge--repair"><span data-en>In Repair</span><span data-zh>維修中</span></span>
+          <button class="btn btn--ghost" style="height:32px;padding:var(--space-1) var(--space-3);font-size:var(--text-xs)"><span data-en>View</span><span data-zh>檢視</span></button>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ─── 9. Table ─────────────────────────────────────────────── -->
+  <section id="table">
+    <div class="kicker">09</div>
+    <h2><span data-en>Data Table</span><span data-zh>資料表格</span></h2>
+    <p class="lede">
+      <span data-en>Tabular numerals, uppercase micro-headers, hover affordance. No zebra striping — rows are separated by 1px muted hairlines.</span>
+      <span data-zh>等寬數字、全大寫微型表頭、滑鼠懸停回饋。無斑馬條紋 — 以 1px 細線分隔列。</span>
+    </p>
+    <div class="tablewrap">
+      <table class="ams">
+        <thead>
+          <tr>
+            <th><span data-en>Asset ID</span><span data-zh>資產編號</span></th>
+            <th><span data-en>Name</span><span data-zh>名稱</span></th>
+            <th><span data-en>Holder</span><span data-zh>持有人</span></th>
+            <th><span data-en>Status</span><span data-zh>狀態</span></th>
+            <th style="text-align:right"><span data-en>Value (NTD)</span><span data-zh>金額 (NTD)</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="id">AMS-2026-00042</td>
+            <td>ThinkPad X1 Carbon</td>
+            <td><span data-en>Lin, Wei-Ming</span><span data-zh>林偉明</span></td>
+            <td><span class="badge badge--active"><span data-en>In Use</span><span data-zh>正常使用</span></span></td>
+            <td class="num">58,400</td>
+          </tr>
+          <tr>
+            <td class="id">AMS-2026-00073</td>
+            <td>iPhone 15 Pro</td>
+            <td><span data-en>Chen, Ya-Ting</span><span data-zh>陳雅婷</span></td>
+            <td><span class="badge badge--repair"><span data-en>In Repair</span><span data-zh>維修中</span></span></td>
+            <td class="num">36,900</td>
+          </tr>
+          <tr>
+            <td class="id">AMS-2026-00108</td>
+            <td>Dell UltraSharp 27"</td>
+            <td><span data-en>Wu, Chih-Hao</span><span data-zh>吳志豪</span></td>
+            <td><span class="badge badge--pending"><span data-en>Pending</span><span data-zh>審查中</span></span></td>
+            <td class="num">18,250</td>
+          </tr>
+          <tr>
+            <td class="id">AMS-2025-09941</td>
+            <td>HP LaserJet Pro</td>
+            <td><span data-en>—</span><span data-zh>—</span></td>
+            <td><span class="badge badge--decom"><span data-en>Decommissioned</span><span data-zh>報廢</span></span></td>
+            <td class="num">9,800</td>
+          </tr>
+          <tr>
+            <td class="id">AMS-2026-00055</td>
+            <td>Logitech MX Master 3S</td>
+            <td><span data-en>Huang, Mei-Ling</span><span data-zh>黃美玲</span></td>
+            <td><span class="badge badge--rejected"><span data-en>Rejected</span><span data-zh>拒絕</span></span></td>
+            <td class="num">3,200</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ─── 10. Alerts ───────────────────────────────────────────── -->
+  <section id="alerts">
+    <div class="kicker">10</div>
+    <h2><span data-en>Alerts</span><span data-zh>警示訊息</span></h2>
+    <div class="alerts">
+      <div class="alert alert--success"><div class="body"><strong><span data-en>Success</span><span data-zh>成功</span>.</strong><span data-en>Asset created. Record number AMS-2026-00109 assigned.</span><span data-zh>資產已建立。編號 AMS-2026-00109 已分配。</span></div></div>
+      <div class="alert alert--info"><div class="body"><strong><span data-en>Notice</span><span data-zh>通知</span>.</strong><span data-en>3 repair requests are awaiting your approval.</span><span data-zh>有 3 筆維修申請等待您核准。</span></div></div>
+      <div class="alert alert--warning"><div class="body"><strong><span data-en>Warning</span><span data-zh>警告</span>.</strong><span data-en>This asset will reach end-of-life in 30 days.</span><span data-zh>此資產將於 30 天後達使用年限。</span></div></div>
+      <div class="alert alert--error"><div class="body"><strong><span data-en>Error</span><span data-zh>錯誤</span>.</strong><span data-en>Request failed. Retry.</span><span data-zh>請求失敗。請重試。</span></div></div>
+    </div>
+  </section>
+
+  <!-- ─── 11. Detail preview ───────────────────────────────────── -->
+  <section id="detail">
+    <div class="kicker">11</div>
+    <h2><span data-en>Asset Detail Preview</span><span data-zh>資產明細預覽</span></h2>
+    <div class="detail">
+      <div class="panel">
+        <h3><span data-en>Details</span><span data-zh>明細</span></h3>
+        <dl>
+          <dt><span data-en>Asset ID</span><span data-zh>資產編號</span></dt><dd class="tabular" style="font-family:var(--font-mono)">AMS-2026-00042</dd>
+          <dt><span data-en>Name</span><span data-zh>名稱</span></dt>      <dd>ThinkPad X1 Carbon Gen 11</dd>
+          <dt><span data-en>Category</span><span data-zh>類別</span></dt>   <dd><span data-en>Laptop</span><span data-zh>筆記型電腦</span></dd>
+          <dt><span data-en>Purchased</span><span data-zh>購入日期</span></dt><dd class="tabular">2026-01-14</dd>
+          <dt><span data-en>Value</span><span data-zh>購入金額</span></dt>  <dd class="tabular">NTD 58,400</dd>
+          <dt><span data-en>Holder</span><span data-zh>持有人</span></dt>   <dd><span data-en>Lin, Wei-Ming · R&amp;D</span><span data-zh>林偉明 · 研發部</span></dd>
+        </dl>
+      </div>
+      <div class="panel">
+        <h3><span data-en>Status</span><span data-zh>狀態</span></h3>
+        <div style="display:flex;flex-direction:column;gap:var(--space-3)">
+          <span class="badge badge--active" style="align-self:flex-start"><span data-en>In Use</span><span data-zh>正常使用</span></span>
+          <p class="meta" style="color:var(--color-text-secondary);font-size:var(--text-sm);margin:0">
+            <span data-en>Assigned 2026-01-15. Last inspection: 2026-04-10.</span>
+            <span data-zh>自 2026-01-15 配發；最近檢查：2026-04-10。</span>
+          </p>
+          <div style="display:flex;gap:var(--space-2);margin-top:var(--space-4)">
+            <button class="btn btn--primary" style="height:36px"><span data-en>Request Repair</span><span data-zh>申請維修</span></button>
+            <button class="btn btn--ghost" style="height:36px"><span data-en>Edit</span><span data-zh>編輯</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>
+    <span data-en>Tokens defined in <code>design-tokens.json</code>. Rationale in <code>DESIGN.md</code>. Normative source: <code>docs/system-design/13-design-tokens.md</code>.</span>
+    <span data-zh>Token 定義見 <code>design-tokens.json</code>，決策理由見 <code>DESIGN.md</code>，正式規範：<code>docs/system-design/13-design-tokens.md</code>。</span>
+  </p>
+</footer>
+
+<script>
+  // ─── Theme + locale toggles ─────────────────────────────────
+  const root = document.documentElement;
+
+  function bindSegmented(attr, rootAttr) {
+    document.querySelectorAll(`[data-${attr}]`).forEach(btn => {
+      btn.addEventListener("click", () => {
+        const val = btn.dataset[attr.replace(/-([a-z])/g, (_, c) => c.toUpperCase())];
+        root.setAttribute(rootAttr, val);
+        // update aria-pressed within this button's seg group
+        btn.parentElement.querySelectorAll("button").forEach(b => {
+          b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+        });
+        if (rootAttr === "data-locale") root.setAttribute("lang", val === "zh" ? "zh-TW" : "en");
+      });
+    });
+  }
+  bindSegmented("set-theme", "data-theme");
+  bindSegmented("set-locale", "data-locale");
+</script>
+
+</body>
+</html>

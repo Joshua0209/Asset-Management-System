@@ -125,3 +125,18 @@ Priority order: **1, 2, 4 > 3 > 5 > 6**
 **Q17. Should Phase 3 multi-tenancy be implemented or only designed?**
 
 → **Design only** — a well-documented Phase 3 design with Phase 2 implementation is the target.
+
+---
+
+## Category F: Frontend Design System
+
+**Q18. Frontend UI component library?**
+Options: Ant Design (`antd`), shadcn/ui + Tailwind, Material UI, Chakra UI, custom
+
+→ **Ant Design v6 (`antd` + `@ant-design/icons`)** — comprehensive component set covering all required UI patterns (tables, forms, modals, navigation); built-in dark/light mode switching via `ConfigProvider` with `theme.darkAlgorithm` / `theme.defaultAlgorithm`; React 18 compatible; chosen in Week 2. Visual direction overrides (TSMC-inspired palette, typography scale, spacing tokens) are documented in `docs/designs/DESIGN.md` and `docs/designs/design-tokens.json` — those constraints apply on top of Ant Design defaults.
+
+---
+
+**Q19. Design token location?**
+
+→ Moved from `docs/system-design/13-design-tokens.md` to `docs/designs/` (dedicated design system directory). `docs/designs/DESIGN.md` is now the normative reference for color, typography, spacing, motion, and the "does this feel TSMC?" checklist. `docs/designs/design-tokens.json` is the machine-readable W3C Design Tokens format file.
