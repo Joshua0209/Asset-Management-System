@@ -1,24 +1,58 @@
-function App() {
+import React, { useState } from 'react';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { ConfigProvider, theme } from 'antd';
+import MainLayout from './components/layout/MainLayout';
+import Dashboard from './pages/Dashboard';
+import AssetList from './pages/AssetList';
+import Reviews from './pages/Reviews';
+
+// Initialize i18n
+import './i18n';
+
+const RootLayout: React.FC = () => {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
   return (
-    <main className="app-shell">
-      <section className="hero-card">
-        <p className="eyebrow">Asset Management System</p>
-        <h1>Week 1 monorepo scaffold is ready.</h1>
-        <p className="description">
-          FastAPI provides the shared OpenAPI contract, while React + Vite is prepared for the
-          Week 2 feature work.
-        </p>
-        <div className="links">
-          <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer">
-            Open API Docs
-          </a>
-          <a href="http://localhost:8000/health" target="_blank" rel="noreferrer">
-            Health Check
-          </a>
-        </div>
-      </section>
-    </main>
+    <ConfigProvider
+      theme={{
+        algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        token: {
+          colorPrimary: '#1677ff',
+        },
+      }}
+    >
+      <MainLayout isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+    </ConfigProvider>
   );
+};
+
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <RootLayout />,
+    children: [
+      {
+        index: true,
+        element: <Dashboard />,
+      },
+      {
+        path: 'assets',
+        element: <AssetList />,
+      },
+      {
+        path: 'reviews',
+        element: <Reviews />,
+      },
+    ],
+  },
+]);
+
+function App() {
+  return <RouterProvider router={router} />;
 }
 
 export default App;

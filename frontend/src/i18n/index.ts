@@ -5,7 +5,7 @@ import { initReactI18next } from "react-i18next";
 import en from "./locales/en.json";
 import zhTW from "./locales/zh-TW.json";
 
-export const SUPPORTED_LANGUAGES = ["zh-TW", "en"] as const;
+export const SUPPORTED_LANGUAGES = ["zh", "en"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 const isDev = import.meta.env.DEV;
@@ -15,10 +15,10 @@ i18n
   .use(initReactI18next)
   .init({
     resources: {
-      "zh-TW": { translation: zhTW },
+      zh: { translation: zhTW },
       en: { translation: en },
     },
-    fallbackLng: "zh-TW",
+    fallbackLng: "zh",
     supportedLngs: SUPPORTED_LANGUAGES,
     nonExplicitSupportedLngs: true,
     interpolation: {
