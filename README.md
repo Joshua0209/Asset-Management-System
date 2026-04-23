@@ -3,7 +3,7 @@
 Course project for a cloud computing / software engineering class. The repository is a monorepo containing:
 
 - `backend/` — FastAPI app, SQLAlchemy models, Alembic migrations, demo seed script
-- `frontend/` — React + Vite + TypeScript shell with i18n
+- `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
 
 ## Progress
@@ -81,6 +81,7 @@ Course project for a cloud computing / software engineering class. The repositor
 │       │   └── locales
 │       └── pages
 └── docs
+    ├── designs
     └── system-design
 ```
 

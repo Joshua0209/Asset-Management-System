@@ -1,0 +1,251 @@
+{
+  "$schema": "https://schemas.tr.designtokens.org/0.0.0/schema.json",
+  "$description": "Asset Management System design tokens. TSMC-inspired aesthetic. Follows W3C Design Tokens Community Group format (draft). Authoritative runtime values live in 01-tokens.css; the rationale lives in ../system-design/13-design-tokens.md.",
+  "color": {
+    "brand": {
+      "primary":   { "$type": "color", "$value": "#C8102E", "$description": "TSMC red — primary actions, active states, brand marks. Never use as a page background." },
+      "secondary": { "$type": "color", "$value": "#0B3D91", "$description": "Deep navy — links, informational accents, secondary actions." },
+      "black":     { "$type": "color", "$value": "#1A1A1A" },
+      "white":     { "$type": "color", "$value": "#FFFFFF" }
+    },
+    "neutral": {
+      "50":  { "$type": "color", "$value": "#F8F9FA" },
+      "100": { "$type": "color", "$value": "#F1F3F5" },
+      "200": { "$type": "color", "$value": "#E9ECEF" },
+      "300": { "$type": "color", "$value": "#DEE2E6" },
+      "400": { "$type": "color", "$value": "#ADB5BD" },
+      "500": { "$type": "color", "$value": "#868E96" },
+      "600": { "$type": "color", "$value": "#495057" },
+      "700": { "$type": "color", "$value": "#343A40" },
+      "800": { "$type": "color", "$value": "#212529" },
+      "900": { "$type": "color", "$value": "#0D1117" }
+    },
+    "semantic": {
+      "success":       { "$type": "color", "$value": "#2E7D32" },
+      "success-light": { "$type": "color", "$value": "#E8F5E9" },
+      "warning":       { "$type": "color", "$value": "#E65100" },
+      "warning-light": { "$type": "color", "$value": "#FFF3E0" },
+      "error":         { "$type": "color", "$value": "#C62828" },
+      "error-light":   { "$type": "color", "$value": "#FFEBEE" },
+      "info":          { "$type": "color", "$value": "#0B3D91" },
+      "info-light":    { "$type": "color", "$value": "#E3F2FD" }
+    },
+    "status": {
+      "$description": "Domain-specific tokens. Use ONLY for asset lifecycle states — never reuse for generic UI feedback.",
+      "active":          { "$type": "color", "$value": "#2E7D32", "$extensions": { "ams.label": { "zh-TW": "正常使用", "en": "In Use" } } },
+      "in-repair":       { "$type": "color", "$value": "#E65100", "$extensions": { "ams.label": { "zh-TW": "維修中", "en": "In Repair" } } },
+      "pending":         { "$type": "color", "$value": "#0B3D91", "$extensions": { "ams.label": { "zh-TW": "審查中", "en": "Pending Review" } } },
+      "rejected":        { "$type": "color", "$value": "#C62828", "$extensions": { "ams.label": { "zh-TW": "拒絕", "en": "Rejected" } } },
+      "decommissioned":  { "$type": "color", "$value": "#616161", "$extensions": { "ams.label": { "zh-TW": "報廢", "en": "Decommissioned" } } }
+    },
+    "surface": {
+      "bg-primary":   { "$type": "color", "$value": "#FFFFFF" },
+      "bg-secondary": { "$type": "color", "$value": "#F8F9FA" },
+      "bg-tertiary":  { "$type": "color", "$value": "#F1F3F5" },
+      "bg-elevated":  { "$type": "color", "$value": "#FFFFFF" }
+    },
+    "border": {
+      "default": { "$type": "color", "$value": "#DEE2E6" },
+      "muted":   { "$type": "color", "$value": "#E9ECEF" },
+      "strong":  { "$type": "color", "$value": "#ADB5BD" }
+    },
+    "text": {
+      "primary":   { "$type": "color", "$value": "#212529" },
+      "secondary": { "$type": "color", "$value": "#495057" },
+      "tertiary":  { "$type": "color", "$value": "#868E96" },
+      "on-brand":  { "$type": "color", "$value": "#FFFFFF" }
+    }
+  },
+  "color-dark": {
+    "$description": "Dark-mode overrides. Apply when <html data-theme=\"dark\">.",
+    "brand": {
+      "primary":   { "$type": "color", "$value": "#E5384F" },
+      "secondary": { "$type": "color", "$value": "#4A90D9" }
+    },
+    "surface": {
+      "bg-primary":   { "$type": "color", "$value": "#0D1117" },
+      "bg-secondary": { "$type": "color", "$value": "#161B22" },
+      "bg-tertiary":  { "$type": "color", "$value": "#21262D" },
+      "bg-elevated":  { "$type": "color", "$value": "#1C2128" }
+    },
+    "border": {
+      "default": { "$type": "color", "$value": "#30363D" },
+      "muted":   { "$type": "color", "$value": "#21262D" },
+      "strong":  { "$type": "color", "$value": "#484F58" }
+    },
+    "text": {
+      "primary":   { "$type": "color", "$value": "#E6EDF3" },
+      "secondary": { "$type": "color", "$value": "#8B949E" },
+      "tertiary":  { "$type": "color", "$value": "#6E7681" }
+    },
+    "semantic": {
+      "success": { "$type": "color", "$value": "#3FB950" },
+      "warning": { "$type": "color", "$value": "#D29922" },
+      "error":   { "$type": "color", "$value": "#F85149" },
+      "info":    { "$type": "color", "$value": "#58A6FF" }
+    }
+  },
+  "font-family": {
+    "$description": "All-sans stack. Verified against tsmc.com screenshots: TSMC uses zero serif in the web UI. Nimrod MT (slab serif) is logo-only, not a web font. Hierarchy is weight-driven, not typeface-driven.",
+    "display": { "$type": "fontFamily", "$value": ["Inter", "Noto Sans TC", "Microsoft JhengHei", "system-ui", "sans-serif"], "$description": "Headlines. Same stack as primary — differentiated by weight 700 + letter-spacing -0.015em, not by typeface." },
+    "primary": { "$type": "fontFamily", "$value": ["Inter", "Noto Sans TC", "Microsoft JhengHei", "system-ui", "sans-serif"] },
+    "mono":    { "$type": "fontFamily", "$value": ["JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", "monospace"] }
+  },
+  "font-size": {
+    "xs":   { "$type": "dimension", "$value": "0.75rem" },
+    "sm":   { "$type": "dimension", "$value": "0.875rem" },
+    "base": { "$type": "dimension", "$value": "1rem" },
+    "lg":   { "$type": "dimension", "$value": "1.125rem" },
+    "xl":   { "$type": "dimension", "$value": "1.25rem" },
+    "2xl":  { "$type": "dimension", "$value": "1.5rem" },
+    "3xl":  { "$type": "dimension", "$value": "1.875rem" },
+    "4xl":  { "$type": "dimension", "$value": "2.25rem" }
+  },
+  "font-weight": {
+    "regular":  { "$type": "fontWeight", "$value": 400 },
+    "medium":   { "$type": "fontWeight", "$value": 500 },
+    "semibold": { "$type": "fontWeight", "$value": 600 },
+    "bold":     { "$type": "fontWeight", "$value": 700 }
+  },
+  "line-height": {
+    "tight":   { "$type": "number", "$value": 1.2 },
+    "snug":    { "$type": "number", "$value": 1.3 },
+    "normal":  { "$type": "number", "$value": 1.5 },
+    "relaxed": { "$type": "number", "$value": 1.6 }
+  },
+  "spacing": {
+    "0":  { "$type": "dimension", "$value": "0" },
+    "1":  { "$type": "dimension", "$value": "0.25rem" },
+    "2":  { "$type": "dimension", "$value": "0.5rem" },
+    "3":  { "$type": "dimension", "$value": "0.75rem" },
+    "4":  { "$type": "dimension", "$value": "1rem" },
+    "5":  { "$type": "dimension", "$value": "1.25rem" },
+    "6":  { "$type": "dimension", "$value": "1.5rem" },
+    "8":  { "$type": "dimension", "$value": "2rem" },
+    "10": { "$type": "dimension", "$value": "2.5rem" },
+    "12": { "$type": "dimension", "$value": "3rem" },
+    "16": { "$type": "dimension", "$value": "4rem" },
+    "20": { "$type": "dimension", "$value": "5rem" }
+  },
+  "radius": {
+    "none": { "$type": "dimension", "$value": "0" },
+    "sm":   { "$type": "dimension", "$value": "2px" },
+    "md":   { "$type": "dimension", "$value": "4px" },
+    "lg":   { "$type": "dimension", "$value": "6px" },
+    "xl":   { "$type": "dimension", "$value": "8px" },
+    "full": { "$type": "dimension", "$value": "9999px" }
+  },
+  "shadow": {
+    "xs":    { "$type": "shadow", "$value": { "offsetX": "0", "offsetY": "1px", "blur": "2px",  "color": "rgb(0 0 0 / 0.05)" } },
+    "sm":    { "$type": "shadow", "$value": { "offsetX": "0", "offsetY": "1px", "blur": "3px",  "color": "rgb(0 0 0 / 0.08)" } },
+    "md":    { "$type": "shadow", "$value": { "offsetX": "0", "offsetY": "4px", "blur": "6px",  "color": "rgb(0 0 0 / 0.07)" } },
+    "lg":    { "$type": "shadow", "$value": { "offsetX": "0", "offsetY": "10px","blur": "15px", "color": "rgb(0 0 0 / 0.08)" } },
+    "xl":    { "$type": "shadow", "$value": { "offsetX": "0", "offsetY": "20px","blur": "25px", "color": "rgb(0 0 0 / 0.10)" } },
+    "inner": { "$type": "shadow", "$value": { "offsetX": "0", "offsetY": "2px", "blur": "4px",  "spread": "0", "color": "rgb(0 0 0 / 0.06)", "inset": true }, "$description": "Pressed/sunken states — text inputs, button :active." },
+    "focus": { "$type": "shadow", "$value": { "offsetX": "0", "offsetY": "0",   "blur": "0",    "spread": "3px", "color": "rgb(11 61 145 / 0.30)" } }
+  },
+  "shadow-dark": {
+    "$description": "Dark-mode shadow overrides. Real box-shadows are invisible on dark surfaces — replace with a 1px luminance hairline plus a heavier opacity drop shadow. Apply when [data-theme='dark'].",
+    "sm":    { "$type": "shadow", "$value": [{ "offsetX": "0", "offsetY": "0",   "blur": "0",    "spread": "1px", "color": "rgb(255 255 255 / 0.04)" }, { "offsetX": "0", "offsetY": "1px", "blur": "3px", "color": "rgb(0 0 0 / 0.30)" }] },
+    "md":    { "$type": "shadow", "$value": [{ "offsetX": "0", "offsetY": "0",   "blur": "0",    "spread": "1px", "color": "rgb(255 255 255 / 0.04)" }, { "offsetX": "0", "offsetY": "4px", "blur": "6px", "color": "rgb(0 0 0 / 0.40)" }] },
+    "lg":    { "$type": "shadow", "$value": [{ "offsetX": "0", "offsetY": "0",   "blur": "0",    "spread": "1px", "color": "rgb(255 255 255 / 0.04)" }, { "offsetX": "0", "offsetY": "10px","blur": "15px","color": "rgb(0 0 0 / 0.50)" }] },
+    "inner": { "$type": "shadow", "$value": { "offsetX": "0", "offsetY": "2px", "blur": "4px",  "spread": "0",  "color": "rgb(0 0 0 / 0.40)", "inset": true }, "$description": "Heavier opacity needed on dark surfaces for inset to be visible." }
+  },
+  "duration": {
+    "instant": { "$type": "duration", "$value": "75ms" },
+    "fast":    { "$type": "duration", "$value": "150ms" },
+    "normal":  { "$type": "duration", "$value": "250ms" },
+    "slow":    { "$type": "duration", "$value": "350ms" }
+  },
+  "easing": {
+    "default": { "$type": "cubicBezier", "$value": [0.4, 0, 0.2, 1] },
+    "in":      { "$type": "cubicBezier", "$value": [0.4, 0, 1, 1] },
+    "out":     { "$type": "cubicBezier", "$value": [0, 0, 0.2, 1] },
+    "spring":  { "$type": "cubicBezier", "$value": [0.34, 1.56, 0.64, 1], "$description": "Use sparingly — must be justified in PR." }
+  },
+  "breakpoint": {
+    "sm":  { "$type": "dimension", "$value": "640px" },
+    "md":  { "$type": "dimension", "$value": "768px" },
+    "lg":  { "$type": "dimension", "$value": "1024px" },
+    "xl":  { "$type": "dimension", "$value": "1280px" },
+    "2xl": { "$type": "dimension", "$value": "1536px" },
+    "container": {
+      "$description": "Max-widths for the page container at each breakpoint. At sm the container is full-width (100%).",
+      "sm":  { "$type": "dimension", "$value": "100%" },
+      "md":  { "$type": "dimension", "$value": "720px" },
+      "lg":  { "$type": "dimension", "$value": "960px" },
+      "xl":  { "$type": "dimension", "$value": "1200px" },
+      "2xl": { "$type": "dimension", "$value": "1400px" }
+    }
+  },
+  "z-index": {
+    "base":     { "$type": "number", "$value": 0 },
+    "raised":   { "$type": "number", "$value": 10 },
+    "sticky":   { "$type": "number", "$value": 20 },
+    "dropdown": { "$type": "number", "$value": 30 },
+    "modal":    { "$type": "number", "$value": 40 },
+    "overlay":  { "$type": "number", "$value": 50 },
+    "toast":    { "$type": "number", "$value": 60 }
+  },
+  "layout": {
+    "sidebar-width":  { "$type": "dimension", "$value": "240px" },
+    "topbar-height":  { "$type": "dimension", "$value": "56px" },
+    "content-max":    { "$type": "dimension", "$value": "1200px" },
+    "gutter-mobile":  { "$type": "dimension", "$value": "1.5rem" },
+    "gutter-desktop": { "$type": "dimension", "$value": "2.5rem" }
+  },
+  "density": {
+    "comfortable": { "$type": "dimension", "$value": "48px" },
+    "compact":     { "$type": "dimension", "$value": "36px" }
+  },
+  "elevation": {
+    "$description": "Pairs a shadow token with a z-index level and a semantic label. Use this table to decide stacking context, not individual shadow or z-index tokens in isolation.",
+    "0": { "$type": "object", "$value": { "level": 0, "shadow": "shadow.none", "z-index": 0,  "elements": "Page canvas, background" } },
+    "1": { "$type": "object", "$value": { "level": 1, "shadow": "shadow.xs",   "z-index": 10, "elements": "Cards, buttons" } },
+    "2": { "$type": "object", "$value": { "level": 2, "shadow": "shadow.sm",   "z-index": 20, "elements": "Sticky headers, raised cards" } },
+    "3": { "$type": "object", "$value": { "level": 3, "shadow": "shadow.md",   "z-index": 30, "elements": "Dropdowns, tooltips" } },
+    "4": { "$type": "object", "$value": { "level": 4, "shadow": "shadow.lg",   "z-index": 40, "elements": "Modals, dialogs" } },
+    "5": { "$type": "object", "$value": { "level": 5, "shadow": "shadow.xl",   "z-index": 50, "elements": "Overlays, command palette, toasts" } }
+  },
+  "semantic-mapping": {
+    "$description": "Maps UI elements to their token assignments. Machine-readable version of §9 in 13-design-tokens.md. Generators can read this to produce utility classes or a Tailwind plugin.",
+    "button": {
+      "primary":   { "background": "{color.brand.primary}",   "text": "{color.text.on-brand}",    "hover-background": "color.brand.primary darken 10%", "border": "transparent" },
+      "secondary": { "background": "transparent",              "text": "{color.brand.primary}",    "border": "{color.brand.primary}" },
+      "ghost":     { "background": "transparent",              "text": "{color.text.primary}",     "hover-background": "{color.surface.bg-secondary}", "border": "transparent" },
+      "danger":    { "background": "{color.semantic.error}",   "text": "{color.text.on-brand}",    "border": "transparent" }
+    },
+    "link": {
+      "default": { "color": "{color.brand.secondary}" },
+      "hover":   { "color": "color.brand.secondary darken 15%" }
+    },
+    "input": {
+      "border":       "{color.border.default}",
+      "focus-border": "{color.brand.secondary}",
+      "focus-ring":   "{shadow.focus}",
+      "error-border": "{color.semantic.error}",
+      "placeholder":  "{color.text.tertiary}"
+    },
+    "label":     { "color": "{color.text.primary}" },
+    "help-text": { "color": "{color.text.secondary}" },
+    "table": {
+      "header-background": "{color.neutral.100}",
+      "header-text":       "{color.neutral.700}",
+      "row-border":        "{color.border.muted}",
+      "row-hover":         "{color.neutral.50}",
+      "row-selected":      "{color.semantic.info-light}"
+    },
+    "status-badge": { "border-radius": "{radius.full}" },
+    "asset-id":     { "font-family": "{font-family.mono}", "font-variant-numeric": "tabular-nums lining-nums" },
+    "nav-sidebar": {
+      "background":          "{color.neutral.900}",
+      "link-text":           "{color.neutral.300}",
+      "link-active-background": "color.brand.primary 10% opacity",
+      "link-active-text":    "{color.brand.primary}"
+    },
+    "topbar": {
+      "background":    "{color.surface.bg-primary}",
+      "border-bottom": "{color.border.default}"
+    }
+  }
+}
