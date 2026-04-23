@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)
-VENV="$ROOT/.venv/bin"
+VENV="$ROOT/backend/.venv/bin"
 
 if [[ ! -x "$VENV/python" ]]; then
-  echo "ERROR: virtualenv not found at $ROOT/.venv — run setup first" >&2
+  echo "ERROR: virtualenv not found at $ROOT/backend/.venv — run setup first" >&2
   exit 1
 fi
 
