@@ -27,6 +27,8 @@ router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
 
+_EMAIL_ALREADY_REGISTERED = "Email is already registered"
+
 
 @router.post(
     "/register",
@@ -41,7 +43,7 @@ def register(payload: RegisterRequest, db: DbSession) -> DataResponse[UserRead]:
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email is already registered",
+            detail=_EMAIL_ALREADY_REGISTERED,
         )
 
     user = User(
@@ -58,7 +60,7 @@ def register(payload: RegisterRequest, db: DbSession) -> DataResponse[UserRead]:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email is already registered",
+            detail=_EMAIL_ALREADY_REGISTERED,
         ) from exc
     except SQLAlchemyError as exc:
         db.rollback()
@@ -128,7 +130,7 @@ def admin_create_user(
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email is already registered",
+            detail=_EMAIL_ALREADY_REGISTERED,
         )
 
     user = User(
@@ -145,7 +147,7 @@ def admin_create_user(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email is already registered",
+            detail=_EMAIL_ALREADY_REGISTERED,
         ) from exc
     except SQLAlchemyError as exc:
         db.rollback()
