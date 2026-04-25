@@ -30,5 +30,39 @@
     "validationError": "輸入資料有誤",
     "rateLimitExceeded": "請求過於頻繁，請稍後再試",
     "serverError": "伺服器發生錯誤，請稍後再試"
+  },
+  "assetList": {
+    "title": "資產清單",
+    "description": "在前端開發階段，使用本地假資料檢視與管理資產。",
+    "dataSourceNotice": "目前使用假資料，因為後端 API 或資料庫資料可能尚未完成。",
+    "roleLabel": "檢視模式",
+    "holderLabel": "持有者",
+    "holderPlaceholder": "選擇持有者",
+    "summary": "共顯示 {{count}} 筆資產",
+    "mode": {
+      "manager": "管理員",
+      "holder": "持有者"
+    },
+    "columns": {
+      "assetCode": "資產編號",
+      "name": "名稱",
+      "category": "類別",
+      "department": "部門",
+      "location": "地點",
+      "status": "狀態",
+      "purchaseAmount": "採購金額",
+      "purchaseDate": "採購日期"
+    },
+    "status": {
+      "in_stock": "庫存中",
+      "in_use": "使用中",
+      "pending_repair": "待維修",
+      "under_repair": "維修中",
+      "disposed": "已報廢"
+    },
+    "empty": "目前檢視條件下沒有資產資料。",
+    "pagination": {
+      "total": "共 {{count}} 筆"
+    }
   }
 }

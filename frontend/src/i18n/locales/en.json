@@ -30,5 +30,39 @@
     "validationError": "Invalid input",
     "rateLimitExceeded": "Too many requests. Please try again later.",
     "serverError": "Something went wrong. Please try again later."
+  },
+  "assetList": {
+    "title": "Asset List",
+    "description": "View and manage organization assets with local dummy data during frontend development.",
+    "dataSourceNotice": "Using dummy assets because backend API and database data may not be ready yet.",
+    "roleLabel": "View Mode",
+    "holderLabel": "Holder",
+    "holderPlaceholder": "Select holder",
+    "summary": "Showing {{count}} assets",
+    "mode": {
+      "manager": "Manager",
+      "holder": "Holder"
+    },
+    "columns": {
+      "assetCode": "Asset Code",
+      "name": "Name",
+      "category": "Category",
+      "department": "Department",
+      "location": "Location",
+      "status": "Status",
+      "purchaseAmount": "Purchase Amount",
+      "purchaseDate": "Purchase Date"
+    },
+    "status": {
+      "in_stock": "In Stock",
+      "in_use": "In Use",
+      "pending_repair": "Pending Repair",
+      "under_repair": "Under Repair",
+      "disposed": "Disposed"
+    },
+    "empty": "No assets found for the current view.",
+    "pagination": {
+      "total": "Total {{count}} assets"
+    }
   }
 }
