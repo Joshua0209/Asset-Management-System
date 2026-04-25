@@ -35,3 +35,12 @@ Object.defineProperty(globalThis, 'ResizeObserver', {
   configurable: true,
   value: ResizeObserverMock,
 });
+
+// jsdom does not implement pseudo-element styles; ignore the second argument
+// so rc-table scrollbar measurement does not emit noisy not-implemented errors.
+const originalGetComputedStyle = window.getComputedStyle.bind(window);
+Object.defineProperty(window, 'getComputedStyle', {
+  writable: true,
+  configurable: true,
+  value: (element: Element) => originalGetComputedStyle(element),
+});
