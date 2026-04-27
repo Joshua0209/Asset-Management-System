@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -45,6 +46,37 @@ async def http_exception_to_envelope(request: Request, exc: HTTPException) -> JS
         status_code=exc.status_code,
         content={"error": {"code": code, "message": message}},
         headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_to_envelope(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Rewrap Pydantic/FastAPI validation failures into the error envelope.
+
+    Per docs/system-design/12-api-design.md, 422 responses carry
+    `error.code = "validation_error"` and a `details` array of field-level errors.
+    The first element of Pydantic's `loc` tuple identifies the request part
+    (body/query/path) and is stripped so `field` stays user-facing.
+    """
+    details = [
+        {
+            "field": ".".join(str(part) for part in err.get("loc", ())[1:]),
+            "message": err.get("msg", ""),
+            "code": err.get("type", "value_error"),
+        }
+        for err in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "validation_error",
+                "message": "Validation failed",
+                "details": details,
+            }
+        },
     )
 
 

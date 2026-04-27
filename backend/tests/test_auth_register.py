@@ -64,6 +64,10 @@ class TestRegisterValidation:
             "/api/v1/auth/register", json=_payload(password="Pa1")  # 3 chars
         )
         assert response.status_code == 422
+        body = response.json()
+        # 422s must use the project's error envelope (docs/system-design/12-api-design.md).
+        assert body["error"]["code"] == "validation_error"
+        assert any(d["field"].endswith("password") for d in body["error"]["details"])
 
     def test_password_without_digit_returns_422(self, client: TestClient) -> None:
         response = client.post(
