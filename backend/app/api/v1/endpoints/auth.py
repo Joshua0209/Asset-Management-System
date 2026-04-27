@@ -37,9 +37,9 @@ _EMAIL_ALREADY_REGISTERED = "Email is already registered"
 )
 def register(payload: RegisterRequest, db: DbSession) -> DataResponse[UserRead]:
     # Decision A2: role is always holder on public register.
-    existing = db.scalar(
-        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
-    )
+    # Email is globally unique at the DB layer, so the duplicate check is
+    # not filtered by deleted_at — a soft-deleted row still occupies the email.
+    existing = db.scalar(select(User).where(User.email == payload.email))
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -124,9 +124,8 @@ def admin_create_user(
     Public /auth/register is holder-only; this endpoint is how the team adds
     additional managers once the bootstrap manager has logged in.
     """
-    existing = db.scalar(
-        select(User).where(User.email == payload.email, User.deleted_at.is_(None))
-    )
+    # Same global-uniqueness reasoning as /auth/register — see note above.
+    existing = db.scalar(select(User).where(User.email == payload.email))
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
