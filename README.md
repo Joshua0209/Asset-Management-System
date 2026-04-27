@@ -39,13 +39,13 @@ Course project for a cloud computing / software engineering class. The repositor
 | SonarCloud quality gate | ✅ (pulled from Week 5) | Consumes FE+BE coverage; BLOCKER/CRITICAL/MAJOR findings resolved |
 | Reviewer auto-assignment | ✅ (bonus) | Round-robin by path ownership |
 
-### Week 2 — Auth & Core Features Start (Apr 21–25) — Planned
+### Week 2 — Auth & Core Features Start (Apr 21–25) — In Progress
 
 **Backend**
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Auth API (register, login, JWT) | ⏳ Planned | RBAC middleware (`holder` vs `manager`); reuse bcrypt hashing from seed script |
+| Auth API (register, login, JWT) | ✅ | `POST /auth/register` (holder-only), `POST /auth/login`, `GET /auth/me`, `POST /auth/users` (manager-only); JWT HS256; RBAC deps (`CurrentUser`, `ManagerUser`, `HolderUser`); 76 tests, 96% coverage |
 | Asset CRUD APIs (create, read, update, list) | ⏳ Planned | Pagination + basic filtering; replace current 501 on `POST /assets` |
 | Repair Request APIs (submit + list) | ⏳ Planned | Server-side FSM validation per `docs/system-design/11-asset-fsm.md` |
 
@@ -188,3 +188,17 @@ Round-robin assignment runs on PR open/reopen via [.github/workflows/assign-revi
 ## Environment
 
 Backend defaults live in [backend/.env.example](backend/.env.example). Update `DATABASE_URL` to point at your MySQL instance before running migrations or the seed script. The bundled [docker-compose.yml](docker-compose.yml) matches the default `DATABASE_URL`.
+
+Key variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | MySQL connection string |
+| `JWT_SECRET` | Yes | 32+ byte random secret — generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'` |
+| `JWT_ALGORITHM` | No | Default `HS256` |
+| `JWT_ACCESS_TOKEN_EXPIRES_MINUTES` | No | Default `720` (12 h) |
+| `BOOTSTRAP_MANAGER_EMAIL` | No | Email for the seeded first manager (default `admin@example.com`) |
+| `BOOTSTRAP_MANAGER_PASSWORD` | No | Password for the seeded first manager — **change before exposing outside the team** |
+| `BOOTSTRAP_MANAGER_NAME` | No | Display name for the seeded manager |
+| `BOOTSTRAP_MANAGER_DEPARTMENT` | No | Department for the seeded manager |
+| `CORS_ALLOWED_ORIGINS` | No | JSON array of allowed origins (default `["http://localhost:5173"]`) |

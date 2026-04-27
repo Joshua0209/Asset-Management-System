@@ -12,11 +12,12 @@
 
 | Method | Path | Description | Access | FR |
 |--------|------|-------------|--------|-----|
-| POST | `/auth/register` | Register new user | Public | FR-01 |
+| POST | `/auth/register` | Self-register as a holder | Public | FR-01 |
 | POST | `/auth/login` | Login | Public | FR-02 |
 | GET | `/auth/me` | Get current user | Auth | FR-02 |
-| POST | `/auth/password-reset` | Request password reset | Public | FR-04 |
-| POST | `/auth/password-reset/confirm` | Confirm password reset | Public | FR-04 |
+| POST | `/auth/users` | Create a user of any role | Manager | FR-01 |
+| POST | `/auth/password-reset` | Request password reset *(not implemented — not required by `requirements.md`)* | Public | — |
+| POST | `/auth/password-reset/confirm` | Confirm password reset *(not implemented — not required by `requirements.md`)* | Public | — |
 
 ### Assets
 
@@ -177,13 +178,17 @@ All timestamps are ISO 8601 in UTC: `2026-04-15T10:30:00Z`
 
 ## 1. Authentication (`/api/v1/auth`)
 
-### 1.1 Register
+### 1.1 Register (Public Self-Registration — Holder Only)
 
 ```
 POST /api/v1/auth/register
 ```
 
 **Access:** Public
+
+**Role policy:** The server always creates the new user with `role = "holder"`. Any `role` field in the request body is silently ignored. Managers are created by an existing manager via [1.6 Admin Create User](#16-admin-create-user).
+
+**Bootstrap:** A constant-identity manager is seeded by `scripts/seed_demo_data.py` using the `BOOTSTRAP_MANAGER_*` env vars (see `backend/.env.example`). This solves the chicken-and-egg problem — at least one manager always exists after seeding.
 
 **Request:**
 
@@ -192,18 +197,16 @@ POST /api/v1/auth/register
   "email": "alice@example.com",
   "password": "securePassword123",
   "name": "Alice Chen",
-  "department": "IT",
-  "role": "holder"
+  "department": "IT"
 }
 ```
 
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
-| `email` | string | yes | Valid email, unique among active users |
+| `email` | string | yes | Valid email, globally unique (a soft-deleted user still occupies the address) |
 | `password` | string | yes | Min 8 chars, at least 1 letter + 1 digit |
 | `name` | string | yes | 1–100 chars |
 | `department` | string | yes | Non-empty |
-| `role` | string | yes | `"holder"` or `"manager"` |
 
 **Response:** `201 Created`
 
@@ -287,62 +290,53 @@ GET /api/v1/auth/me
 
 ---
 
-### 1.4 Password Reset — Request
+### 1.4 Password Reset — Request *(deferred — not in `requirements.md`)*
 
-```
-POST /api/v1/auth/password-reset
-```
+*Password reset is not an explicit requirement and is out of scope for the current build. This section is retained as a future-work placeholder.*
 
-**Access:** Public
-
-**Request:**
-
-```json
-{
-  "email": "alice@example.com"
-}
-```
-
-**Response:** `202 Accepted` (always, to prevent email enumeration)
-
-```json
-{
-  "data": {
-    "message": "If the email exists, a reset link has been sent."
-  }
-}
-```
+~~`POST /api/v1/auth/password-reset` — Public — always `202 Accepted` to prevent enumeration.~~
 
 ---
 
-### 1.5 Password Reset — Confirm
+### 1.5 Password Reset — Confirm *(deferred — not in `requirements.md`)*
+
+~~`POST /api/v1/auth/password-reset/confirm` — Public (with valid reset token).~~
+
+---
+
+### 1.6 Admin Create User
 
 ```
-POST /api/v1/auth/password-reset/confirm
+POST /api/v1/auth/users
 ```
 
-**Access:** Public (with valid reset token)
+**Access:** Manager
+
+This endpoint is how managers promote/add other managers (since [1.1 Register](#11-register-public-self-registration--holder-only) is holder-only). Also usable to create holders with a pre-set password without going through self-registration.
 
 **Request:**
 
 ```json
 {
-  "token": "reset-token-from-email",
-  "new_password": "newSecurePassword456"
+  "email": "newmanager@example.com",
+  "password": "securePassword123",
+  "name": "New Manager",
+  "department": "Operations",
+  "role": "manager"
 }
 ```
 
-**Response:** `200 OK`
+| Field | Type | Required | Validation |
+|-------|------|----------|------------|
+| `email` | string | yes | Valid email, globally unique (a soft-deleted user still occupies the address) |
+| `password` | string | yes | Min 8 chars, at least 1 letter + 1 digit |
+| `name` | string | yes | 1–100 chars |
+| `department` | string | yes | Non-empty |
+| `role` | string | yes | `"holder"` or `"manager"` |
 
-```json
-{
-  "data": {
-    "message": "Password has been reset successfully."
-  }
-}
-```
+**Response:** `201 Created` with the same `UserRead` shape as [1.1 Register](#11-register-public-self-registration--holder-only).
 
-**Errors:** `400` (invalid/expired token), `422` (weak password)
+**Errors:** `401` (no token), `403` (caller is not a manager), `409` (email taken), `422` (validation)
 
 ---
 

@@ -8,6 +8,8 @@ from decimal import Decimal
 
 from sqlalchemy import delete
 
+from app.core.config import get_settings
+from app.core.security import hash_password
 from app.db.session import SessionLocal
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_image import RepairImage
@@ -44,14 +46,24 @@ FAULT_DESCRIPTIONS = [
 ]
 
 
-def hash_password(password: str) -> str:
-    import bcrypt
+def build_bootstrap_manager() -> User:
+    """The constant-identity manager so the system is usable right after seeding.
 
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    Credentials come from BOOTSTRAP_MANAGER_* env vars (see .env.example).
+    Change these before exposing the system outside the team.
+    """
+    settings = get_settings()
+    return User(
+        email=settings.bootstrap_manager_email,
+        password_hash=hash_password(settings.bootstrap_manager_password),
+        name=settings.bootstrap_manager_name,
+        role=UserRole.MANAGER,
+        department=settings.bootstrap_manager_department,
+    )
 
 
 def build_users() -> list[User]:
-    users: list[User] = []
+    users: list[User] = [build_bootstrap_manager()]
     for index in range(2):
         users.append(
             User(
