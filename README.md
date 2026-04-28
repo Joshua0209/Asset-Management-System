@@ -57,7 +57,7 @@ Course project for a cloud computing / software engineering class. The repositor
 | Layout shell (sidebar + header) | ✅ | Global layout using Ant Design's Layout components with collapsible sidebar, navigation, and theme toggle |
 | Login / Register pages | ⏳ Tue–Wed | Connected to real auth API; zh-TW + en strings |
 | Auth guard + role-based routing | ⏳ Wed–Thu | Redirect holder away from manager-only pages |
-| Asset list page (table + pagination) | ⏳ Wed–Fri | Manager sees all; holder sees own assets |
+| Asset list page (table + pagination) | ✅ | Implemented with Ant Design table + client-side pagination. Uses local dummy assets for now in `frontend/src/mocks/assets.ts`; manager/holder view is simulated in page controls |
 | Repair request submit form | ⏳ Thu–Fri | Asset ID, fault description, image upload (max 5) |
 
 **Week 2 milestone (`M2 — Auth + CRUD Basics`):** login/register end-to-end · manager registers an asset · holder views own assets · holder submits a repair request · RBAC enforced on FE + BE.
@@ -118,6 +118,16 @@ npm run dev
 
 Dev server: `http://localhost:5173`.
 
+### Asset List data source (current)
+
+The Asset List page is implemented and currently runs in a frontend-only mode:
+
+- Data source: local dummy dataset in `frontend/src/mocks/assets.ts`
+- UI: table + pagination + status tags in `frontend/src/pages/AssetList.tsx`
+- Role behavior: manager/holder view simulated in page controls until auth + `/assets/mine` API are completed
+
+This lets the team continue frontend work even when backend asset APIs or DB seed data are unavailable.
+
 ## Scripts reference
 
 ### Backend (run from `backend/`)
@@ -142,6 +152,8 @@ Dev server: `http://localhost:5173`.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest (run once) |
 | `npm run test:coverage` | Vitest with V8 coverage |
+
+Asset List focused test: `src/__tests__/AssetList.test.tsx`.
 
 ## Pre-commit hooks
 
