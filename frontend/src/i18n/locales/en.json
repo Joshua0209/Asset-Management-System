@@ -16,6 +16,18 @@
     },
     "language": {
       "label": "Language"
+    },
+    "repairRequest": {
+      "title": "Submit Repair Request",
+      "assetId": "Asset ID",
+      "faultDescription": "Fault Description",
+      "uploadImages": "Upload Images",
+      "uploadLimit": "Up to 5 images",
+      "uploadFormat": "JPEG/PNG format only",
+      "uploadSize": "Each file must be less than 5MB",
+      "successMessage": "Repair request submitted successfully",
+      "errorMessage": "Failed to submit repair request",
+      "submit": "Submit Request"
     }
   },
   "validation": {

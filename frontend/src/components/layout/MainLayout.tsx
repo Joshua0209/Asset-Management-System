@@ -4,6 +4,7 @@ import {
   DashboardOutlined,
   AppstoreOutlined,
   CheckSquareOutlined,
+  ToolOutlined,
   SunOutlined,
   MoonOutlined,
   MenuUnfoldOutlined,
@@ -42,6 +43,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
       key: '/reviews',
       icon: <CheckSquareOutlined />,
       label: 'Reviews',
+    },
+    {
+      key: '/repairs/new',
+      icon: <ToolOutlined />,
+      label: 'Submit Repair',
     },
   ];
 
