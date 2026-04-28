@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     bootstrap_manager_name: str = "Bootstrap Manager"
     bootstrap_manager_department: str = "IT"
 
+    repair_upload_dir: str = "uploads/repair-requests"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
