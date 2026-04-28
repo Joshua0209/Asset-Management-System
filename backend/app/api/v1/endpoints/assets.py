@@ -231,7 +231,9 @@ def register_asset(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Unable to register asset. Please try again later.",
             ) from exc
-    raise _conflict("Asset code already exists. Please retry asset registration.") from last_integrity_error
+    raise _conflict(
+        "Asset code already exists. Please retry asset registration."
+    ) from last_integrity_error
 
 
 @router.get("/mine", summary="List assets assigned to current holder")
