@@ -93,6 +93,56 @@ def _parse_content_disposition(value: str) -> dict[str, str]:
     return result
 
 
+def _decode_part_headers(decoded_headers: str) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for header_line in decoded_headers.split("\r\n"):
+        if ":" not in header_line:
+            continue
+        key, value = header_line.split(":", maxsplit=1)
+        headers[key.lower()] = value.strip()
+    return headers
+
+
+def _consume_multipart_part(
+    part: bytes,
+    fields: dict[str, str],
+    images: list[SubmittedImage],
+) -> None:
+    if not part or part == b"--":
+        return
+    if part.endswith(b"--"):
+        # Trailing junk after the closing boundary.
+        return
+    if b"\r\n\r\n" not in part:
+        logger.warning("Skipping malformed multipart part of length %d", len(part))
+        return
+    raw_headers, content = part.split(b"\r\n\r\n", maxsplit=1)
+    try:
+        decoded_headers = raw_headers.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _validation_error("Multipart part headers are not valid UTF-8.") from exc
+    headers = _decode_part_headers(decoded_headers)
+    disposition = _parse_content_disposition(headers.get("content-disposition", ""))
+    name = disposition.get("name")
+    if name is None:
+        return
+    content = content.removesuffix(b"\r\n")
+    if disposition.get("filename") is not None:
+        if name == "images":
+            images.append(
+                SubmittedImage(
+                    filename=disposition.get("filename", ""),
+                    content_type=headers.get("content-type", ""),
+                    content=content,
+                )
+            )
+        return
+    try:
+        fields[name] = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _validation_error(f"Multipart field {name!r} is not valid UTF-8.") from exc
+
+
 def _parse_multipart_fields(
     content_type: str,
     body: bytes,
@@ -108,44 +158,7 @@ def _parse_multipart_fields(
     # which would silently chew binary file content ending in 0x09/0x0A/0x0B/0x0C/0x0D/0x20.
     for raw_part in body.split(boundary):
         part = raw_part.removeprefix(b"\r\n").removesuffix(b"\r\n")
-        if not part or part == b"--":
-            continue
-        if part.endswith(b"--"):
-            # Trailing junk after the closing boundary.
-            continue
-        if b"\r\n\r\n" not in part:
-            logger.warning("Skipping malformed multipart part of length %d", len(part))
-            continue
-        raw_headers, content = part.split(b"\r\n\r\n", maxsplit=1)
-        try:
-            decoded_headers = raw_headers.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise _validation_error("Multipart part headers are not valid UTF-8.") from exc
-        headers: dict[str, str] = {}
-        for header_line in decoded_headers.split("\r\n"):
-            if ":" not in header_line:
-                continue
-            key, value = header_line.split(":", maxsplit=1)
-            headers[key.lower()] = value.strip()
-        disposition = _parse_content_disposition(headers.get("content-disposition", ""))
-        name = disposition.get("name")
-        if name is None:
-            continue
-        content = content.removesuffix(b"\r\n")
-        if disposition.get("filename") is not None:
-            if name == "images":
-                images.append(
-                    SubmittedImage(
-                        filename=disposition.get("filename", ""),
-                        content_type=headers.get("content-type", ""),
-                        content=content,
-                    )
-                )
-            continue
-        try:
-            fields[name] = content.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise _validation_error(f"Multipart field {name!r} is not valid UTF-8.") from exc
+        _consume_multipart_part(part, fields, images)
     return fields, images
 
 
