@@ -31,8 +31,11 @@ _STATUS_CODE_MAP = {
     403: "forbidden",
     404: "not_found",
     409: "conflict",
+    413: "payload_too_large",
+    415: "unsupported_media_type",
     422: "validation_error",
     429: "rate_limit_exceeded",
+    500: "internal_server_error",
     503: "service_unavailable",
 }
 

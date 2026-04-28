@@ -7,6 +7,7 @@ from collections.abc import Callable, Generator
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-do-not-use-in-production")
 os.environ.setdefault("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "720")
+os.environ.setdefault("REPAIR_UPLOAD_DIR", "/tmp/ams-test-repair-uploads")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

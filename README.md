@@ -39,15 +39,15 @@ Course project for a cloud computing / software engineering class. The repositor
 | SonarCloud quality gate | ✅ (pulled from Week 5) | Consumes FE+BE coverage; BLOCKER/CRITICAL/MAJOR findings resolved |
 | Reviewer auto-assignment | ✅ (bonus) | Round-robin by path ownership |
 
-### Week 2 — Auth & Core Features Start (Apr 21–25) — In Progress
+### Week 2 — Auth & Core Features Start (Apr 21–25) — Backend Complete / Frontend In Progress
 
 **Backend**
 
 | Task | Status | Notes |
 |------|--------|-------|
 | Auth API (register, login, JWT) | ✅ | `POST /auth/register` (holder-only), `POST /auth/login`, `GET /auth/me`, `POST /auth/users` (manager-only); JWT HS256; RBAC deps (`CurrentUser`, `ManagerUser`, `HolderUser`); 76 tests, 96% coverage |
-| Asset CRUD APIs (create, read, update, list) | ⏳ Planned | Pagination + basic filtering; replace current 501 on `POST /assets` |
-| Repair Request APIs (submit + list) | ⏳ Planned | Server-side FSM validation per `docs/system-design/11-asset-fsm.md` |
+| Asset CRUD APIs (create, read, update, list) | ✅ | Pagination + basic filtering; `POST /assets` now registers real assets with server-generated asset codes |
+| Repair Request APIs (submit + list) | ✅ | Submit + list endpoints implemented with server-side FSM validation per `docs/system-design/11-asset-fsm.md` |
 
 **Frontend**
 

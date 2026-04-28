@@ -1,34 +1,406 @@
 import logging
+import math
+import re
+import uuid
+from pathlib import Path
 from typing import Annotated
+from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from sqlalchemy import ColumnElement, func, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.exc import StaleDataError
+from sqlalchemy.orm.interfaces import ORMOption
 
+from app.api.deps import CurrentUser, HolderUser
+from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.repair_request import RepairRequest
-from app.schemas.common import ListResponse
-from app.schemas.repair_request import RepairRequestRead
+from app.models.asset import Asset, AssetStatus
+from app.models.repair_image import RepairImage
+from app.models.repair_request import RepairRequest, RepairRequestStatus
+from app.models.user import UserRole
+from app.schemas.common import DataResponse, PaginatedListResponse, PaginationMeta
+from app.schemas.repair_request import RepairRequestCreate, RepairRequestRead
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
 
+_ACTIVE_REPAIR_STATUSES = {
+    RepairRequestStatus.PENDING_REVIEW,
+    RepairRequestStatus.UNDER_REPAIR,
+}
+_SORT_COLUMNS = {
+    "created_at": RepairRequest.created_at,
+    "status": RepairRequest.status,
+}
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+}
+_MAX_IMAGE_COUNT = 5
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+_MAX_IMAGE_MEGABYTES = _MAX_IMAGE_BYTES // (1024 * 1024)
+_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+_MAX_REQUEST_BYTES = _MAX_IMAGE_COUNT * _MAX_IMAGE_BYTES + _MULTIPART_OVERHEAD_BYTES
+
+
+class SubmittedImage:
+    def __init__(self, *, filename: str, content_type: str, content: bytes) -> None:
+        self.filename = filename
+        self.content_type = content_type
+        self.content = content
+
+
+def _not_found(message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message)
+
+
+def _forbidden(message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
+
+
+def _conflict(message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
+
+
+def _validation_error(message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
+
+
+def _base_filters() -> list[ColumnElement[bool]]:
+    return [RepairRequest.deleted_at.is_(None)]
+
+
+def _repair_options() -> tuple[ORMOption, ...]:
+    return (
+        joinedload(RepairRequest.asset),
+        joinedload(RepairRequest.requester),
+        joinedload(RepairRequest.reviewer),
+        joinedload(RepairRequest.images),
+    )
+
+
+def _parse_content_disposition(value: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for part in value.split(";")[1:]:
+        if "=" not in part:
+            continue
+        key, raw_value = part.strip().split("=", maxsplit=1)
+        result[key] = raw_value.strip('"')
+    return result
+
+
+def _decode_part_headers(decoded_headers: str) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for header_line in decoded_headers.split("\r\n"):
+        if ":" not in header_line:
+            continue
+        key, value = header_line.split(":", maxsplit=1)
+        headers[key.lower()] = value.strip()
+    return headers
+
+
+def _consume_multipart_part(
+    part: bytes,
+    fields: dict[str, str],
+    images: list[SubmittedImage],
+) -> None:
+    if not part or part == b"--":
+        return
+    if part.endswith(b"--"):
+        # Trailing junk after the closing boundary.
+        return
+    if b"\r\n\r\n" not in part:
+        logger.warning("Skipping malformed multipart part of length %d", len(part))
+        return
+    raw_headers, content = part.split(b"\r\n\r\n", maxsplit=1)
+    try:
+        decoded_headers = raw_headers.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _validation_error("Multipart part headers are not valid UTF-8.") from exc
+    headers = _decode_part_headers(decoded_headers)
+    disposition = _parse_content_disposition(headers.get("content-disposition", ""))
+    name = disposition.get("name")
+    if name is None:
+        return
+    content = content.removesuffix(b"\r\n")
+    if disposition.get("filename") is not None:
+        if name == "images":
+            images.append(
+                SubmittedImage(
+                    filename=disposition.get("filename", ""),
+                    content_type=headers.get("content-type", ""),
+                    content=content,
+                )
+            )
+        return
+    try:
+        fields[name] = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _validation_error(f"Multipart field {name!r} is not valid UTF-8.") from exc
+
+
+def _parse_multipart_fields(
+    content_type: str,
+    body: bytes,
+) -> tuple[dict[str, str], list[SubmittedImage]]:
+    boundary_match = re.search(r"boundary=([^;]+)", content_type)
+    if boundary_match is None:
+        raise _validation_error("multipart boundary is required.")
+    boundary_value = boundary_match.group(1).strip().strip('"')
+    boundary = f"--{boundary_value}".encode()
+    fields: dict[str, str] = {}
+    images: list[SubmittedImage] = []
+    # Strip exactly one CRLF on each side instead of bytes.strip(),
+    # which would silently chew binary file content ending in 0x09/0x0A/0x0B/0x0C/0x0D/0x20.
+    for raw_part in body.split(boundary):
+        part = raw_part.removeprefix(b"\r\n").removesuffix(b"\r\n")
+        _consume_multipart_part(part, fields, images)
+    return fields, images
+
+
+def _validate_images(images: list[SubmittedImage]) -> None:
+    if len(images) > _MAX_IMAGE_COUNT:
+        raise _validation_error(f"At most {_MAX_IMAGE_COUNT} images may be uploaded.")
+    for image in images:
+        if image.content_type not in _ALLOWED_IMAGE_TYPES:
+            raise _validation_error(
+                f"Image {image.filename!r} must be JPEG or PNG."
+            )
+        if len(image.content) > _MAX_IMAGE_BYTES:
+            raise _validation_error(
+                f"Image {image.filename!r} must be {_MAX_IMAGE_MEGABYTES} MB or smaller."
+            )
+
+
+def _persist_images(
+    repair_request: RepairRequest,
+    images: list[SubmittedImage],
+    written: list[Path],
+) -> None:
+    """Write images to disk, appending each successful path to `written`.
+
+    The caller MUST clean up `written` if any later step (DB flush, commit) fails,
+    otherwise files are orphaned with no DB row pointing at them.
+    """
+    if not images:
+        return
+    upload_root = Path(get_settings().repair_upload_dir)
+    request_dir = upload_root / repair_request.id
+    request_dir.mkdir(parents=True, exist_ok=True)
+    for image in images:
+        image_id = str(uuid.uuid4())
+        suffix = _ALLOWED_IMAGE_TYPES[image.content_type]
+        target = request_dir / f"{image_id}{suffix}"
+        target.write_bytes(image.content)
+        written.append(target)
+        repair_request.images.append(
+            RepairImage(
+                id=image_id,
+                repair_request_id=repair_request.id,
+                image_url=f"/uploads/repair-requests/{repair_request.id}/{target.name}",
+            )
+        )
+
+
+def _cleanup_uploads(paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Failed to remove orphaned upload %s: %s", path, exc)
+
+
+async def _repair_payload_from_request(
+    request: Request,
+) -> tuple[RepairRequestCreate, list[SubmittedImage]]:
+    content_type = request.headers.get("content-type", "")
+
+    # DoS guard: cap declared body size before buffering it into memory.
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            content_length = int(declared_length)
+        except ValueError as exc:
+            raise _validation_error("Invalid Content-Length header.") from exc
+        if content_length > _MAX_REQUEST_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Request body exceeds the allowed size.",
+            )
+
+    if content_type.startswith("application/json"):
+        raw_payload = await request.json()
+        return RepairRequestCreate.model_validate(raw_payload), []
+
+    body = await request.body()
+
+    if content_type.startswith("multipart/form-data"):
+        fields, images = _parse_multipart_fields(content_type, body)
+        _validate_images(images)
+        return RepairRequestCreate.model_validate(fields), images
+
+    if content_type.startswith("application/x-www-form-urlencoded"):
+        try:
+            decoded_body = body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise _validation_error("Form body is not valid UTF-8.") from exc
+        parsed = parse_qs(decoded_body, keep_blank_values=True)
+        fields = {key: values[-1] if values else "" for key, values in parsed.items()}
+        return RepairRequestCreate.model_validate(fields), []
+
+    raise HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"Unsupported content-type: {content_type or '<missing>'}",
+    )
+
 
 @router.get("", summary="List repair requests")
-def list_repair_requests(db: DbSession) -> ListResponse[RepairRequestRead]:
+def list_repair_requests(
+    db: DbSession,
+    current_user: CurrentUser,
+    page: Annotated[int, Query(ge=1)] = 1,
+    per_page: Annotated[int, Query(ge=1, le=100)] = 20,
+    status_filter: Annotated[RepairRequestStatus | None, Query(alias="status")] = None,
+    asset_id: str | None = None,
+    requester_id: str | None = None,
+    sort: str = "-created_at",
+) -> PaginatedListResponse[RepairRequestRead]:
     try:
+        filters = _base_filters()
+        if status_filter is not None:
+            filters.append(RepairRequest.status == status_filter)
+        if asset_id:
+            filters.append(RepairRequest.asset_id == asset_id)
+        if current_user.role is UserRole.HOLDER:
+            if requester_id is not None and requester_id != current_user.id:
+                raise _forbidden("Holder users can only list their own repair requests.")
+            filters.append(RepairRequest.requester_id == current_user.id)
+        elif requester_id:
+            filters.append(RepairRequest.requester_id == requester_id)
+
+        sort_desc = sort.startswith("-")
+        sort_field = sort[1:] if sort_desc else sort
+        sort_column = _SORT_COLUMNS.get(sort_field)
+        if sort_column is None:
+            raise _validation_error(
+                f"Unsupported sort field {sort_field!r}. "
+                f"Allowed: {sorted(_SORT_COLUMNS)}."
+            )
+        order_by = sort_column.desc() if sort_desc else sort_column.asc()
+
+        total = db.scalar(select(func.count()).select_from(RepairRequest).where(*filters)) or 0
         requests = db.scalars(
             select(RepairRequest)
-            .where(RepairRequest.deleted_at.is_(None))
-            .order_by(RepairRequest.created_at.desc())
-        ).all()
-        return ListResponse(data=[RepairRequestRead.model_validate(item) for item in requests])
+            .options(*_repair_options())
+            .where(*filters)
+            .order_by(order_by)
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        ).unique().all()
+        return PaginatedListResponse(
+            data=[RepairRequestRead.model_validate(item) for item in requests],
+            meta=PaginationMeta(
+                total=total,
+                page=page,
+                per_page=per_page,
+                total_pages=math.ceil(total / per_page) if total else 0,
+            ),
+        )
+    except HTTPException:
+        raise
     except SQLAlchemyError as exc:
         logger.error("Failed to list repair requests: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to retrieve repair requests. Please try again later.",
         ) from exc
+
+
+@router.post("", status_code=status.HTTP_201_CREATED, summary="Submit repair request")
+async def submit_repair_request(
+    request: Request,
+    db: DbSession,
+    response: Response,
+    current_user: HolderUser,
+) -> DataResponse[RepairRequestRead]:
+    written_paths: list[Path] = []
+    committed = False
+    try:
+        payload, images = await _repair_payload_from_request(request)
+        asset = db.scalar(
+            select(Asset).where(Asset.id == payload.asset_id, Asset.deleted_at.is_(None))
+        )
+        if asset is None:
+            raise _not_found("Asset not found.")
+        if asset.responsible_person_id != current_user.id:
+            raise _forbidden("Requester is not assigned to this asset.")
+        if payload.version is not None and asset.version != payload.version:
+            raise _conflict("Asset was modified by another user. Please refresh and try again.")
+        if asset.status is not AssetStatus.IN_USE:
+            raise _conflict("Repair request is only allowed for assets in use.")
+
+        active_count = db.scalar(
+            select(func.count())
+            .select_from(RepairRequest)
+            .where(
+                RepairRequest.asset_id == asset.id,
+                RepairRequest.deleted_at.is_(None),
+                RepairRequest.status.in_(_ACTIVE_REPAIR_STATUSES),
+            )
+        )
+        if active_count:
+            raise _conflict("Repair request already exists for this asset.")
+
+        repair_request = RepairRequest(
+            asset_id=asset.id,
+            requester_id=current_user.id,
+            status=RepairRequestStatus.PENDING_REVIEW,
+            fault_description=payload.fault_description,
+        )
+        repair_request.asset = asset
+        repair_request.requester = current_user
+        asset.status = AssetStatus.PENDING_REPAIR
+        db.add(repair_request)
+        db.flush()
+        _persist_images(repair_request, images, written_paths)
+        db.flush()
+        response.headers["Location"] = f"/api/v1/repair-requests/{repair_request.id}"
+        result = DataResponse(data=RepairRequestRead.model_validate(repair_request))
+        db.commit()
+        committed = True
+        return result
+    except HTTPException:
+        raise
+    except StaleDataError as exc:
+        db.rollback()
+        logger.warning("Repair request submit conflict: %s", exc)
+        raise _conflict(
+            "Asset was modified by another user. Please refresh and try again."
+        ) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        logger.warning("Repair request submit constraint error: %s", exc)
+        raise _conflict(
+            "Repair request could not be submitted due to a conflicting state."
+        ) from exc
+    except OSError as exc:
+        db.rollback()
+        logger.error("Failed to persist repair-request image: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to store repair images. Please try again later.",
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Failed to submit repair request: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to submit repair request. Please try again later.",
+        ) from exc
+    finally:
+        if not committed:
+            _cleanup_uploads(written_paths)
