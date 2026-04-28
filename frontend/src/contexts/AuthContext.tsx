@@ -18,17 +18,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
 
   const initAuth = async () => {
-    // TEMPORARY MOCK: Hardcode a user to see the dashboard without backend
-    setUser({
-        id: '1',
-        email: 'admin@example.com',
-        name: 'Admin User',
-        department: 'IT',
-        role: 'manager',
-        created_at: '20260428'
-    });
-    setIsLoading(false);
-
     const token = localStorage.getItem('token');
     if (!token) {
       setIsLoading(false);
