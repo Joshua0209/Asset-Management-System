@@ -9,13 +9,40 @@
       "edit": "Edit"
     },
     "nav": {
+      "dashboard": "Dashboard",
       "assets": "Assets",
       "repairs": "Repair Requests",
+      "reviews": "Reviews",
       "users": "Users",
       "logout": "Log out"
     },
     "language": {
       "label": "Language"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "noAccount": "Don't have an account?",
+      "register": "Register"
+    },
+    "register": {
+      "title": "Create account",
+      "name": "Name",
+      "department": "Department",
+      "email": "Email",
+      "password": "Password",
+      "passwordPolicy": "At least 8 characters, including a letter and a digit",
+      "submit": "Register",
+      "haveAccount": "Already have an account?",
+      "login": "Sign in"
+    },
+    "role": {
+      "holder": "Asset Holder",
+      "manager": "Asset Manager"
     }
   },
   "validation": {
@@ -25,6 +52,8 @@
   "errors": {
     "unauthorized": "Please sign in again",
     "forbidden": "You don't have permission to perform this action",
+    "forbiddenTitle": "Access denied",
+    "backHome": "Back to home",
     "notFound": "Resource not found",
     "conflict": "This record was modified by someone else. Please refresh and try again.",
     "validationError": "Invalid input",
