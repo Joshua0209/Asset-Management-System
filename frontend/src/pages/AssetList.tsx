@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Card, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Modal,
+  Segmented,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
 
@@ -21,6 +33,7 @@ const AssetList: React.FC = () => {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>('manager');
   const [holderId, setHolderId] = useState<string>(DUMMY_HOLDERS[0]?.id ?? '');
+  const [detailAsset, setDetailAsset] = useState<AssetRecord | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
 
@@ -39,8 +52,22 @@ const AssetList: React.FC = () => {
     if (viewMode === 'manager') {
       return DUMMY_ASSETS;
     }
-    return DUMMY_ASSETS.filter((asset) => asset.responsible_person_id === holderId);
+    return DUMMY_ASSETS.filter((asset) => asset.responsible_person?.id === holderId);
   }, [holderId, viewMode]);
+
+  const formatDateValue = (value: string | null): string => {
+    if (!value) {
+      return t('assetList.detail.notAvailable');
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
+  };
+
+  const formatAmountValue = (value: string): string => {
+    const parsed = Number.parseFloat(value);
+    return Number.isNaN(parsed) ? value : moneyFormatter.format(parsed);
+  };
 
   useEffect(() => {
     setPage(1);
@@ -94,20 +121,24 @@ const AssetList: React.FC = () => {
       key: 'purchase_amount',
       width: 160,
       align: 'right',
-      render: (amount: string) => {
-        const parsed = Number.parseFloat(amount);
-        return Number.isNaN(parsed) ? amount : moneyFormatter.format(parsed);
-      },
+      render: (amount: string) => formatAmountValue(amount),
     },
     {
       title: t('assetList.columns.purchaseDate'),
       dataIndex: 'purchase_date',
       key: 'purchase_date',
       width: 150,
-      render: (value: string) => {
-        const parsed = new Date(value);
-        return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
-      },
+      render: (value: string) => formatDateValue(value),
+    },
+    {
+      title: t('assetList.columns.actions'),
+      key: 'actions',
+      width: 110,
+      render: (_: unknown, asset: AssetRecord) => (
+        <Button type="link" onClick={() => setDetailAsset(asset)}>
+          {t('assetList.actions.detail')}
+        </Button>
+      ),
     },
   ];
 
@@ -176,6 +207,61 @@ const AssetList: React.FC = () => {
             }}
             scroll={{ x: 1200 }}
           />
+
+          <Modal
+            open={detailAsset !== null}
+            title={t('assetList.detail.title', { assetCode: detailAsset?.asset_code ?? '' })}
+            onCancel={() => setDetailAsset(null)}
+            footer={[
+              <Button key="close" onClick={() => setDetailAsset(null)}>
+                {t('common.button.cancel')}
+              </Button>,
+            ]}
+          >
+            {detailAsset ? (
+              <Descriptions column={1} size="small" bordered>
+                <Descriptions.Item label={t('assetList.columns.assetCode')}>
+                  {detailAsset.asset_code}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.columns.name')}>
+                  {detailAsset.name}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.columns.status')}>
+                  {t(`assetList.status.${detailAsset.status}`)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.detail.holder')}>
+                  {detailAsset.responsible_person?.name ?? t('assetList.detail.unassigned')}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.detail.model')}>
+                  {detailAsset.model}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.detail.specs')}>
+                  {detailAsset.specs ?? t('assetList.detail.notAvailable')}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.detail.supplier')}>
+                  {detailAsset.supplier}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.detail.activationDate')}>
+                  {formatDateValue(detailAsset.activation_date)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.detail.warrantyExpiry')}>
+                  {formatDateValue(detailAsset.warranty_expiry)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.columns.department')}>
+                  {detailAsset.department}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.columns.location')}>
+                  {detailAsset.location}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.columns.purchaseAmount')}>
+                  {formatAmountValue(detailAsset.purchase_amount)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('assetList.columns.purchaseDate')}>
+                  {formatDateValue(detailAsset.purchase_date)}
+                </Descriptions.Item>
+              </Descriptions>
+            ) : null}
+          </Modal>
         </Space>
       </Card>
     </Space>

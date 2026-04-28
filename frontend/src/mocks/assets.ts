@@ -20,12 +20,19 @@ export interface AssetRecord {
   activation_date: string | null;
   warranty_expiry: string | null;
   status: AssetStatus;
-  responsible_person_id: string | null;
+  responsible_person: {
+    id: string;
+    name: string;
+  } | null;
   disposal_reason: string | null;
   version: number;
   created_at: string;
   updated_at: string;
 }
+
+type RawAssetRecord = Omit<AssetRecord, 'responsible_person'> & {
+  responsible_person_id: string | null;
+};
 
 export interface DemoHolder {
   id: string;
@@ -38,7 +45,7 @@ export const DUMMY_HOLDERS: DemoHolder[] = [
   { id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1003', label: 'Cindy Wu' },
 ];
 
-export const DUMMY_ASSETS: AssetRecord[] = [
+const RAW_DUMMY_ASSETS: RawAssetRecord[] = [
   {
     id: 'a0a8f7ac-3a67-4cdf-8d37-23cf76400001',
     asset_code: 'AST-2026-00001',
@@ -418,3 +425,17 @@ export const DUMMY_ASSETS: AssetRecord[] = [
     updated_at: '2026-03-21T10:20:00Z',
   },
 ];
+
+const HOLDER_NAME_BY_ID = new Map(DUMMY_HOLDERS.map((holder) => [holder.id, holder.label]));
+
+export const DUMMY_ASSETS: AssetRecord[] = RAW_DUMMY_ASSETS.map(
+  ({ responsible_person_id, ...asset }) => ({
+    ...asset,
+    responsible_person: responsible_person_id
+      ? {
+          id: responsible_person_id,
+          name: HOLDER_NAME_BY_ID.get(responsible_person_id) ?? 'Unknown Holder',
+        }
+      : null,
+  }),
+);

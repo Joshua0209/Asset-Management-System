@@ -51,7 +51,22 @@
       "location": "Location",
       "status": "Status",
       "purchaseAmount": "Purchase Amount",
-      "purchaseDate": "Purchase Date"
+      "purchaseDate": "Purchase Date",
+      "actions": "Actions"
+    },
+    "actions": {
+      "detail": "Detail"
+    },
+    "detail": {
+      "title": "Asset Detail - {{assetCode}}",
+      "holder": "Holder",
+      "model": "Model",
+      "specs": "Specs",
+      "supplier": "Supplier",
+      "activationDate": "Activation Date",
+      "warrantyExpiry": "Warranty Expiry",
+      "unassigned": "Unassigned",
+      "notAvailable": "N/A"
     },
     "status": {
       "in_stock": "In Stock",

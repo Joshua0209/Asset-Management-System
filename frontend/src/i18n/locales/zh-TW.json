@@ -51,7 +51,22 @@
       "location": "地點",
       "status": "狀態",
       "purchaseAmount": "採購金額",
-      "purchaseDate": "採購日期"
+      "purchaseDate": "採購日期",
+      "actions": "操作"
+    },
+    "actions": {
+      "detail": "詳情"
+    },
+    "detail": {
+      "title": "資產詳情 - {{assetCode}}",
+      "holder": "持有者",
+      "model": "型號",
+      "specs": "規格",
+      "supplier": "供應商",
+      "activationDate": "啟用日期",
+      "warrantyExpiry": "保固到期日",
+      "unassigned": "未指派",
+      "notAvailable": "無"
     },
     "status": {
       "in_stock": "庫存中",
