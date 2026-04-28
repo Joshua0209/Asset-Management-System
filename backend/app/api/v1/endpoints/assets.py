@@ -28,6 +28,7 @@ _SORT_COLUMNS = {
     "purchase_date": Asset.purchase_date,
     "status": Asset.status,
 }
+_ASSET_CODE_CREATE_ATTEMPTS = 3
 
 
 def _next_asset_code(db: Session, today: date | None = None) -> str:
@@ -63,6 +64,25 @@ def _conflict(message: str) -> HTTPException:
 
 def _validation_error(message: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
+
+
+def _asset_from_payload(payload: AssetCreate, asset_code: str) -> Asset:
+    return Asset(
+        asset_code=asset_code,
+        name=payload.name,
+        model=payload.model,
+        specs=payload.specs,
+        category=payload.category,
+        supplier=payload.supplier,
+        purchase_date=payload.purchase_date,
+        purchase_amount=payload.purchase_amount,
+        location=payload.location or "",
+        department=payload.department or "",
+        activation_date=payload.activation_date,
+        warranty_expiry=payload.warranty_expiry,
+        status=AssetStatus.IN_STOCK,
+        responsible_person_id=None,
+    )
 
 
 def _base_filters() -> list[ColumnElement[bool]]:
@@ -185,40 +205,33 @@ def register_asset(
     response: Response,
     _manager: ManagerUser,
 ) -> DataResponse[AssetRead]:
-    try:
-        asset = Asset(
-            asset_code=_next_asset_code(db),
-            name=payload.name,
-            model=payload.model,
-            specs=payload.specs,
-            category=payload.category,
-            supplier=payload.supplier,
-            purchase_date=payload.purchase_date,
-            purchase_amount=payload.purchase_amount,
-            location=payload.location or "",
-            department=payload.department or "",
-            activation_date=payload.activation_date,
-            warranty_expiry=payload.warranty_expiry,
-            status=AssetStatus.IN_STOCK,
-            responsible_person_id=None,
-        )
-        db.add(asset)
-        db.flush()
-        response.headers["Location"] = f"/api/v1/assets/{asset.id}"
-        result = DataResponse(data=AssetRead.model_validate(asset))
-        db.commit()
-        return result
-    except IntegrityError as exc:
-        db.rollback()
-        logger.warning("Asset registration conflict: %s", exc)
-        raise _conflict("Asset code already exists. Please retry asset registration.") from exc
-    except SQLAlchemyError as exc:
-        db.rollback()
-        logger.error("Failed to register asset: %s", exc, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to register asset. Please try again later.",
-        ) from exc
+    last_integrity_error: IntegrityError | None = None
+    for attempt in range(1, _ASSET_CODE_CREATE_ATTEMPTS + 1):
+        try:
+            asset = _asset_from_payload(payload, _next_asset_code(db))
+            db.add(asset)
+            db.flush()
+            response.headers["Location"] = f"/api/v1/assets/{asset.id}"
+            result = DataResponse(data=AssetRead.model_validate(asset))
+            db.commit()
+            return result
+        except IntegrityError as exc:
+            db.rollback()
+            last_integrity_error = exc
+            logger.warning(
+                "Asset registration conflict on attempt %s/%s: %s",
+                attempt,
+                _ASSET_CODE_CREATE_ATTEMPTS,
+                exc,
+            )
+        except SQLAlchemyError as exc:
+            db.rollback()
+            logger.error("Failed to register asset: %s", exc, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to register asset. Please try again later.",
+            ) from exc
+    raise _conflict("Asset code already exists. Please retry asset registration.") from last_integrity_error
 
 
 @router.get("/mine", summary="List assets assigned to current holder")

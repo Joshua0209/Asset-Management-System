@@ -262,6 +262,35 @@ class TestRegisterAsset:
         assert data["location"] == ""
         assert data["department"] == ""
 
+    def test_retries_when_generated_asset_code_conflicts(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        _make_asset(db_session, asset_code="AST-2026-00001")
+        payload = {
+            "name": "Business Laptop",
+            "model": "Dell Latitude 7440",
+            "category": "computer",
+            "supplier": "Dell",
+            "purchase_date": "2026-01-01",
+            "purchase_amount": "1500.00",
+            "location": "Taipei HQ",
+            "department": "IT",
+        }
+
+        with patch(
+            "app.api.v1.endpoints.assets._next_asset_code",
+            side_effect=["AST-2026-00001", "AST-2026-00002"],
+        ):
+            response = client.post("/api/v1/assets", json=payload, headers=auth_headers(manager))
+
+        assert response.status_code == 201
+        assert response.json()["data"]["asset_code"] == "AST-2026-00002"
+
     def test_holder_cannot_register_asset(
         self,
         client: TestClient,
