@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Button, theme } from 'antd';
+import { Layout, Menu, Button, theme, Dropdown, Avatar, Space, Typography } from 'antd';
 import {
   DashboardOutlined,
   AppstoreOutlined,
@@ -9,40 +9,59 @@ import {
   MoonOutlined,
   MenuUnfoldOutlined,
   MenuFoldOutlined,
+  UserOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LanguageSwitcher } from '../LanguageSwitcher';
+import { useTranslation } from 'react-i18next';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { HeaderActions } from './HeaderActions';
 
 const { Header, Sider, Content } = Layout;
+const { Text, Title } = Typography;
 
-interface MainLayoutProps {
-  isDarkMode: boolean;
-  toggleTheme: () => void;
-}
-
-const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
+const MainLayout: React.FC = () => {
+  const { isDarkMode } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
+
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
+  const { user, logout } = useAuth();
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
 
+  const handleLogout = () => {
+    logout();
+    navigate('/auth/login');
+  };
+
   const menuItems = [
     {
-      key: '/',
+      key: '/dashboard',
       icon: <DashboardOutlined />,
-      label: 'Dashboard',
+      label: t('common.nav.dashboard') || 'Dashboard',
     },
     {
       key: '/assets',
       icon: <AppstoreOutlined />,
-      label: 'Asset List',
+      label: t('common.nav.assets'),
     },
     {
       key: '/reviews',
       icon: <CheckSquareOutlined />,
-      label: 'Reviews',
+      label: t('common.nav.repairs'),
+    },
+  ];
+
+  const userMenuItems = [
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: t('common.nav.logout'),
+      onClick: handleLogout,
     },
     {
       key: '/repairs/new',
@@ -53,8 +72,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed} theme={isDarkMode ? 'dark' : 'light'}>
-        <div className="demo-logo-vertical" style={{ height: 32, margin: 16, background: 'rgba(0, 0, 0, 0.2)', borderRadius: 6 }} />
+      <Sider trigger={null} collapsible collapsed={collapsed} theme={isDarkMode ? 'dark' : 'light'} width={240}>
+        <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <Title level={4} style={{ margin: 0, color: isDarkMode ? '#fff' : '#000', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            {collapsed ? 'AMS' : 'Asset Management'}
+          </Title>
+        </div>
         <Menu
           theme={isDarkMode ? 'dark' : 'light'}
           mode="inline"
@@ -72,13 +95,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
             style={{ fontSize: '16px', width: 64, height: 64 }}
           />
           <div style={{ paddingRight: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Button
-              type="text"
-              icon={isDarkMode ? <SunOutlined /> : <MoonOutlined />}
-              onClick={toggleTheme}
-              style={{ fontSize: '16px' }}
-            />
-            <LanguageSwitcher />
+            <HeaderActions />
+
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
+              <Space style={{ cursor: 'pointer', marginLeft: 8 }}>
+                <Avatar icon={<UserOutlined />} />
+                <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
+                  <Text strong>{user?.name}</Text>
+                  <Text type="secondary" style={{ fontSize: '11px' }}>
+                    {user?.role === 'manager' ? t('auth.register.roleManager') : t('auth.register.roleHolder')}
+                  </Text>
+                </div>
+              </Space>
+            </Dropdown>
           </div>
         </Header>
         <Content

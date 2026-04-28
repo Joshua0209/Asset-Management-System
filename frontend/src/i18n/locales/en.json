@@ -6,9 +6,15 @@
       "submit": "Submit",
       "confirm": "Confirm",
       "delete": "Delete",
-      "edit": "Edit"
+      "edit": "Edit",
+      "login": "Login",
+      "register": "Register",
+      "sendResetLink": "Send Reset Link",
+      "resetPassword": "Reset Password",
+      "backToLogin": "Back to Login"
     },
     "nav": {
+      "dashboard": "Dashboard",
       "assets": "Assets",
       "repairs": "Repair Requests",
       "users": "Users",
@@ -30,10 +36,47 @@
       "submit": "Submit Request"
     }
   },
+  "auth": {
+    "login": {
+      "title": "Login to AMS",
+      "subtitle": "Welcome back! Please enter your details.",
+      "email": "Email",
+      "password": "Password",
+      "forgotPassword": "Forgot password?",
+      "noAccount": "Don't have an account?",
+      "loginSuccess": "Logged in successfully"
+    },
+    "register": {
+      "title": "Create an Account",
+      "subtitle": "Join us to manage assets efficiently.",
+      "name": "Full Name",
+      "email": "Email",
+      "password": "Password",
+      "department": "Department",
+      "role": "Role",
+      "roleHolder": "Holder",
+      "roleManager": "Manager",
+      "hasAccount": "Already have an account?",
+      "registerSuccess": "Account created successfully. Please login."
+    },
+    "passwordReset": {
+      "requestTitle": "Reset Password",
+      "requestSubtitle": "Enter your email to receive a reset link.",
+      "confirmTitle": "Set New Password",
+      "confirmSubtitle": "Enter your new password below.",
+      "newPassword": "New Password",
+      "confirmPassword": "Confirm New Password",
+      "requestSuccess": "If the email exists, a reset link has been sent.",
+      "confirmSuccess": "Password has been reset successfully."
+    }
+  },
   "validation": {
     "required": "This field is required",
     "emailInvalid": "Please enter a valid email",
-    "maxLength": "Maximum 1000 characters"
+    "maxLength": "Maximum 1000 characters",
+    "passwordMinLength": "Password must be at least 8 characters",
+    "passwordPattern": "Password must contain at least one letter and one number",
+    "passwordMismatch": "Passwords do not match"
   },
   "errors": {
     "unauthorized": "Please sign in again",
@@ -91,6 +134,8 @@
     "empty": "No assets found for the current view.",
     "pagination": {
       "total": "Total {{count}} assets"
-    }
+    },
+    "serverError": "Something went wrong. Please try again later.",
+    "loginFailed": "Invalid email or password"
   }
 }
