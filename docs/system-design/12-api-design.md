@@ -134,8 +134,12 @@ All responses use a consistent envelope:
 | 409 | `conflict` | Optimistic locking version mismatch |
 | 409 | `duplicate_request` | Repair request already exists for this asset |
 | 409 | `invalid_transition` | FSM transition not allowed from current state |
+| 413 | `payload_too_large` | Request body exceeds the allowed upload size |
+| 415 | `unsupported_media_type` | Content-Type is not one of the supported formats |
 | 422 | `validation_error` | Semantically invalid input |
 | 429 | `rate_limit_exceeded` | Too many requests |
+| 500 | `internal_server_error` | Unexpected server condition (e.g., corrupted asset code sequence) |
+| 503 | `service_unavailable` | Transient backend failure (e.g., database error) |
 
 ### Optimistic Locking
 

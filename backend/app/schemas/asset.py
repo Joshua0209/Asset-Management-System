@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -8,6 +8,11 @@ from pydantic import ConfigDict, Field, model_validator
 
 from app.models.asset import AssetStatus
 from app.schemas.common import APIModel
+
+
+def _today_utc() -> date:
+    """Return today's date in UTC to match the project's ISO-8601-UTC convention."""
+    return datetime.now(UTC).date()
 
 AssetCategory = Literal[
     "phone",
@@ -37,7 +42,7 @@ class AssetCreate(APIModel):
 
     @model_validator(mode="after")
     def validate_dates(self) -> AssetCreate:
-        if self.purchase_date > date.today():
+        if self.purchase_date > _today_utc():
             raise ValueError("purchase_date must not be in the future")
         if self.warranty_expiry is not None and self.warranty_expiry <= self.purchase_date:
             raise ValueError("warranty_expiry must be after purchase_date")
@@ -61,7 +66,7 @@ class AssetUpdate(APIModel):
     version: int = Field(ge=1)
 
     @model_validator(mode="after")
-    def validate_dates(self) -> AssetUpdate:
+    def validate_consistency(self) -> AssetUpdate:
         non_nullable_fields = {
             "name",
             "model",
@@ -73,7 +78,7 @@ class AssetUpdate(APIModel):
         for field_name in non_nullable_fields:
             if field_name in self.model_fields_set and getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
-        if self.purchase_date is not None and self.purchase_date > date.today():
+        if self.purchase_date is not None and self.purchase_date > _today_utc():
             raise ValueError("purchase_date must not be in the future")
         if (
             self.purchase_date is not None

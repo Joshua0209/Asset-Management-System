@@ -42,6 +42,9 @@ _ALLOWED_IMAGE_TYPES = {
 }
 _MAX_IMAGE_COUNT = 5
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024
+_MAX_IMAGE_MEGABYTES = _MAX_IMAGE_BYTES // (1024 * 1024)
+_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+_MAX_REQUEST_BYTES = _MAX_IMAGE_COUNT * _MAX_IMAGE_BYTES + _MULTIPART_OVERHEAD_BYTES
 
 
 class SubmittedImage:
@@ -101,17 +104,25 @@ def _parse_multipart_fields(
     boundary = f"--{boundary_value}".encode()
     fields: dict[str, str] = {}
     images: list[SubmittedImage] = []
+    # Strip exactly one CRLF on each side instead of bytes.strip(),
+    # which would silently chew binary file content ending in 0x09/0x0A/0x0B/0x0C/0x0D/0x20.
     for raw_part in body.split(boundary):
-        part = raw_part.strip()
+        part = raw_part.removeprefix(b"\r\n").removesuffix(b"\r\n")
         if not part or part == b"--":
             continue
         if part.endswith(b"--"):
-            part = part[:-2].strip()
+            # Trailing junk after the closing boundary.
+            continue
         if b"\r\n\r\n" not in part:
+            logger.warning("Skipping malformed multipart part of length %d", len(part))
             continue
         raw_headers, content = part.split(b"\r\n\r\n", maxsplit=1)
+        try:
+            decoded_headers = raw_headers.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise _validation_error("Multipart part headers are not valid UTF-8.") from exc
         headers: dict[str, str] = {}
-        for header_line in raw_headers.decode(errors="ignore").split("\r\n"):
+        for header_line in decoded_headers.split("\r\n"):
             if ":" not in header_line:
                 continue
             key, value = header_line.split(":", maxsplit=1)
@@ -131,21 +142,37 @@ def _parse_multipart_fields(
                     )
                 )
             continue
-        fields[name] = content.decode(errors="ignore")
+        try:
+            fields[name] = content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise _validation_error(f"Multipart field {name!r} is not valid UTF-8.") from exc
     return fields, images
 
 
 def _validate_images(images: list[SubmittedImage]) -> None:
     if len(images) > _MAX_IMAGE_COUNT:
-        raise _validation_error("At most 5 images may be uploaded.")
+        raise _validation_error(f"At most {_MAX_IMAGE_COUNT} images may be uploaded.")
     for image in images:
         if image.content_type not in _ALLOWED_IMAGE_TYPES:
-            raise _validation_error("Images must be JPEG or PNG.")
+            raise _validation_error(
+                f"Image {image.filename!r} must be JPEG or PNG."
+            )
         if len(image.content) > _MAX_IMAGE_BYTES:
-            raise _validation_error("Each image must be 5 MB or smaller.")
+            raise _validation_error(
+                f"Image {image.filename!r} must be {_MAX_IMAGE_MEGABYTES} MB or smaller."
+            )
 
 
-def _persist_images(repair_request: RepairRequest, images: list[SubmittedImage]) -> None:
+def _persist_images(
+    repair_request: RepairRequest,
+    images: list[SubmittedImage],
+    written: list[Path],
+) -> None:
+    """Write images to disk, appending each successful path to `written`.
+
+    The caller MUST clean up `written` if any later step (DB flush, commit) fails,
+    otherwise files are orphaned with no DB row pointing at them.
+    """
     if not images:
         return
     upload_root = Path(get_settings().repair_upload_dir)
@@ -156,6 +183,7 @@ def _persist_images(repair_request: RepairRequest, images: list[SubmittedImage])
         suffix = _ALLOWED_IMAGE_TYPES[image.content_type]
         target = request_dir / f"{image_id}{suffix}"
         target.write_bytes(image.content)
+        written.append(target)
         repair_request.images.append(
             RepairImage(
                 id=image_id,
@@ -165,23 +193,56 @@ def _persist_images(repair_request: RepairRequest, images: list[SubmittedImage])
         )
 
 
+def _cleanup_uploads(paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Failed to remove orphaned upload %s: %s", path, exc)
+
+
 async def _repair_payload_from_request(
     request: Request,
 ) -> tuple[RepairRequestCreate, list[SubmittedImage]]:
     content_type = request.headers.get("content-type", "")
+
+    # DoS guard: cap declared body size before buffering it into memory.
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            content_length = int(declared_length)
+        except ValueError as exc:
+            raise _validation_error("Invalid Content-Length header.") from exc
+        if content_length > _MAX_REQUEST_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Request body exceeds the allowed size.",
+            )
+
     if content_type.startswith("application/json"):
         raw_payload = await request.json()
         return RepairRequestCreate.model_validate(raw_payload), []
 
     body = await request.body()
+
     if content_type.startswith("multipart/form-data"):
         fields, images = _parse_multipart_fields(content_type, body)
         _validate_images(images)
         return RepairRequestCreate.model_validate(fields), images
 
-    parsed = parse_qs(body.decode(), keep_blank_values=True)
-    fields = {key: values[-1] if values else "" for key, values in parsed.items()}
-    return RepairRequestCreate.model_validate(fields), []
+    if content_type.startswith("application/x-www-form-urlencoded"):
+        try:
+            decoded_body = body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise _validation_error("Form body is not valid UTF-8.") from exc
+        parsed = parse_qs(decoded_body, keep_blank_values=True)
+        fields = {key: values[-1] if values else "" for key, values in parsed.items()}
+        return RepairRequestCreate.model_validate(fields), []
+
+    raise HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"Unsupported content-type: {content_type or '<missing>'}",
+    )
 
 
 @router.get("", summary="List repair requests")
@@ -212,7 +273,10 @@ def list_repair_requests(
         sort_field = sort[1:] if sort_desc else sort
         sort_column = _SORT_COLUMNS.get(sort_field)
         if sort_column is None:
-            raise _validation_error("Unsupported repair request sort field.")
+            raise _validation_error(
+                f"Unsupported sort field {sort_field!r}. "
+                f"Allowed: {sorted(_SORT_COLUMNS)}."
+            )
         order_by = sort_column.desc() if sort_desc else sort_column.asc()
 
         total = db.scalar(select(func.count()).select_from(RepairRequest).where(*filters)) or 0
@@ -250,6 +314,8 @@ async def submit_repair_request(
     response: Response,
     current_user: HolderUser,
 ) -> DataResponse[RepairRequestRead]:
+    written_paths: list[Path] = []
+    committed = False
     try:
         payload, images = await _repair_payload_from_request(request)
         asset = db.scalar(
@@ -287,11 +353,12 @@ async def submit_repair_request(
         asset.status = AssetStatus.PENDING_REPAIR
         db.add(repair_request)
         db.flush()
-        _persist_images(repair_request, images)
+        _persist_images(repair_request, images, written_paths)
         db.flush()
         response.headers["Location"] = f"/api/v1/repair-requests/{repair_request.id}"
         result = DataResponse(data=RepairRequestRead.model_validate(repair_request))
         db.commit()
+        committed = True
         return result
     except HTTPException:
         raise
@@ -307,6 +374,13 @@ async def submit_repair_request(
         raise _conflict(
             "Repair request could not be submitted due to a conflicting state."
         ) from exc
+    except OSError as exc:
+        db.rollback()
+        logger.error("Failed to persist repair-request image: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to store repair images. Please try again later.",
+        ) from exc
     except SQLAlchemyError as exc:
         db.rollback()
         logger.error("Failed to submit repair request: %s", exc, exc_info=True)
@@ -314,3 +388,6 @@ async def submit_repair_request(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to submit repair request. Please try again later.",
         ) from exc
+    finally:
+        if not committed:
+            _cleanup_uploads(written_paths)

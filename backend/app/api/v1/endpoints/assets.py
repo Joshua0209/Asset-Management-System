@@ -9,10 +9,10 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.api.deps import CurrentUser, ManagerUser
+from app.api.deps import CurrentUser, HolderUser, ManagerUser
 from app.db.session import get_db
 from app.models.asset import Asset, AssetStatus
-from app.models.user import UserRole
+from app.models.user import User, UserRole
 from app.schemas.asset import AssetCreate, AssetRead, AssetUpdate
 from app.schemas.common import DataResponse, PaginatedListResponse, PaginationMeta
 
@@ -41,17 +41,27 @@ def _next_asset_code(db: Session, today: date | None = None) -> str:
         .limit(1)
     )
     if latest_code is None:
-        next_sequence = 1
-    else:
-        try:
-            next_sequence = int(latest_code.rsplit("-", maxsplit=1)[1]) + 1
-        except (IndexError, ValueError):
-            logger.warning(
-                "Unexpected asset_code format while generating next code: %s",
-                latest_code,
-            )
-            next_sequence = 1
+        return f"{prefix}{1:05d}"
+    try:
+        next_sequence = int(latest_code.rsplit("-", maxsplit=1)[1]) + 1
+    except (IndexError, ValueError) as exc:
+        # Don't silently fall back to 00001 — that would re-collide on every retry.
+        logger.error(
+            "Existing asset_code does not match expected format: prefix=%s latest=%r",
+            prefix,
+            latest_code,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Asset code sequence is corrupted. Contact an administrator.",
+        ) from exc
     return f"{prefix}{next_sequence:05d}"
+
+
+def _is_asset_code_uniqueness_violation(exc: IntegrityError) -> bool:
+    """Best-effort check that an IntegrityError is the asset_code unique constraint."""
+    message = str(getattr(exc, "orig", None) or exc).lower()
+    return "asset_code" in message
 
 
 def _not_found() -> HTTPException:
@@ -126,7 +136,10 @@ def _asset_order(sort: str) -> ColumnElement[object]:
     sort_field = sort[1:] if sort_desc else sort
     sort_column = _SORT_COLUMNS.get(sort_field)
     if sort_column is None:
-        raise _validation_error("Unsupported asset sort field.")
+        raise _validation_error(
+            f"Unsupported sort field {sort_field!r}. "
+            f"Allowed: {sorted(_SORT_COLUMNS)}."
+        )
     return sort_column.desc() if sort_desc else sort_column.asc()
 
 
@@ -141,7 +154,7 @@ def _list_asset_response(
     total = db.scalar(select(func.count()).select_from(Asset).where(*filters)) or 0
     assets = db.scalars(
         select(Asset)
-        .options(joinedload(Asset.responsible_person))
+        .options(joinedload(Asset.responsible_person.and_(User.deleted_at.is_(None))))
         .where(*filters)
         .order_by(_asset_order(sort))
         .offset((page - 1) * per_page)
@@ -217,9 +230,20 @@ def register_asset(
             return result
         except IntegrityError as exc:
             db.rollback()
+            if not _is_asset_code_uniqueness_violation(exc):
+                # A non-asset_code constraint violation will keep failing on retry;
+                # surface it as a validation error instead of a misleading 409.
+                logger.error(
+                    "Non-uniqueness IntegrityError during asset registration: %s",
+                    exc,
+                    exc_info=True,
+                )
+                raise _validation_error(
+                    "Asset registration violates database constraints."
+                ) from exc
             last_integrity_error = exc
             logger.warning(
-                "Asset registration conflict on attempt %s/%s: %s",
+                "asset_code race on attempt %s/%s: %s",
                 attempt,
                 _ASSET_CODE_CREATE_ATTEMPTS,
                 exc,
@@ -231,6 +255,10 @@ def register_asset(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Unable to register asset. Please try again later.",
             ) from exc
+    logger.error(
+        "Asset registration exhausted %s retries; possible asset_code corruption or hot collision",
+        _ASSET_CODE_CREATE_ATTEMPTS,
+    )
     raise _conflict(
         "Asset code already exists. Please retry asset registration."
     ) from last_integrity_error
@@ -239,7 +267,7 @@ def register_asset(
 @router.get("/mine", summary="List assets assigned to current holder")
 def list_my_assets(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: HolderUser,
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
     q: str | None = None,
@@ -249,11 +277,6 @@ def list_my_assets(
     location: str | None = None,
     sort: str = "-created_at",
 ) -> PaginatedListResponse[AssetRead]:
-    if current_user.role is not UserRole.HOLDER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only holder users can list their assigned assets.",
-        )
     try:
         filters = _build_asset_filters(
             q=q,
@@ -285,7 +308,7 @@ def get_asset(asset_id: str, db: DbSession, current_user: CurrentUser) -> DataRe
     try:
         asset = db.scalar(
             select(Asset)
-            .options(joinedload(Asset.responsible_person))
+            .options(joinedload(Asset.responsible_person.and_(User.deleted_at.is_(None))))
             .where(Asset.id == asset_id, Asset.deleted_at.is_(None))
         )
         if asset is None:
@@ -320,14 +343,17 @@ def update_asset(
         asset = db.scalar(select(Asset).where(Asset.id == asset_id, Asset.deleted_at.is_(None)))
         if asset is None:
             raise _not_found()
-        if asset.version != payload.version:
-            raise _conflict("Resource was modified by another user. Please refresh and try again.")
 
         update_data = payload.model_dump(exclude={"version"}, exclude_unset=True)
+        # Cross-field validation runs before the version check so a stale-version
+        # client with bad data sees the validation error on the first round-trip.
         purchase_date = update_data.get("purchase_date", asset.purchase_date)
         warranty_expiry = update_data.get("warranty_expiry", asset.warranty_expiry)
         if warranty_expiry is not None and warranty_expiry <= purchase_date:
             raise _validation_error("warranty_expiry must be after purchase_date.")
+
+        if asset.version != payload.version:
+            raise _conflict("Resource was modified by another user. Please refresh and try again.")
 
         for field_name, value in update_data.items():
             if field_name in {"location", "department"} and value is None:

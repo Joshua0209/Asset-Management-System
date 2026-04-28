@@ -212,6 +212,44 @@ class TestListAssets:
             response = client.get("/api/v1/assets", headers=auth_headers(manager))
         assert response.status_code == 503
 
+    def test_unsupported_sort_field_returns_422(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        response = client.get(
+            "/api/v1/assets?sort=password_hash", headers=auth_headers(manager)
+        )
+        assert response.status_code == 422
+
+    def test_manager_cannot_use_holder_only_mine_endpoint(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        response = client.get("/api/v1/assets/mine", headers=auth_headers(manager))
+        assert response.status_code == 403
+
+    def test_soft_deleted_holder_is_hidden_from_responsible_person(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER, name="Soft Deleted", deleted=True)
+        _make_asset(db_session, responsible_person_id=holder.id)
+
+        response = client.get("/api/v1/assets", headers=auth_headers(manager))
+        assert response.status_code == 200
+        item = response.json()["data"][0]
+        assert item["responsible_person"] is None
+
 
 class TestRegisterAsset:
     def test_registers_asset(
@@ -313,6 +351,50 @@ class TestRegisterAsset:
             headers=auth_headers(holder),
         )
         assert response.status_code == 403
+
+    def test_returns_409_after_retry_exhaustion(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        _make_asset(db_session, asset_code="AST-2026-00001")
+        payload = {
+            "name": "Business Laptop",
+            "model": "Dell Latitude 7440",
+            "category": "computer",
+            "supplier": "Dell",
+            "purchase_date": "2026-01-01",
+            "purchase_amount": "1500.00",
+        }
+        with patch(
+            "app.api.v1.endpoints.assets._next_asset_code",
+            return_value="AST-2026-00001",
+        ):
+            response = client.post("/api/v1/assets", json=payload, headers=auth_headers(manager))
+        assert response.status_code == 409
+
+    def test_returns_503_on_db_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        payload = {
+            "name": "Business Laptop",
+            "model": "Dell Latitude 7440",
+            "category": "computer",
+            "supplier": "Dell",
+            "purchase_date": "2026-01-01",
+            "purchase_amount": "1500.00",
+        }
+        with patch.object(db_session, "flush", side_effect=SQLAlchemyError("DB error")):
+            response = client.post("/api/v1/assets", json=payload, headers=auth_headers(manager))
+        assert response.status_code == 503
 
 
 class TestGetAsset:
@@ -443,6 +525,54 @@ class TestUpdateAsset:
         assert data["location"] == ""
         assert data["department"] == ""
 
+    def test_returns_404_for_missing_asset(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        response = client.patch(
+            "/api/v1/assets/00000000-0000-0000-0000-000000000000",
+            json={"location": "Kaohsiung", "version": 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_rejects_warranty_expiry_before_stored_purchase_date(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)  # purchase_date = 2026-01-01
+
+        response = client.patch(
+            f"/api/v1/assets/{asset.id}",
+            json={"warranty_expiry": "2025-12-31", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_returns_503_on_db_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+        with patch.object(db_session, "commit", side_effect=SQLAlchemyError("DB error")):
+            response = client.patch(
+                f"/api/v1/assets/{asset.id}",
+                json={"location": "Kaohsiung", "version": asset.version},
+                headers=auth_headers(manager),
+            )
+        assert response.status_code == 503
+
 
 class TestAssetCreateSchema:
     def test_empty_name_raises_validation_error(self) -> None:
@@ -484,3 +614,26 @@ class TestAssetCreateSchema:
         )
         assert asset.name == "Business Laptop"
         assert asset.purchase_amount == Decimal("1500.00")
+
+    def test_future_purchase_date_raises_validation_error(self) -> None:
+        with pytest.raises(ValidationError):
+            AssetCreate(
+                name="Laptop",
+                model="Dell Latitude 7440",
+                category="computer",
+                supplier="Dell",
+                purchase_date=date(9999, 1, 1),
+                purchase_amount=Decimal("1500.00"),
+            )
+
+    def test_warranty_expiry_before_purchase_date_raises_validation_error(self) -> None:
+        with pytest.raises(ValidationError):
+            AssetCreate(
+                name="Laptop",
+                model="Dell Latitude 7440",
+                category="computer",
+                supplier="Dell",
+                purchase_date=_PURCHASE_DATE,
+                purchase_amount=Decimal("1500.00"),
+                warranty_expiry=date(2025, 12, 31),
+            )
