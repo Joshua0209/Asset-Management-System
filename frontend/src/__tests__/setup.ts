@@ -15,20 +15,21 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 });
 
-// Mock ResizeObserver for Ant Design rc-resize-observer in jsdom
+// Mock ResizeObserver for Ant Design rc-resize-observer in jsdom.
+// jsdom never fires resize events; observe/unobserve/disconnect are intentional no-ops.
 class ResizeObserverMock {
-  observe() {}
+  observe() {
+    // no-op
+  }
 
-  unobserve() {}
+  unobserve() {
+    // no-op
+  }
 
-  disconnect() {}
+  disconnect() {
+    // no-op
+  }
 }
-
-Object.defineProperty(window, 'ResizeObserver', {
-  writable: true,
-  configurable: true,
-  value: ResizeObserverMock,
-});
 
 Object.defineProperty(globalThis, 'ResizeObserver', {
   writable: true,
@@ -38,8 +39,8 @@ Object.defineProperty(globalThis, 'ResizeObserver', {
 
 // jsdom does not implement pseudo-element styles; ignore the second argument
 // so rc-table scrollbar measurement does not emit noisy not-implemented errors.
-const originalGetComputedStyle = window.getComputedStyle.bind(window);
-Object.defineProperty(window, 'getComputedStyle', {
+const originalGetComputedStyle = globalThis.getComputedStyle.bind(globalThis);
+Object.defineProperty(globalThis, 'getComputedStyle', {
   writable: true,
   configurable: true,
   value: (element: Element) => originalGetComputedStyle(element),
