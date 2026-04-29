@@ -8,7 +8,7 @@ const STORAGE_KEY = "ams-auth";
 function seedSession(role: UserRole): void {
   const session: AuthSession = {
     token: "test-token",
-    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
     user: {
       id: "u-1",
       email: role === "manager" ? "manager@example.com" : "holder@example.com",

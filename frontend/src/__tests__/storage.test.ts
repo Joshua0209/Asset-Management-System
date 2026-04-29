@@ -13,7 +13,7 @@ const STORAGE_KEY = "ams-auth";
 function makeSession(overrides: Partial<AuthSession> = {}): AuthSession {
   return {
     token: "tkn",
-    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
     user: { id: "u-1", email: "a@b.c", name: "A", role: "holder" },
     ...overrides,
   };
