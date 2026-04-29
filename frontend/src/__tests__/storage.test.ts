@@ -21,7 +21,7 @@ function makeSession(overrides: Partial<AuthSession> = {}): AuthSession {
 
 describe("auth/storage", () => {
   afterEach(() => {
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it("returns null when nothing is stored", () => {
@@ -39,23 +39,23 @@ describe("auth/storage", () => {
   it("returns null and purges storage when the session is expired", () => {
     saveSession(makeSession({ expiresAt: new Date(Date.now() - 1000).toISOString() }));
     expect(loadSession()).toBeNull();
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(globalThis.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
   it("returns null when the stored payload is malformed JSON", () => {
-    window.localStorage.setItem(STORAGE_KEY, "{not json");
+    globalThis.localStorage.setItem(STORAGE_KEY, "{not json");
     expect(loadSession()).toBeNull();
   });
 
   it("returns null when required fields are missing", () => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: "x" }));
+    globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: "x" }));
     expect(loadSession()).toBeNull();
   });
 
   it("clearSession removes the stored entry", () => {
     saveSession(makeSession());
     clearSession();
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(globalThis.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
   it("exports a stable UNAUTHORIZED_EVENT name", () => {

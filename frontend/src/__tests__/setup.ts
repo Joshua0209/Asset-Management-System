@@ -51,7 +51,7 @@ Object.defineProperty(globalThis, 'getComputedStyle', {
 const OriginalRequest = globalThis.Request;
 globalThis.Request = class extends OriginalRequest {
   constructor(input: RequestInfo | URL, init?: RequestInit) {
-    if (init && init.signal && init.signal.constructor.name === 'AbortSignal') {
+    if (init?.signal?.constructor.name === 'AbortSignal') {
       // Strip signal to avoid realm mismatch error in undici
       delete init.signal;
     }

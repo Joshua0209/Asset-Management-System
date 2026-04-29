@@ -66,12 +66,12 @@ const validSession = () => ({
 
 describe("Login page", () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
     mockLogin.mockReset();
   });
 
   afterEach(() => {
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it("submits credentials and navigates to '/' on success", async () => {
@@ -125,7 +125,7 @@ describe("Login page", () => {
 
 describe("Register page", () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
     mockLogin.mockReset();
     mockRegister.mockReset();
   });

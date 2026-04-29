@@ -35,8 +35,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Reset state when the api layer detects a 401 on an authenticated request.
   useEffect(() => {
     const handler = () => setSession(null);
-    window.addEventListener(UNAUTHORIZED_EVENT, handler);
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handler);
+    globalThis.addEventListener(UNAUTHORIZED_EVENT, handler);
+    return () => globalThis.removeEventListener(UNAUTHORIZED_EVENT, handler);
   }, []);
 
   const value = useMemo<AuthContextValue>(

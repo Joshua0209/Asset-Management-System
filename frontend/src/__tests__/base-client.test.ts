@@ -93,7 +93,7 @@ describe("request<T>", () => {
 
 describe("createApiClient interceptors", () => {
   afterEach(() => {
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it("attaches Bearer token from storage on outbound requests", async () => {
@@ -118,28 +118,30 @@ describe("createApiClient interceptors", () => {
   it("dispatches UNAUTHORIZED_EVENT when an authenticated request returns 401", async () => {
     saveSession(validSession());
     const client = createApiClient("http://test.local");
-    client.defaults.adapter = async () =>
-      Promise.reject(axiosErrorWith(401, { error: { code: "unauthorized" } }, true));
+    client.defaults.adapter = async () => {
+      throw axiosErrorWith(401, { error: { code: "unauthorized" } }, true);
+    };
 
     const handler = vi.fn();
-    window.addEventListener(UNAUTHORIZED_EVENT, handler);
+    globalThis.addEventListener(UNAUTHORIZED_EVENT, handler);
     await client.get("/x").catch(() => undefined);
-    window.removeEventListener(UNAUTHORIZED_EVENT, handler);
+    globalThis.removeEventListener(UNAUTHORIZED_EVENT, handler);
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(window.localStorage.getItem("ams-auth")).toBeNull();
+    expect(globalThis.localStorage.getItem("ams-auth")).toBeNull();
   });
 
   it("does NOT dispatch UNAUTHORIZED_EVENT for 401 on a request without a token (e.g. login)", async () => {
     // No saveSession — request goes out with no Authorization header.
     const client = createApiClient("http://test.local");
-    client.defaults.adapter = async () =>
-      Promise.reject(axiosErrorWith(401, { error: { code: "unauthorized" } }, false));
+    client.defaults.adapter = async () => {
+      throw axiosErrorWith(401, { error: { code: "unauthorized" } }, false);
+    };
 
     const handler = vi.fn();
-    window.addEventListener(UNAUTHORIZED_EVENT, handler);
+    globalThis.addEventListener(UNAUTHORIZED_EVENT, handler);
     await client.post("/auth/login").catch(() => undefined);
-    window.removeEventListener(UNAUTHORIZED_EVENT, handler);
+    globalThis.removeEventListener(UNAUTHORIZED_EVENT, handler);
 
     expect(handler).not.toHaveBeenCalled();
   });

@@ -84,7 +84,7 @@ export function createApiClient(baseURL: string = API_BASE): AxiosInstance {
       const hadAuth = Boolean(error.config?.headers?.get?.("Authorization"));
       if (error.response?.status === 401 && hadAuth) {
         clearSession();
-        window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+        globalThis.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
       }
       return Promise.reject(error);
     },

@@ -16,7 +16,7 @@ function seedSession(role: UserRole): void {
       role,
     },
   };
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
 
 function AppRoutes() {
@@ -45,7 +45,7 @@ function currentPath(): string | null {
 
 describe("App routing & auth guards", () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it("redirects an unauthenticated visitor to /login", async () => {

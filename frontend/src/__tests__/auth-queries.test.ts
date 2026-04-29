@@ -17,7 +17,7 @@ describe("api/auth/queries (mock mode)", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it("login resolves to a manager session for the seeded admin credentials", async () => {

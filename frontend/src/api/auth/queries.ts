@@ -42,7 +42,7 @@ const MOCK_USERS: ReadonlyArray<MockUserRecord> = [
 
 const MOCK_DELAY_MS = 200;
 const MOCK_SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
-const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms));
 
 function mockSessionFor(user: AuthUser): AuthSession {
   return {
@@ -104,9 +104,9 @@ export async function fetchMe(): Promise<AuthUser> {
   if (USE_MOCK_AUTH) {
     await sleep(MOCK_DELAY_MS);
     // Token is read by the request interceptor, but we mock the lookup here.
-    const token = window.localStorage.getItem("ams-auth");
+    const token = globalThis.localStorage.getItem("ams-auth");
     const match = MOCK_USERS.find(
-      (record) => token !== null && token.includes(`mock-token-${record.user.id}`),
+      (record) => token?.includes(`mock-token-${record.user.id}`) ?? false,
     );
     if (!match) throw new ApiError(401, "unauthorized", "Invalid token");
     return match.user;

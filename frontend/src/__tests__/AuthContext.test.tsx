@@ -26,12 +26,12 @@ const seededSession = (): AuthSession => ({
 
 describe("AuthContext", () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
     mockLogin.mockReset();
   });
 
   afterEach(() => {
-    window.localStorage.clear();
+    globalThis.localStorage.clear();
   });
 
   it("starts unauthenticated when no session is in storage", () => {
@@ -58,7 +58,7 @@ describe("AuthContext", () => {
     });
 
     expect(result.current.isAuthenticated).toBe(true);
-    expect(window.localStorage.getItem("ams-auth")).not.toBeNull();
+    expect(globalThis.localStorage.getItem("ams-auth")).not.toBeNull();
   });
 
   it("logout clears storage and resets the user", () => {
@@ -71,7 +71,7 @@ describe("AuthContext", () => {
     });
 
     expect(result.current.isAuthenticated).toBe(false);
-    expect(window.localStorage.getItem("ams-auth")).toBeNull();
+    expect(globalThis.localStorage.getItem("ams-auth")).toBeNull();
   });
 
   it("resets state when the api layer dispatches UNAUTHORIZED_EVENT", async () => {
@@ -80,7 +80,7 @@ describe("AuthContext", () => {
     expect(result.current.isAuthenticated).toBe(true);
 
     act(() => {
-      window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+      globalThis.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
     });
 
     await waitFor(() => expect(result.current.isAuthenticated).toBe(false));
