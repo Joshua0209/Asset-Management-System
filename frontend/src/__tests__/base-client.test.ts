@@ -98,7 +98,7 @@ describe("createApiClient interceptors", () => {
 
   it("attaches Bearer token from storage on outbound requests", async () => {
     saveSession(validSession());
-    const client = createApiClient("http://test.local");
+    const client = createApiClient("https://test.local");
     const seen: { auth?: string } = {};
     client.defaults.adapter = async (config) => {
       seen.auth = config.headers?.get("Authorization") as string | undefined;
@@ -117,7 +117,7 @@ describe("createApiClient interceptors", () => {
 
   it("dispatches UNAUTHORIZED_EVENT when an authenticated request returns 401", async () => {
     saveSession(validSession());
-    const client = createApiClient("http://test.local");
+    const client = createApiClient("https://test.local");
     client.defaults.adapter = async () => {
       throw axiosErrorWith(401, { error: { code: "unauthorized" } }, true);
     };
@@ -133,7 +133,7 @@ describe("createApiClient interceptors", () => {
 
   it("does NOT dispatch UNAUTHORIZED_EVENT for 401 on a request without a token (e.g. login)", async () => {
     // No saveSession — request goes out with no Authorization header.
-    const client = createApiClient("http://test.local");
+    const client = createApiClient("https://test.local");
     client.defaults.adapter = async () => {
       throw axiosErrorWith(401, { error: { code: "unauthorized" } }, false);
     };
