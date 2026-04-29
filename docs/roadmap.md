@@ -70,42 +70,42 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 ---
 
-## Week 2 — Auth & Core Features Start (Apr 21–25)
+## Week 2 — Auth & Core Features Start (Apr 21–25) — **Mostly Done**
 
 **Goal:** Auth works end-to-end. Asset CRUD and repair workflow APIs started. Frontend carry-over (UI library + layout shell) unblocks all feature pages.
 
 **Resources:** 2 BE + 3 FE
 
-**⚠ Carry-over risk:** UI library pick and layout shell roll in from Week 1. These must land by **Tue** — every FE feature page after that depends on them. If the UI library decision stalls past Tue, FE slips one day behind on every subsequent Week 2 task.
+**Status summary:** Backend fully delivered (PR #14): Auth + Asset CRUD + Repair Request submit/list, all with FSM validation. Frontend Week 1 carry-overs (UI library + layout shell) closed early (PR #8); asset list page landed against a mock dataset (PR #11). Three FE PRs are still in flight at end-of-week — login/register, repair submit form, auth guard — and slip into Week 3.
 
-### Backend (2 people)
+### Backend (2 people) — ✅ Done
 
-| Task | Target | Notes |
+| Task | Status | Notes |
 |------|--------|-------|
-| Auth API (register, login, JWT) | Mon–Wed | RBAC middleware: `holder` vs `manager` roles. Pydantic models for request validation. Reuse the bcrypt hashing already wired up in the seed script (11c2d43) |
-| Asset CRUD APIs (create, read, update, list) | Wed–Fri | Include pagination, basic filtering. Pydantic schemas in `backend/app/schemas/`. **Note:** `POST /assets` currently returns 501 — replace with real implementation (11c2d43) |
-| Repair Request APIs (start) | Thu–Fri | Submit + list endpoints. State machine validation server-side per `11-asset-fsm.md` |
-| Input validation + error handling | Rolling | Pydantic handles this natively in FastAPI |
+| Auth API (register, login, JWT) | ✅ Done | `POST /auth/register` (holder-only), `POST /auth/login`, `GET /auth/me`, `POST /auth/users` (manager-only); JWT HS256; RBAC deps `CurrentUser`/`ManagerUser`/`HolderUser`; 76 tests, 96% coverage |
+| Asset CRUD APIs (create, read, update, list) | ✅ Done | Pagination + basic filtering; `POST /assets` registers real assets with server-generated asset codes (replaced 501 stub from 11c2d43). Optimistic locking on update via `version` column |
+| Repair Request APIs (submit + list) | ✅ Done | Submit + list endpoints with server-side FSM validation per `11-asset-fsm.md`. Full review/approve/complete workflow rolls into Week 3 |
+| Input validation + error handling | ✅ Done | Global `HTTPException` handler returns `{"error": {"code": ..., "message": ...}}` envelope; Pydantic schemas in `app/schemas/` |
 
-### Frontend (3 people)
+### Frontend (3 people) — ⚠ Partial (3 PRs in flight at week end)
 
-| Task | Target | Owner | Notes |
+| Task | Status | Owner | Notes |
 |------|--------|-------|-------|
-| **[Carry-over]** UI library setup (Ant Design / shadcn) | Mon | FE-1 | **Blocks all other FE work.** Open decision — confirm with team. Establish component patterns, import plan, theme tokens from `13-design-tokens.md` |
-| **[Carry-over]** Layout shell: sidebar nav + header | Mon–Tue | FE-1 | Role-aware menu structure prepared but not enforced until auth exists. Replace placeholder `App.tsx` with real routing shell |
-| Login / Register pages | Tue–Wed | FE-2 | Connected to real auth API. zh-TW + en strings in `src/i18n/locales/` |
-| Auth guard + role-based routing | Wed–Thu | FE-3 | Redirect holder away from manager-only pages |
-| Asset list page (table + pagination) | Wed–Fri | FE-1 | Manager view: all assets. Holder view: own assets only |
-| Repair request: submit form | Thu–Fri | FE-2 | Asset ID input, fault description, image upload (max 5) |
+| **[Carry-over]** UI library setup | ✅ Done | FE-1 | Ant Design v6 (`antd` + `@ant-design/icons`), theme toggle via `ConfigProvider` (PR #8) |
+| **[Carry-over]** Layout shell: sidebar nav + header | ✅ Done | FE-1 | Collapsible sidebar + header + theme switch using Ant Design `Layout` (PR #8) |
+| Asset list page (table + pagination) | ✅ Done (mock data) | FE-1 | Ant Design table + client-side pagination + status tags (PR #11). **Reads from `frontend/src/mocks/assets.ts`** — wiring to real `GET /assets` API is a Week 3 carry-over |
+| Login / Register pages | ⏳ In review | FE-2 | PR #12 (`fe/auth`) — connected to real auth API, zh-TW + en strings |
+| Repair request: submit form | ⏳ In review | FE-2 | PR #13 (`fe/repair-request-submit-form`) — asset ID, fault description, image upload (max 5) |
+| Auth guard + role-based routing | ⏳ In dev | FE-3 | Branch `feature/auth-guard-role-routing`, no PR yet — redirect holder away from manager-only pages |
 
 ### Milestone: `M2 — Auth + CRUD Basics`
-- [ ] UI library picked and theme tokens wired (Week 1 carry-over closed)
-- [ ] Layout shell renders on every route (sidebar + header)
-- [ ] Login/register works end-to-end
-- [ ] Manager can register an asset
-- [ ] Holder can view own assets
-- [ ] Holder can submit a repair request
-- [ ] Role-based access enforced on FE + BE
+- [x] UI library picked and theme tokens wired (Week 1 carry-over closed)
+- [x] Layout shell renders on every route (sidebar + header)
+- [x] Manager can register an asset (backend API)
+- [ ] Login/register works end-to-end (PR #12 in review)
+- [ ] Holder can view own assets (frontend list reads from mocks; needs `/assets/mine` wiring)
+- [ ] Holder can submit a repair request (PR #13 in review)
+- [ ] Role-based access enforced on FE + BE (BE done; FE auth guard branch in dev)
 
 ---
 
@@ -114,6 +114,23 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 **Goal:** All CRUD operations and the full repair workflow work end-to-end.
 
 **Resources:** 2 BE + 3 FE
+
+**⚠ Carry-over from Week 2:** Three FE PRs are still in flight at start of Week 3 — login/register (PR #12), repair submit form (PR #13), and auth guard (`feature/auth-guard-role-routing`, no PR yet). Plus Asset List currently reads from `frontend/src/mocks/assets.ts` and needs to be wired to the real `GET /assets` API. **Schedule risk:** Week 3 originally planned 5 FE workdays; carry-over closure costs the first ~2 days, compressing the original Week 3 scope into Wed–Fri.
+
+**FE task division for Week 3 (new):** the three FE engineers split by audience and responsibility, not by feature.
+
+- **FE-1 — Manager surface owner.** Builds every page a manager interacts with: asset registration/edit, asset assignment, repair review/approve/reject, repair completion.
+- **FE-2 — Holder surface owner.** Builds every page a holder interacts with: own-assets view, asset detail, repair request list + detail, image display on repair detail.
+- **FE-3 — Integration & quality owner.** Lands the auth guard PR, performs PR review for FE-1 and FE-2, owns vitest coverage on new pages, wires shared concerns (i18n strings, error handling, loading/empty states) across the codebase, and acts as the merge coordinator to keep `main` green.
+
+### Week 2 carry-over closure (Mon–Tue, FE only)
+
+| Task | Target | Owner | Notes |
+|------|--------|-------|-------|
+| Land PR #12 — Login / Register pages | Mon | FE-2 → FE-3 reviews | FE-2 addresses review feedback; FE-3 reviews + merges. Unblocks the auth guard PR review |
+| Land PR #13 — Repair request submit form | Mon | FE-2 → FE-3 reviews | FE-2 addresses review feedback; FE-3 reviews + merges |
+| Open + land PR for auth guard + role-based routing | Mon–Tue | FE-3 (author) → FE-1 reviews | Branch `feature/auth-guard-role-routing` → PR → review → merge. Depends on #12 being merged. FE-3 authors but rotates review to FE-1 to avoid self-review |
+| Wire Asset List to real `GET /assets` API | Mon–Tue | FE-1 → FE-3 reviews | Replace `frontend/src/mocks/assets.ts` with real API call. Add `GET /assets/mine` for holder view. First real FE↔BE integration — surface contract drift early |
 
 ### Backend (2 people)
 
@@ -124,15 +141,38 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Asset assign/unassign/dispose | Thu–Fri | FSM transitions T2, T3, T5 |
 | API documentation review | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
 
-### Frontend (3 people)
+### Frontend — Wed–Fri (compressed scope, audience-split)
 
-| Task | Target | Owner | Notes |
-|------|--------|-------|-------|
-| Asset detail / create / edit pages | Mon–Wed | FE-1 | Form validation, category dropdown (2-level flat list) |
-| Repair request: list + detail pages | Mon–Wed | FE-2 | Status badges, timeline view of workflow stages |
-| Manager: review/approve/reject UI | Wed–Thu | FE-3 | Approve → fill repair details form. Reject → confirm dialog |
-| Manager: complete repair UI | Thu–Fri | FE-3 | Fill repair date, content, plan, cost, vendor → mark complete |
-| Image display on repair detail page | Thu–Fri | FE-2 | Thumbnail grid, click to enlarge |
+#### FE-1 — Manager pages
+
+| Task | Target | Notes |
+|------|--------|-------|
+| Asset create / edit pages | Wed–Thu | Form validation, category dropdown (2-level flat list), purchase amount + warranty expiry validation matching backend Pydantic schema |
+| Asset assign / unassign UI | Thu | FSM transitions T2/T3 — manager picks holder from user list, sets assignment date |
+| Asset dispose flow | Thu | FSM transition T5 — confirm dialog with reason; status → `disposed` |
+| Repair review/approve/reject UI | Thu–Fri | Approve → fill repair plan form (vendor, planned cost, planned date). Reject → confirm dialog with reason. Drives FSM `pending_review → under_repair` or `pending_review → rejected` |
+| Repair complete UI | Fri | Fill repair date, content, actual cost, vendor → mark complete. Drives FSM `under_repair → completed` |
+
+#### FE-2 — Holder pages
+
+| Task | Target | Notes |
+|------|--------|-------|
+| Asset detail page | Wed | Read-only view of asset metadata; manager view (FE-1) enables edit/assign actions, holder view shows own-asset detail only |
+| My assets list (holder view) | Wed | Wraps the same table component as the shared list page but reads from `GET /assets/mine` |
+| Repair request list page | Wed–Thu | Status badges, sortable columns. Manager sees all; holder sees own only — same component, role-aware filter |
+| Repair request detail page | Thu–Fri | Timeline view of workflow stages, status transitions, manager comments |
+| Image display on repair detail page | Fri | Thumbnail grid, click-to-enlarge modal. **Risk:** depends on backend image upload endpoint landing Wed–Thu — fall back to placeholder thumbnails using mock URLs if BE slips, real wiring lands first thing W4 |
+
+#### FE-3 — Integration & quality
+
+| Task | Target | Notes |
+|------|--------|-------|
+| PR review for FE-1 and FE-2 work | Rolling | Same-day turnaround on PR review to keep FE-1/FE-2 unblocked. Owns the "PR review SLA" for the FE side this week |
+| Merge coordination | Rolling | Resolve merge conflicts between FE-1/FE-2 branches (likely on shared layout, routing, i18n keys). Keep `main` green |
+| vitest coverage on new pages | Wed–Fri | Each new page ships with at least one render test + one role-gating test. Target: maintain ≥ 80% FE coverage as new pages land |
+| i18n keys (zh-TW + en) for all new pages | Rolling | Audit `src/i18n/locales/` after each PR merges; no hardcoded user-facing strings |
+| Cross-cutting UX: loading, empty, error states | Thu–Fri | Consistent patterns across manager + holder pages. Hooks into Ant Design's `Spin`, `Empty`, `notification` |
+| Optional: integration smoke test against real backend | Fri | If schedule allows, manual run-through of the 3 critical flows (manager registers asset, holder submits repair, manager completes) end-to-end before week close |
 
 ### Milestone: `M3 — Feature Complete (Core)`
 - [ ] Manager can register asset, assign to holder
@@ -305,9 +345,9 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
         ─────   ─────   ─────   ─────   ─────   ─────   ──────
 BE-1    [setup ] [auth ] [APIs ] [search] [infra] [monit] [fixes]
 BE-2    [CI    ] [CRUD ] [APIs ] [audit ] [infra] [load ] [pres ]
-FE-1    [setup ] [asset] [asset] [i18n  ] [test ] [pres ] [pres ]
-FE-2    [setup ] [repair][repair][filter] [bugs ] [pres ] [pres ]
-FE-3    [i18n  ] [guard] [mgr  ] [polish] [QA/e2e][demo] [pres ]
+FE-1    [setup ] [asset] [mgr  ] [i18n  ] [test ] [pres ] [pres ]
+FE-2    [setup ] [repair][hold ] [filter] [bugs ] [pres ] [pres ]
+FE-3    [i18n  ] [guard] [ops  ] [polish] [QA/e2e][demo] [pres ]
 
 Legend:
   setup  = project setup, scaffold
@@ -315,9 +355,11 @@ Legend:
   auth   = auth API (register, login, JWT, RBAC)
   CRUD   = asset CRUD endpoints
   APIs   = repair workflow + image upload + remaining endpoints
-  asset  = asset management pages
-  repair = repair request pages
-  mgr    = manager approval/completion UI
+  asset  = asset management pages (W2: list page)
+  repair = repair request pages (W2: submit form)
+  mgr    = manager pages (asset create/edit/assign/dispose, repair review/approve/complete)
+  hold   = holder pages (asset detail, my-assets, repair list/detail, image display)
+  ops    = integration & quality (PR review, merge coord, vitest coverage, i18n, UX states)
   guard  = auth guard, role-based routing
   search = multi-dimensional search API
   filter = search/filter UI
@@ -341,7 +383,9 @@ Legend:
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| **UI library decision stalls past W2 Mon** | Medium | High | Open team decision. If undecided by Mon EOD, FE-1 picks shadcn (smaller footprint, easier to swap) and team can override in W3. Layout shell unblocks all W2 feature pages |
+| **3 FE PRs from Week 2 carry into Week 3 (#12, #13, auth guard)** | Active | Medium | Land all three by Tue EOD via Mon–Tue carry-over closure block. If auth guard PR slips past Tue, FE-3's manager UI (Wed–Thu) starts unblocked behind a feature flag and merges after auth guard lands |
+| **Image display on repair detail page slips into Week 4** | Medium | Low | Backend image upload depends on Wed–Thu work; FE display task on Fri. If BE slips, FE renders placeholder thumbnails using mock URLs; real wiring lands first thing W4 |
+| ~~UI library decision stalls past W2 Mon~~ | ~~Medium~~ Resolved | ~~High~~ | Closed in PR #8 — Ant Design v6 picked, layout shell shipped |
 | FastAPI/SQLAlchemy ramp-up slows Week 1 | ~~Medium~~ Resolved | ~~High~~ | Backend landed on schedule (a0dfd95). No further action |
 | AWS setup takes longer than expected | Medium | Medium | Start Docker in W5 Mon. If AWS delays, demo on local Docker Compose |
 | Integration bugs pile up in W3–W4 | High | Medium | FE/BE pair-test each API as it's built in W2–W3. Don't wait until W4 |
