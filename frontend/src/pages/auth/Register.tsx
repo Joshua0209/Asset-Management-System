@@ -1,107 +1,115 @@
-import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, Select, message } from 'antd';
-import { UserOutlined, LockOutlined, MailOutlined, BankOutlined } from '@ant-design/icons';
-import { useTranslation } from 'react-i18next';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { RegisterRequest } from '../../api/types';
-import { AxiosError } from 'axios';
+import React, { useState } from "react";
+import { Alert, Button, Card, Form, Input, Space, Typography } from "antd";
+import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { useAuth } from "../../auth/AuthContext";
+import { ApiError, authApi } from "../../api";
+import { LanguageSwitcher } from "../../components/LanguageSwitcher";
 
-const { Title, Text } = Typography;
-const { Option } = Select;
+interface RegisterFormValues {
+  name: string;
+  department: string;
+  email: string;
+  password: string;
+}
+
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_POLICY_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
 
 const Register: React.FC = () => {
   const { t } = useTranslation();
-  const { register } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const onFinish = async (values: RegisterRequest) => {
-    setLoading(true);
+  const handleFinish = async (values: RegisterFormValues) => {
+    setError(null);
+    setSubmitting(true);
     try {
-      await register(values);
-      message.success(t('auth.register.registerSuccess'));
-      navigate('/auth/login');
-    } catch (error) {
-      const axiosError = error as AxiosError<{ error: { message: string } }>;
-      message.error(axiosError.response?.data?.error?.message || t('errors.validationError'));
+      await authApi.register(values);
+      await login(values.email, values.password);
+      navigate("/", { replace: true });
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setError(e.message);
+      } else {
+        setError(t("errors.serverError"));
+      }
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)', padding: '20px 0' }}>
-      <Card style={{ width: 450, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <Title level={2}>{t('auth.register.title')}</Title>
-          <Text type="secondary">{t('auth.register.subtitle')}</Text>
-        </div>
-        <Form
-          name="register"
-          onFinish={onFinish}
-          layout="vertical"
-          size="large"
-          initialValues={{ role: 'holder' }}
-        >
-          <Form.Item
-            name="name"
-            label={t('auth.register.name')}
-            rules={[{ required: true, message: t('validation.required') }]}
-          >
-            <Input prefix={<UserOutlined />} placeholder={t('auth.register.name')} />
-          </Form.Item>
-          <Form.Item
-            name="email"
-            label={t('auth.register.email')}
-            rules={[
-              { required: true, message: t('validation.required') },
-              { type: 'email', message: t('validation.emailInvalid') }
-            ]}
-          >
-            <Input prefix={<MailOutlined />} placeholder={t('auth.register.email')} />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            label={t('auth.register.password')}
-            rules={[
-              { required: true, message: t('validation.required') },
-              { min: 8, message: t('validation.passwordMinLength') },
-              {
-                pattern: /^(?=.*[A-Za-z])(?=.*\d).+$/,
-                message: t('validation.passwordPattern')
-              }
-            ]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder={t('auth.register.password')} />
-          </Form.Item>
-          <Form.Item
-            name="department"
-            label={t('auth.register.department')}
-            rules={[{ required: true, message: t('validation.required') }]}
-          >
-            <Input prefix={<BankOutlined />} placeholder={t('auth.register.department')} />
-          </Form.Item>
-          <Form.Item
-            name="role"
-            label={t('auth.register.role')}
-            rules={[{ required: true, message: t('validation.required') }]}
-          >
-            <Select placeholder={t('auth.register.role')}>
-              <Option value="holder">{t('auth.register.roleHolder')}</Option>
-              <Option value="manager">{t('auth.register.roleManager')}</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
-              {t('common.button.register')}
-            </Button>
-          </Form.Item>
-          <div style={{ textAlign: 'center' }}>
-            <Text type="secondary">{t('auth.register.hasAccount')} </Text>
-            <Link to="/auth/login">{t('common.button.login')}</Link>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      <Card style={{ width: 480, maxWidth: "100%" }}>
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Typography.Title level={3} style={{ margin: 0 }}>
+              {t("auth.register.title")}
+            </Typography.Title>
+            <LanguageSwitcher />
           </div>
-        </Form>
+          {error && <Alert type="error" message={error} showIcon role="alert" />}
+          <Form<RegisterFormValues> layout="vertical" onFinish={handleFinish} disabled={submitting}>
+            <Form.Item
+              label={t("auth.register.name")}
+              name="name"
+              rules={[{ required: true, message: t("validation.required") }]}
+            >
+              <Input autoComplete="name" />
+            </Form.Item>
+            <Form.Item
+              label={t("auth.register.department")}
+              name="department"
+              rules={[{ required: true, message: t("validation.required") }]}
+            >
+              <Input autoComplete="organization" />
+            </Form.Item>
+            <Form.Item
+              label={t("auth.register.email")}
+              name="email"
+              rules={[
+                { required: true, message: t("validation.required") },
+                { type: "email", message: t("validation.emailInvalid") },
+              ]}
+            >
+              <Input autoComplete="email" />
+            </Form.Item>
+            <Form.Item
+              label={t("auth.register.password")}
+              name="password"
+              extra={t("auth.register.passwordPolicy")}
+              rules={[
+                { required: true, message: t("validation.required") },
+                { min: PASSWORD_MIN_LENGTH, message: t("auth.register.passwordPolicy") },
+                {
+                  pattern: PASSWORD_POLICY_PATTERN,
+                  message: t("auth.register.passwordPolicy"),
+                },
+              ]}
+            >
+              <Input.Password autoComplete="new-password" />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button type="primary" htmlType="submit" loading={submitting} block>
+                {t("auth.register.submit")}
+              </Button>
+            </Form.Item>
+          </Form>
+          <Typography.Text>
+            {t("auth.register.haveAccount")} <Link to="/auth/login">{t("auth.register.login")}</Link>
+          </Typography.Text>
+        </Space>
       </Card>
     </div>
   );

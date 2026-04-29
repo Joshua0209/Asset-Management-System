@@ -1,61 +1,116 @@
-import { render, screen } from "@testing-library/react";
-import App from "../App";
-import { vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation, useRoutes } from "react-router-dom";
+import { routes } from "../App";
+import type { AuthSession, UserRole } from "../api/auth";
 
-// Mock react-router-dom to use memory router in tests
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
-  return {
-    ...actual,
-    createBrowserRouter: actual.createMemoryRouter,
+const STORAGE_KEY = "ams-auth";
+
+function seedSession(role: UserRole): void {
+  const session: AuthSession = {
+    token: "test-token",
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    user: {
+      id: "u-1",
+      email: role === "manager" ? "manager@example.com" : "holder@example.com",
+      name: role === "manager" ? "Manager One" : "Holder One",
+      role,
+    },
   };
-});
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+}
 
-// Mock the AuthContext
-vi.mock("../contexts/AuthContext", async () => {
-  const actual = await vi.importActual("../contexts/AuthContext");
-  return {
-    ...actual,
-    useAuth: () => ({
-      user: { id: "1", name: "Test User", role: "manager" },
-      isAuthenticated: true,
-      isLoading: false,
-      login: vi.fn(),
-      register: vi.fn(),
-      logout: vi.fn(),
-    }),
-    AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  };
-});
+function AppRoutes() {
+  return useRoutes(routes);
+}
 
-// Mock react-i18next partially
-vi.mock("react-i18next", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-i18next")>();
-  return {
-    ...actual,
-    useTranslation: () => ({
-      t: (key: string) => key,
-      i18n: {
-        changeLanguage: () => Promise.resolve(),
-        language: "en",
-      },
-    }),
-  };
-});
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="current-path">{location.pathname}</span>;
+}
 
-describe("App", () => {
-  it("renders the sidebar menu items", async () => {
-    render(<App />);
-    // Since we mocked t to return the key, we check for keys
-    // Using findBy to handle async rendering and avoid act() warnings
-    expect(await screen.findByRole("menuitem", { name: /common.nav.dashboard/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /common.nav.assets/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /common.nav.repairs/i })).toBeInTheDocument();
+async function renderAt(path: string): Promise<void> {
+  await act(async () => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <LocationProbe />
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+  });
+}
+
+function currentPath(): string | null {
+  return screen.getByTestId("current-path").textContent;
+}
+
+describe("App routing & auth guards", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
   });
 
-  it("renders the language switcher", async () => {
-    render(<App />);
-    expect(await screen.findByText("中")).toBeInTheDocument();
-    expect(screen.getByText("EN")).toBeInTheDocument();
+  it("redirects an unauthenticated visitor to /login", async () => {
+    await renderAt("/");
+    await waitFor(() => expect(currentPath()).toBe("/auth/login"));
+    expect(screen.getByRole("heading", { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("redirects a manager landing to /dashboard and shows the dashboard", async () => {
+    seedSession("manager");
+    await renderAt("/");
+    await waitFor(() => expect(currentPath()).toBe("/dashboard"));
+    expect(screen.getByRole("heading", { name: /dashboard/i })).toBeInTheDocument();
+  });
+
+  it("redirects a holder landing to /assets", async () => {
+    seedSession("holder");
+    await renderAt("/");
+    await waitFor(() => expect(currentPath()).toBe("/assets"));
+    expect(screen.getByRole("heading", { name: /asset list/i })).toBeInTheDocument();
+  });
+
+  it("blocks holder from manager-only /reviews and routes to /forbidden", async () => {
+    seedSession("holder");
+    await renderAt("/reviews");
+    await waitFor(() => expect(currentPath()).toBe("/forbidden"));
+    expect(screen.getByText(/access denied/i)).toBeInTheDocument();
+  });
+
+  it("blocks holder from manager-only /dashboard and routes to /forbidden", async () => {
+    seedSession("holder");
+    await renderAt("/dashboard");
+    await waitFor(() => expect(currentPath()).toBe("/forbidden"));
+  });
+
+  it("renders role-filtered sidebar items for manager", async () => {
+    seedSession("manager");
+    await renderAt("/dashboard");
+    expect(screen.getByRole("menuitem", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /assets/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /reviews/i })).toBeInTheDocument();
+  });
+
+  it("hides manager-only sidebar items for holder", async () => {
+    seedSession("holder");
+    await renderAt("/assets");
+    expect(screen.queryByRole("menuitem", { name: /dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /reviews/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /assets/i })).toBeInTheDocument();
+  });
+
+  it("redirects an authenticated user away from /auth/login to their landing", async () => {
+    seedSession("manager");
+    await renderAt("/auth/login");
+    await waitFor(() => expect(currentPath()).toBe("/dashboard"));
+  });
+
+  it("redirects an unknown path to /auth/login when unauthenticated", async () => {
+    await renderAt("/login");
+    await waitFor(() => expect(currentPath()).toBe("/auth/login"));
+  });
+
+  it("redirects an unknown path to the role landing when authenticated", async () => {
+    seedSession("holder");
+    await renderAt("/login");
+    await waitFor(() => expect(currentPath()).toBe("/assets"));
   });
 });
