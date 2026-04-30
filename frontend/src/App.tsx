@@ -5,6 +5,7 @@ import MainLayout from './components/layout/MainLayout';
 import Dashboard from './pages/Dashboard';
 import AssetList from './pages/AssetList';
 import Reviews from './pages/Reviews';
+import SubmitRepairRequest from './pages/SubmitRepairRequest';
 
 // Initialize i18n
 import './i18n';
@@ -46,6 +47,10 @@ const router = createBrowserRouter([
       {
         path: 'reviews',
         element: <Reviews />,
+      },
+      {
+        path: 'repairs/new',
+        element: <SubmitRepairRequest />,
       },
     ],
   },
