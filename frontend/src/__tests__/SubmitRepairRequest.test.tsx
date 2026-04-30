@@ -16,7 +16,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 // Mock matchMedia for antd
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(globalThis, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation(query => ({
     matches: false,
@@ -32,9 +32,15 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Mock ResizeObserver for antd
 class ResizeObserverMock {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+  observe() {
+    // No-op
+  }
+  unobserve() {
+    // No-op
+  }
+  disconnect() {
+    // No-op
+  }
 }
 vi.stubGlobal('ResizeObserver', ResizeObserverMock);
 

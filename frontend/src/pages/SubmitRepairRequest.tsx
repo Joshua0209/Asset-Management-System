@@ -93,7 +93,7 @@ const SubmitRepairRequest: React.FC = () => {
             label={t('common.repairRequest.faultDescription')}
             rules={[
               { required: true, message: t('validation.required') },
-              { max: 1000, message: 'Max 1000 characters' }
+              { max: 1000, message: t('validation.maxLength') }
             ]}
           >
             <TextArea

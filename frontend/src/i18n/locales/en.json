@@ -32,7 +32,8 @@
   },
   "validation": {
     "required": "This field is required",
-    "emailInvalid": "Please enter a valid email"
+    "emailInvalid": "Please enter a valid email",
+    "maxLength": "Maximum 1000 characters"
   },
   "errors": {
     "unauthorized": "Please sign in again",
