@@ -89,6 +89,27 @@ class AssetUpdate(APIModel):
         return self
 
 
+class AssetAssignRequest(APIModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    responsible_person_id: str = Field(min_length=1, max_length=36)
+    version: int = Field(ge=1)
+
+
+class AssetUnassignRequest(APIModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=500)
+    version: int = Field(ge=1)
+
+
+class AssetDisposeRequest(APIModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    disposal_reason: str = Field(min_length=1, max_length=500)
+    version: int = Field(ge=1)
+
+
 class AssetPersonRead(APIModel):
     id: str
     name: str

@@ -31,7 +31,7 @@ The team adopts a new FE division for Week 3: **split by audience, not by featur
 |-------|-------|--------|-------|
 | Repair Request APIs (full workflow) | BE-1 | Mon–Wed | FSM `pending_review → under_repair → completed` and `pending_review → rejected`, all server-validated |
 | Image upload endpoint | BE-2 | Wed–Thu | Upload-through-server, local disk for now, abstracted behind a service layer for future S3 migration |
-| Asset assign / unassign / dispose | BE-2 | Thu–Fri | FSM transitions T2 (assign), T3 (unassign), T5 (dispose) |
+| Asset assign / unassign / dispose | BE-2 | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose) |
 | API documentation review | BE-1/BE-2 | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
 
 #### FE-1 — Manager pages
@@ -39,8 +39,8 @@ The team adopts a new FE division for Week 3: **split by audience, not by featur
 | Page | Target | Notes |
 |------|--------|-------|
 | Asset create / edit | Wed–Thu | Form validation, category dropdown (2-level flat list), purchase amount + warranty expiry validation matching backend Pydantic schema |
-| Asset assign / unassign | Thu | FSM T2/T3 — manager picks holder from user list, sets assignment date |
-| Asset dispose | Thu | FSM T5 — confirm dialog with reason; status → `disposed` |
+| Asset assign / unassign | Thu | FSM T2/T5 — manager picks holder from user list, sets assignment date |
+| Asset dispose | Thu | FSM T3 — confirm dialog with reason; status → `disposed` |
 | Repair review / approve / reject | Thu–Fri | Approve → fill repair plan form (vendor, planned cost, planned date). Reject → confirm dialog with reason. Drives `pending_review → under_repair` or `pending_review → rejected` |
 | Repair complete | Fri | Fill repair date, content, actual cost, vendor → mark complete. Drives `under_repair → completed` |
 
