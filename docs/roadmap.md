@@ -138,7 +138,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 |------|--------|-------|
 | Repair Request APIs (full workflow) | Mon–Wed | Complete state machine: `pending_review → under_repair → completed` and `pending_review → rejected`. All FSM transitions validated server-side |
 | Image upload endpoint | Wed–Thu | Upload-through-server. Store to local disk for now, abstract with a service layer for future S3 migration |
-| Asset assign/unassign/dispose | Thu–Fri | FSM transitions T2, T3, T5 |
+| Asset assign/unassign/dispose | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose) |
 | API documentation review | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
 
 ### Frontend — Wed–Fri (compressed scope, audience-split)
@@ -148,8 +148,8 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Task | Target | Notes |
 |------|--------|-------|
 | Asset create / edit pages | Wed–Thu | Form validation, category dropdown (2-level flat list), purchase amount + warranty expiry validation matching backend Pydantic schema |
-| Asset assign / unassign UI | Thu | FSM transitions T2/T3 — manager picks holder from user list, sets assignment date |
-| Asset dispose flow | Thu | FSM transition T5 — confirm dialog with reason; status → `disposed` |
+| Asset assign / unassign UI | Thu | FSM transitions T2/T5 — manager picks holder from user list, sets assignment date |
+| Asset dispose flow | Thu | FSM transition T3 — confirm dialog with reason; status → `disposed` |
 | Repair review/approve/reject UI | Thu–Fri | Approve → fill repair plan form (vendor, planned cost, planned date). Reject → confirm dialog with reason. Drives FSM `pending_review → under_repair` or `pending_review → rejected` |
 | Repair complete UI | Fri | Fill repair date, content, actual cost, vendor → mark complete. Drives FSM `under_repair → completed` |
 
