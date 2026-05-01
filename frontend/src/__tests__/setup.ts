@@ -45,3 +45,16 @@ Object.defineProperty(globalThis, 'getComputedStyle', {
   configurable: true,
   value: (element: Element) => originalGetComputedStyle(element),
 });
+// Fix for Vitest + React Router + JSDOM AbortSignal mismatch
+// This happens because React Router uses the global Request/Fetch which might be from Node (undici)
+// while JSDOM provides its own AbortSignal.
+const OriginalRequest = globalThis.Request;
+globalThis.Request = class extends OriginalRequest {
+  constructor(input: RequestInfo | URL, init?: RequestInit) {
+    if (init?.signal?.constructor.name === 'AbortSignal') {
+      // Strip signal to avoid realm mismatch error in undici
+      delete init.signal;
+    }
+    super(input, init);
+  }
+} as typeof OriginalRequest;
