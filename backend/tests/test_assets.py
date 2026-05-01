@@ -674,10 +674,11 @@ class TestAssignAsset:
         manager = make_user(role=UserRole.MANAGER)
         holder = make_user(role=UserRole.HOLDER, name="Alice")
         asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        current_version = asset.version
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": holder.id, "version": asset.version},
+            json={"responsible_person_id": holder.id, "version": current_version},
             headers=auth_headers(manager),
         )
 
@@ -686,7 +687,7 @@ class TestAssignAsset:
         assert data["status"] == "in_use"
         assert data["responsible_person_id"] == holder.id
         assert data["responsible_person"]["id"] == holder.id
-        assert data["version"] == asset.version + 1
+        assert data["version"] == current_version + 1
 
     def test_holder_cannot_assign(
         self,
@@ -844,7 +845,7 @@ class TestAssignAsset:
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        # Defense in depth: FSM T2 requires responsible_person_id IS NULL even when status is in_stock.
+        # FSM T2 requires responsible_person_id IS NULL even when status is in_stock.
         manager = make_user(role=UserRole.MANAGER)
         existing_holder = make_user(role=UserRole.HOLDER)
         target = make_user(role=UserRole.HOLDER)
@@ -916,10 +917,11 @@ class TestUnassignAsset:
             status=AssetStatus.IN_USE,
             responsible_person_id=holder.id,
         )
+        current_version = asset.version
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "Employee transfer", "version": asset.version},
+            json={"reason": "Employee transfer", "version": current_version},
             headers=auth_headers(manager),
         )
 
@@ -928,7 +930,7 @@ class TestUnassignAsset:
         assert data["status"] == "in_stock"
         assert data["responsible_person_id"] is None
         assert data["responsible_person"] is None
-        assert data["version"] == asset.version + 1
+        assert data["version"] == current_version + 1
 
     def test_holder_cannot_unassign(
         self,
@@ -1206,12 +1208,13 @@ class TestDisposeAsset:
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
         asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        current_version = asset.version
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/dispose",
             json={
                 "disposal_reason": "End of life — exceeded warranty",
-                "version": asset.version,
+                "version": current_version,
             },
             headers=auth_headers(manager),
         )
@@ -1220,7 +1223,7 @@ class TestDisposeAsset:
         data = response.json()["data"]
         assert data["status"] == "disposed"
         assert data["disposal_reason"] == "End of life — exceeded warranty"
-        assert data["version"] == asset.version + 1
+        assert data["version"] == current_version + 1
 
     def test_holder_cannot_dispose(
         self,
