@@ -2,18 +2,19 @@ import logging
 import math
 import re
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm.interfaces import ORMOption
 
-from app.api.deps import CurrentUser, HolderUser
+from app.api.deps import CurrentUser, HolderUser, ManagerUser
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.asset import Asset, AssetStatus
@@ -21,7 +22,14 @@ from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import UserRole
 from app.schemas.common import DataResponse, PaginatedListResponse, PaginationMeta
-from app.schemas.repair_request import RepairRequestCreate, RepairRequestRead
+from app.schemas.repair_request import (
+    RepairRequestComplete,
+    RepairRequestCreate,
+    RepairRequestDetailsUpdate,
+    RepairRequestRead,
+    RepairRequestReject,
+    RepairRequestVersionPayload,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,6 +89,75 @@ def _repair_options() -> tuple[ORMOption, ...]:
         joinedload(RepairRequest.reviewer),
         joinedload(RepairRequest.images),
     )
+
+
+def _repair_query() -> Select[tuple[RepairRequest]]:
+    return select(RepairRequest).options(*_repair_options())
+
+
+def _get_repair_request(db: Session, repair_request_id: str) -> RepairRequest:
+    repair_request = db.scalar(
+        _repair_query().where(
+            RepairRequest.id == repair_request_id,
+            RepairRequest.deleted_at.is_(None),
+        )
+    )
+    if repair_request is None:
+        raise _not_found("Repair request not found.")
+    return repair_request
+
+
+def _ensure_request_version(repair_request: RepairRequest, version: int) -> None:
+    if repair_request.version != version:
+        raise _conflict(
+            "Repair request was modified by another user. Please refresh and try again."
+        )
+
+
+def _ensure_asset_status(
+    repair_request: RepairRequest,
+    expected_status: AssetStatus,
+    message: str,
+) -> Asset:
+    asset = repair_request.asset
+    if asset is None or asset.deleted_at is not None:
+        raise _not_found("Asset not found.")
+    if asset.status is not expected_status:
+        raise _conflict(message)
+    return cast(Asset, asset)
+
+
+def _ensure_request_status(
+    repair_request: RepairRequest,
+    expected_status: RepairRequestStatus,
+    message: str,
+) -> None:
+    if repair_request.status is not expected_status:
+        raise _conflict(message)
+
+
+def _commit_repair_change(
+    db: Session,
+    repair_request: RepairRequest,
+    log_context: str,
+) -> DataResponse[RepairRequestRead]:
+    try:
+        db.commit()
+        db.refresh(repair_request)
+        return DataResponse(data=RepairRequestRead.model_validate(repair_request))
+    except StaleDataError as exc:
+        db.rollback()
+        logger.warning("%s conflict: %s", log_context, exc)
+        raise _conflict(
+            "Repair request was modified by another user. Please refresh and try again."
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("%s failed: %s", log_context, exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to update repair request. Please try again later.",
+        ) from exc
 
 
 def _parse_content_disposition(value: str) -> dict[str, str]:
@@ -318,6 +395,156 @@ def list_repair_requests(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to retrieve repair requests. Please try again later.",
         ) from exc
+
+
+@router.get("/{repair_request_id}", summary="Get repair request")
+def get_repair_request(
+    repair_request_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[RepairRequestRead]:
+    try:
+        repair_request = _get_repair_request(db, repair_request_id)
+        if (
+            current_user.role is UserRole.HOLDER
+            and repair_request.requester_id != current_user.id
+        ):
+            raise _forbidden("You do not have access to this repair request.")
+        return DataResponse(data=RepairRequestRead.model_validate(repair_request))
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        logger.error(
+            "Failed to get repair request %s: %s",
+            repair_request_id,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to retrieve repair request. Please try again later.",
+        ) from exc
+
+
+@router.post("/{repair_request_id}/approve", summary="Approve repair request")
+def approve_repair_request(
+    repair_request_id: str,
+    payload: RepairRequestVersionPayload,
+    db: DbSession,
+    manager: ManagerUser,
+) -> DataResponse[RepairRequestRead]:
+    try:
+        repair_request = _get_repair_request(db, repair_request_id)
+        _ensure_request_version(repair_request, payload.version)
+        _ensure_request_status(
+            repair_request,
+            RepairRequestStatus.PENDING_REVIEW,
+            "Only pending-review repair requests can be approved.",
+        )
+        asset = _ensure_asset_status(
+            repair_request,
+            AssetStatus.PENDING_REPAIR,
+            "Associated asset must be pending repair before approval.",
+        )
+
+        repair_request.status = RepairRequestStatus.UNDER_REPAIR
+        repair_request.reviewer = manager
+        asset.status = AssetStatus.UNDER_REPAIR
+        return _commit_repair_change(db, repair_request, "Repair request approval")
+    except HTTPException:
+        db.rollback()
+        raise
+
+
+@router.post("/{repair_request_id}/reject", summary="Reject repair request")
+def reject_repair_request(
+    repair_request_id: str,
+    payload: RepairRequestReject,
+    db: DbSession,
+    manager: ManagerUser,
+) -> DataResponse[RepairRequestRead]:
+    try:
+        repair_request = _get_repair_request(db, repair_request_id)
+        _ensure_request_version(repair_request, payload.version)
+        _ensure_request_status(
+            repair_request,
+            RepairRequestStatus.PENDING_REVIEW,
+            "Only pending-review repair requests can be rejected.",
+        )
+        asset = _ensure_asset_status(
+            repair_request,
+            AssetStatus.PENDING_REPAIR,
+            "Associated asset must be pending repair before rejection.",
+        )
+
+        repair_request.status = RepairRequestStatus.REJECTED
+        repair_request.rejection_reason = payload.rejection_reason
+        repair_request.reviewer = manager
+        asset.status = AssetStatus.IN_USE
+        return _commit_repair_change(db, repair_request, "Repair request rejection")
+    except HTTPException:
+        db.rollback()
+        raise
+
+
+@router.patch("/{repair_request_id}/repair-details", summary="Fill repair details")
+def update_repair_details(
+    repair_request_id: str,
+    payload: RepairRequestDetailsUpdate,
+    db: DbSession,
+    _manager: ManagerUser,
+) -> DataResponse[RepairRequestRead]:
+    try:
+        repair_request = _get_repair_request(db, repair_request_id)
+        _ensure_request_version(repair_request, payload.version)
+        _ensure_request_status(
+            repair_request,
+            RepairRequestStatus.UNDER_REPAIR,
+            "Repair details can only be updated while the request is under repair.",
+        )
+
+        update_data = payload.model_dump(exclude={"version"}, exclude_unset=True)
+        for field_name, value in update_data.items():
+            setattr(repair_request, field_name, value)
+        return _commit_repair_change(db, repair_request, "Repair details update")
+    except HTTPException:
+        db.rollback()
+        raise
+
+
+@router.post("/{repair_request_id}/complete", summary="Complete repair request")
+def complete_repair_request(
+    repair_request_id: str,
+    payload: RepairRequestComplete,
+    db: DbSession,
+    _manager: ManagerUser,
+) -> DataResponse[RepairRequestRead]:
+    try:
+        repair_request = _get_repair_request(db, repair_request_id)
+        _ensure_request_version(repair_request, payload.version)
+        _ensure_request_status(
+            repair_request,
+            RepairRequestStatus.UNDER_REPAIR,
+            "Only under-repair requests can be completed.",
+        )
+        asset = _ensure_asset_status(
+            repair_request,
+            AssetStatus.UNDER_REPAIR,
+            "Associated asset must be under repair before completion.",
+        )
+
+        repair_request.repair_date = payload.repair_date
+        repair_request.fault_content = payload.fault_content
+        repair_request.repair_plan = payload.repair_plan
+        repair_request.repair_cost = payload.repair_cost
+        repair_request.repair_vendor = payload.repair_vendor
+        repair_request.completed_at = datetime.now(UTC)
+        repair_request.status = RepairRequestStatus.COMPLETED
+        asset.status = AssetStatus.IN_USE
+        return _commit_repair_change(db, repair_request, "Repair request completion")
+    except HTTPException:
+        db.rollback()
+        raise
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Submit repair request")

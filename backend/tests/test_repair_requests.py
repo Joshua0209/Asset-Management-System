@@ -14,6 +14,7 @@ from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
 
 _PURCHASE_DATE = date(2026, 1, 1)
+_REPAIR_DATE = date(2026, 4, 20)
 
 
 def _make_asset(
@@ -42,6 +43,27 @@ def _make_asset(
     session.add(asset)
     session.flush()
     return asset
+
+
+def _make_repair_request(
+    session: Session,
+    asset: Asset,
+    requester: User,
+    *,
+    status: RepairRequestStatus = RepairRequestStatus.PENDING_REVIEW,
+    reviewer: User | None = None,
+    fault_description: str = "Screen flickers.",
+) -> RepairRequest:
+    repair_request = RepairRequest(
+        asset_id=asset.id,
+        requester_id=requester.id,
+        reviewer_id=reviewer.id if reviewer else None,
+        status=status,
+        fault_description=fault_description,
+    )
+    session.add(repair_request)
+    session.flush()
+    return repair_request
 
 
 class TestListRepairRequests:
@@ -258,6 +280,276 @@ class TestListRepairRequests:
             headers=auth_headers(manager),
         )
         assert response.status_code == 422
+
+
+class TestGetRepairRequest:
+    def test_manager_can_get_any_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        repair_request = _make_repair_request(db_session, asset, holder)
+        db_session.commit()
+
+        response = client.get(
+            f"/api/v1/repair-requests/{repair_request.id}",
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"]["id"] == repair_request.id
+
+    def test_holder_cannot_get_another_users_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        other_holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        repair_request = _make_repair_request(db_session, asset, holder)
+        db_session.commit()
+
+        response = client.get(
+            f"/api/v1/repair-requests/{repair_request.id}",
+            headers=auth_headers(other_holder),
+        )
+
+        assert response.status_code == 403
+
+
+class TestRepairWorkflow:
+    def test_approve_moves_request_and_asset_to_under_repair(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER, name="Manager")
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.PENDING_REPAIR)
+        repair_request = _make_repair_request(db_session, asset, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{repair_request.id}/approve",
+            json={"version": repair_request.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["status"] == "under_repair"
+        assert data["reviewer"] == {"id": manager.id, "name": "Manager"}
+        db_session.refresh(asset)
+        db_session.refresh(repair_request)
+        assert asset.status == AssetStatus.UNDER_REPAIR
+        assert repair_request.status == RepairRequestStatus.UNDER_REPAIR
+        assert repair_request.reviewer_id == manager.id
+
+    def test_reject_moves_request_to_rejected_and_asset_to_in_use(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.PENDING_REPAIR)
+        repair_request = _make_repair_request(db_session, asset, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{repair_request.id}/reject",
+            json={
+                "rejection_reason": "Issue could not be reproduced.",
+                "version": repair_request.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["status"] == "rejected"
+        assert data["rejection_reason"] == "Issue could not be reproduced."
+        db_session.refresh(asset)
+        db_session.refresh(repair_request)
+        assert asset.status == AssetStatus.IN_USE
+        assert repair_request.status == RepairRequestStatus.REJECTED
+
+    def test_repair_details_updates_metadata_without_changing_status(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.UNDER_REPAIR)
+        repair_request = _make_repair_request(
+            db_session,
+            asset,
+            holder,
+            status=RepairRequestStatus.UNDER_REPAIR,
+            reviewer=manager,
+        )
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{repair_request.id}/repair-details",
+            json={
+                "repair_date": _REPAIR_DATE.isoformat(),
+                "fault_content": "GPU connector loose.",
+                "repair_plan": "Replace GPU ribbon cable.",
+                "repair_cost": "3500.00",
+                "repair_vendor": "Apple Authorized Service",
+                "version": repair_request.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["status"] == "under_repair"
+        assert data["repair_cost"] == "3500.00"
+        db_session.refresh(asset)
+        db_session.refresh(repair_request)
+        assert asset.status == AssetStatus.UNDER_REPAIR
+        assert repair_request.status == RepairRequestStatus.UNDER_REPAIR
+
+    def test_complete_moves_request_to_completed_and_asset_to_in_use(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.UNDER_REPAIR)
+        repair_request = _make_repair_request(
+            db_session,
+            asset,
+            holder,
+            status=RepairRequestStatus.UNDER_REPAIR,
+            reviewer=manager,
+        )
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{repair_request.id}/complete",
+            json={
+                "repair_date": _REPAIR_DATE.isoformat(),
+                "fault_content": "GPU connector loose.",
+                "repair_plan": "Replaced GPU ribbon cable.",
+                "repair_cost": "3500.00",
+                "repair_vendor": "Apple Authorized Service",
+                "version": repair_request.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["status"] == "completed"
+        assert data["completed_at"] is not None
+        db_session.refresh(asset)
+        db_session.refresh(repair_request)
+        assert asset.status == AssetStatus.IN_USE
+        assert repair_request.status == RepairRequestStatus.COMPLETED
+        assert asset.responsible_person_id == holder.id
+
+    def test_reject_requires_asset_to_still_be_pending_repair(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.IN_USE)
+        repair_request = _make_repair_request(db_session, asset, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{repair_request.id}/reject",
+            json={"rejection_reason": "No issue found.", "version": repair_request.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        db_session.refresh(asset)
+        db_session.refresh(repair_request)
+        assert asset.status == AssetStatus.IN_USE
+        assert repair_request.status == RepairRequestStatus.PENDING_REVIEW
+
+    def test_complete_rejects_stale_request_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.UNDER_REPAIR)
+        repair_request = _make_repair_request(
+            db_session,
+            asset,
+            holder,
+            status=RepairRequestStatus.UNDER_REPAIR,
+        )
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{repair_request.id}/complete",
+            json={
+                "repair_date": _REPAIR_DATE.isoformat(),
+                "fault_content": "GPU connector loose.",
+                "repair_plan": "Replaced GPU ribbon cable.",
+                "repair_cost": "3500.00",
+                "repair_vendor": "Apple Authorized Service",
+                "version": repair_request.version + 1,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        db_session.refresh(asset)
+        db_session.refresh(repair_request)
+        assert asset.status == AssetStatus.UNDER_REPAIR
+        assert repair_request.status == RepairRequestStatus.UNDER_REPAIR
+
+    def test_holder_cannot_approve_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.PENDING_REPAIR)
+        repair_request = _make_repair_request(db_session, asset, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{repair_request.id}/approve",
+            json={"version": repair_request.version},
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 403
 
 
 class TestSubmitRepairRequest:

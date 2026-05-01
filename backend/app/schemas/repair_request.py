@@ -32,6 +32,38 @@ class RepairRequestCreate(APIModel):
     version: int | None = Field(default=None, ge=1)
 
 
+class RepairRequestVersionPayload(APIModel):
+    version: int = Field(ge=1)
+
+
+class RepairRequestReject(APIModel):
+    rejection_reason: str = Field(min_length=1, max_length=500)
+    version: int = Field(ge=1)
+
+
+class RepairRequestDetailsUpdate(APIModel):
+    repair_date: date | None = None
+    fault_content: str | None = Field(default=None, max_length=1000)
+    repair_plan: str | None = Field(default=None, max_length=1000)
+    repair_cost: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=15,
+        decimal_places=2,
+    )
+    repair_vendor: str | None = Field(default=None, max_length=200)
+    version: int = Field(ge=1)
+
+
+class RepairRequestComplete(APIModel):
+    repair_date: date
+    fault_content: str = Field(min_length=1, max_length=1000)
+    repair_plan: str = Field(min_length=1, max_length=1000)
+    repair_cost: Decimal = Field(ge=0, max_digits=15, decimal_places=2)
+    repair_vendor: str = Field(min_length=1, max_length=200)
+    version: int = Field(ge=1)
+
+
 class RepairRequestRead(APIModel):
     id: str
     asset_id: str
