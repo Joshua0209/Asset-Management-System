@@ -159,7 +159,7 @@ describe("mocks/mockBackend", () => {
 
     const stockAsset = backend
       .listAssets({ status: "in_stock", page: 1, perPage: 1 })
-      .data.at(0);
+      .data[0];
     expect(stockAsset).toBeTruthy();
 
     expect(() =>
@@ -176,7 +176,7 @@ describe("mocks/mockBackend", () => {
       }),
     ).toThrow();
 
-    const inUseAsset = backend.listAssets({ status: "in_use", page: 1, perPage: 1 }).data.at(0);
+    const inUseAsset = backend.listAssets({ status: "in_use", page: 1, perPage: 1 }).data[0];
     expect(inUseAsset).toBeTruthy();
 
     expect(() =>
@@ -234,7 +234,7 @@ describe("mocks/mockBackend", () => {
 
     const pending = backend
       .listRepairRequests({ status: "pending_review", page: 1, perPage: 1 })
-      .data.at(0);
+      .data[0];
     expect(pending).toBeTruthy();
 
     const approved = backend.approveRepairRequest(pending!.id, {
@@ -279,7 +279,7 @@ describe("mocks/mockBackend", () => {
 
     const pending = backend
       .listRepairRequests({ status: "pending_review", page: 1, perPage: 1 })
-      .data.at(0);
+      .data[0];
     expect(pending).toBeTruthy();
 
     const rejected = backend.rejectRepairRequest(pending!.id, {
@@ -296,7 +296,7 @@ describe("mocks/mockBackend", () => {
 
     const completed = backend
       .listRepairRequests({ status: "completed", page: 1, perPage: 1 })
-      .data.at(0);
+      .data[0];
     expect(completed).toBeTruthy();
 
     expect(() =>

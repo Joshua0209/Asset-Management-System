@@ -57,7 +57,7 @@ function buildResponse(
   assetCode: string,
   assetName: string,
   total: number,
-  status: "in_stock" | "in_use" = "in_use",
+  status: "in_stock" | "in_use" | "disposed" = "in_use",
 ) {
   return {
     data: [
