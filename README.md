@@ -6,11 +6,42 @@ Course project for a cloud computing / software engineering class. The repositor
 - `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
 
-## Status (as of Wed of Week 3, 2026-04-29)
+## Status (as of Week 3 implementation branch, 2026-05-02)
 
 **Weeks 1 & 2 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud), Auth API, Asset CRUD, Repair Request submit/list, Ant Design UI shell, asset list page (mock data), and the i18n framework all shipped. See [docs/roadmap.md](docs/roadmap.md) for the full retrospective.
 
-**Currently working on Week 3 — Core Features Complete (Apr 28 – May 2).** Goal: full repair workflow + all CRUD pages working end-to-end. Week 2 frontend carry-over entered Week 3; PR #12, PR #13, and auth guard/routing are completed after review, while Asset List API wiring remains open.
+**Currently working on Week 3 — Core Features Complete (Apr 28 – May 2).** Goal: full repair workflow + all CRUD pages working end-to-end. Week 2 frontend carry-over is closed in the frontend branch: auth pages + routing are merged, and Asset List is API-backed with role-aware behavior.
+
+### Week 3 implementation phase update (FE-1 branch)
+
+This branch is implemented in two delivery phases:
+
+1. **Phase 1 — API foundation (completed)**
+    - Added API domains for users and repair requests under `frontend/src/api/users/` and `frontend/src/api/repair-requests/`.
+    - Extended assets APIs for manager actions (`create`, `update`, `assign`, `unassign`, `dispose`) under `frontend/src/api/assets/`.
+    - Added a shared mode-aware mock runtime (`frontend/src/mocks/mockBackend.ts`) so behavior is consistent when `VITE_USE_MOCK_AUTH=true`.
+    - Added focused tests for new API modules.
+2. **Phase 2 — Manager workflow pages (completed)**
+    - Implemented manager asset operations directly in `frontend/src/pages/AssetList.tsx` (create/edit/assign/unassign/dispose).
+    - Implemented repair review workflow in `frontend/src/pages/Reviews.tsx` (approve/reject/update details/complete).
+    - Added bilingual i18n keys (en + zh-TW) and updated UI tests.
+
+Validation on this branch:
+- `npm run typecheck` passes.
+- `npm test` passes.
+- New and updated tests cover API and manager UI flows.
+
+Commit-by-commit summary on this branch:
+
+1. `b810534` — **Phase 1 API foundation**
+    - Added users and repair-requests API domains.
+    - Extended assets API with manager actions (create/update/assign/unassign/dispose).
+    - Added shared mock runtime (`frontend/src/mocks/mockBackend.ts`) for mock mode parity.
+    - Added API-focused tests.
+2. `62262d5` — **Phase 2 manager workflows**
+    - Implemented manager asset workflows in `frontend/src/pages/AssetList.tsx`.
+    - Implemented repair review workflows in `frontend/src/pages/Reviews.tsx`.
+    - Added/updated i18n keys and related UI tests.
 
 ### Week 3 carry-over closure (Mon–Tue, FE only)
 
@@ -19,12 +50,12 @@ Course project for a cloud computing / software engineering class. The repositor
 | Land PR [#12](https://github.com/Joshua0209/Asset-Management-System/pull/12) — Login / Register pages | ✅ Done | FE-2 → FE-3 reviews | Merged after review; connected to real auth API |
 | Land PR [#13](https://github.com/Joshua0209/Asset-Management-System/pull/13) — Repair request submit form | ✅ Done | FE-2 → FE-3 reviews | Merged after review; holder submit form available at `/repairs/new` |
 | Open + land PR for auth guard + role-based routing | ✅ Done | FE-3 → FE-1 reviews | Merged after review; role-based route protection active |
-| Wire Asset List to real `GET /assets` API | ⏳ Pending | FE-1 → FE-3 reviews | `frontend/src/pages/AssetList.tsx` still reads `frontend/src/mocks/assets.ts` (real `/assets` + `/assets/mine` wiring not landed) |
+| Wire Asset List to real `GET /assets` API | ✅ Done (branch implemented) | FE-1 → FE-3 reviews | `AssetList` now reads real `/assets` (manager) and `/assets/mine` (holder); mock runtime is used only when `VITE_USE_MOCK_AUTH=true` |
 
 - [x] Login / Register pages landed and routed in app shell
 - [x] Repair request submit form landed (holder route: `/repairs/new`)
 - [x] Auth guard + role-based routing landed (`ProtectedRoute` + role landing redirect)
-- [ ] Asset list wired to real `GET /assets` and `GET /assets/mine` (still mock-backed)
+- [x] Asset list wired to real `GET /assets` and `GET /assets/mine` with mock fallback controlled by `VITE_USE_MOCK_AUTH`
 
 ### Week 3 — Wed–Fri (compressed scope)
 
@@ -163,13 +194,15 @@ Dev server: `http://localhost:5173`.
 
 ### Asset List data source (current)
 
-The Asset List page is implemented and currently runs in a frontend-only mode:
+The Asset List page is role-aware and mode-aware:
 
-- Data source: local dummy dataset in `frontend/src/mocks/assets.ts`
-- UI: table + pagination + status tags in `frontend/src/pages/AssetList.tsx`
-- Role behavior: manager/holder view simulated in page controls until auth + `/assets/mine` API are completed
+- Real mode (`VITE_USE_MOCK_AUTH=false`):
+    - Manager: `GET /api/v1/assets`
+    - Holder: `GET /api/v1/assets/mine`
+- Mock mode (`VITE_USE_MOCK_AUTH=true`):
+    - Uses shared frontend mock runtime state in `frontend/src/mocks/mockBackend.ts`
 
-This lets the team continue frontend work even when backend asset APIs or DB seed data are unavailable.
+This keeps the same page behavior across environments while allowing development without a live backend.
 
 ### Repair-image storage (local disk, Phase 1–2)
 
