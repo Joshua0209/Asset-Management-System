@@ -4,10 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": "20.x"
+    "node": "22.x"
   },
   "scripts": {
     "prepare": "cd .. && git config core.hooksPath .githooks",
+    "check:node": "node -e \"const m=process.versions.node.split('.')[0];if(m!=='22'){console.error('\\n\\u001b[31m\\u2716 Node '+process.versions.node+' detected. This project requires Node 22.x.\\u001b[0m\\n  Run \\u001b[1mfnm use 22\\u001b[0m (or your version manager equivalent) and try again.\\n  See .nvmrc for the pinned version.\\n');process.exit(1)}\"",
+    "predev": "npm run check:node",
+    "prebuild": "npm run check:node",
+    "pretest": "npm run check:node",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
