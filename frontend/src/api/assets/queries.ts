@@ -1,8 +1,26 @@
 import { request } from "../base-client";
-import { loadSession } from "../../auth/storage";
-import { DUMMY_ASSETS, DUMMY_HOLDERS, type AssetRecord as MockAssetRecord } from "../../mocks/assets";
+import {
+  assignAsset as assignAssetFromMockBackend,
+  createAsset as createAssetFromMockBackend,
+  disposeAsset as disposeAssetFromMockBackend,
+  getAssetById as getAssetByIdFromMockBackend,
+  listAssets as listAssetsFromMockBackend,
+  listMyAssets as listMyAssetsFromMockBackend,
+  unassignAsset as unassignAssetFromMockBackend,
+  updateAsset as updateAssetFromMockBackend,
+} from "../../mocks/mockBackend";
 import { ASSET_PATHS } from "./keys";
-import type { ListAssetsParams, PaginatedAssetResponse } from "./types";
+import type {
+  AssetAssignPayload,
+  AssetCreatePayload,
+  AssetDataResponse,
+  AssetDisposePayload,
+  AssetRecord,
+  AssetUnassignPayload,
+  AssetUpdatePayload,
+  ListAssetsParams,
+  PaginatedAssetResponse,
+} from "./types";
 
 const USE_MOCK_AUTH = import.meta.env.VITE_USE_MOCK_AUTH === "true";
 const DEFAULT_PAGE = 1;
@@ -11,41 +29,24 @@ const MOCK_DELAY_MS = 120;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms));
 
-function buildListParams(params?: ListAssetsParams): { page: number; per_page: number } {
+function buildListParams(params?: ListAssetsParams) {
   return {
     page: params?.page ?? DEFAULT_PAGE,
     per_page: params?.perPage ?? DEFAULT_PER_PAGE,
-  };
-}
-
-function toApiAsset(asset: MockAssetRecord) {
-  return {
-    ...asset,
-    responsible_person_id: asset.responsible_person?.id ?? null,
-  };
-}
-
-function paginateMockAssets(items: MockAssetRecord[], params?: ListAssetsParams): PaginatedAssetResponse {
-  const page = params?.page ?? DEFAULT_PAGE;
-  const perPage = params?.perPage ?? DEFAULT_PER_PAGE;
-  const total = items.length;
-  const start = (page - 1) * perPage;
-  const end = start + perPage;
-  return {
-    data: items.slice(start, end).map(toApiAsset),
-    meta: {
-      total,
-      page,
-      per_page: perPage,
-      total_pages: total ? Math.ceil(total / perPage) : 0,
-    },
+    q: params?.q,
+    status: params?.status,
+    category: params?.category,
+    department: params?.department,
+    location: params?.location,
+    responsible_person_id: params?.responsiblePersonId,
+    sort: params?.sort,
   };
 }
 
 export async function listAssets(params?: ListAssetsParams): Promise<PaginatedAssetResponse> {
   if (USE_MOCK_AUTH) {
     await sleep(MOCK_DELAY_MS);
-    return paginateMockAssets(DUMMY_ASSETS, params);
+    return listAssetsFromMockBackend(params);
   }
 
   return request<PaginatedAssetResponse>({
@@ -58,19 +59,7 @@ export async function listAssets(params?: ListAssetsParams): Promise<PaginatedAs
 export async function listMyAssets(params?: ListAssetsParams): Promise<PaginatedAssetResponse> {
   if (USE_MOCK_AUTH) {
     await sleep(MOCK_DELAY_MS);
-    const session = loadSession();
-    const holderId = session?.user.id;
-
-    let myAssets = DUMMY_ASSETS.filter((asset) => asset.responsible_person?.id === holderId);
-
-    // Keep holder mock mode useful even if mock auth user IDs differ from dummy holder IDs.
-    if (myAssets.length === 0 && session?.user.role === "holder") {
-      myAssets = DUMMY_ASSETS.filter(
-        (asset) => asset.responsible_person?.id === DUMMY_HOLDERS[0]?.id,
-      );
-    }
-
-    return paginateMockAssets(myAssets, params);
+    return listMyAssetsFromMockBackend(params);
   }
 
   return request<PaginatedAssetResponse>({
@@ -78,4 +67,90 @@ export async function listMyAssets(params?: ListAssetsParams): Promise<Paginated
     url: ASSET_PATHS.mine,
     params: buildListParams(params),
   });
+}
+
+export async function getAssetById(assetId: string): Promise<AssetRecord> {
+  if (USE_MOCK_AUTH) {
+    await sleep(MOCK_DELAY_MS);
+    return getAssetByIdFromMockBackend(assetId);
+  }
+
+  const response = await request<AssetDataResponse>({
+    method: "GET",
+    url: ASSET_PATHS.detail(assetId),
+  });
+  return response.data;
+}
+
+export async function createAsset(payload: AssetCreatePayload): Promise<AssetRecord> {
+  if (USE_MOCK_AUTH) {
+    await sleep(MOCK_DELAY_MS);
+    return createAssetFromMockBackend(payload);
+  }
+
+  const response = await request<AssetDataResponse>({
+    method: "POST",
+    url: ASSET_PATHS.list,
+    data: payload,
+  });
+  return response.data;
+}
+
+export async function updateAsset(assetId: string, payload: AssetUpdatePayload): Promise<AssetRecord> {
+  if (USE_MOCK_AUTH) {
+    await sleep(MOCK_DELAY_MS);
+    return updateAssetFromMockBackend(assetId, payload);
+  }
+
+  const response = await request<AssetDataResponse>({
+    method: "PATCH",
+    url: ASSET_PATHS.detail(assetId),
+    data: payload,
+  });
+  return response.data;
+}
+
+export async function assignAsset(assetId: string, payload: AssetAssignPayload): Promise<AssetRecord> {
+  if (USE_MOCK_AUTH) {
+    await sleep(MOCK_DELAY_MS);
+    return assignAssetFromMockBackend(assetId, payload);
+  }
+
+  const response = await request<AssetDataResponse>({
+    method: "POST",
+    url: ASSET_PATHS.assign(assetId),
+    data: payload,
+  });
+  return response.data;
+}
+
+export async function unassignAsset(
+  assetId: string,
+  payload: AssetUnassignPayload,
+): Promise<AssetRecord> {
+  if (USE_MOCK_AUTH) {
+    await sleep(MOCK_DELAY_MS);
+    return unassignAssetFromMockBackend(assetId, payload);
+  }
+
+  const response = await request<AssetDataResponse>({
+    method: "POST",
+    url: ASSET_PATHS.unassign(assetId),
+    data: payload,
+  });
+  return response.data;
+}
+
+export async function disposeAsset(assetId: string, payload: AssetDisposePayload): Promise<AssetRecord> {
+  if (USE_MOCK_AUTH) {
+    await sleep(MOCK_DELAY_MS);
+    return disposeAssetFromMockBackend(assetId, payload);
+  }
+
+  const response = await request<AssetDataResponse>({
+    method: "POST",
+    url: ASSET_PATHS.dispose(assetId),
+    data: payload,
+  });
+  return response.data;
 }
