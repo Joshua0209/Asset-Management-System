@@ -41,6 +41,14 @@ _ACTIVE_REPAIR_STATUSES = {
     RepairRequestStatus.PENDING_REVIEW,
     RepairRequestStatus.UNDER_REPAIR,
 }
+_STALE_VERSION_MESSAGE = (
+    "Resource was modified by another user. Please refresh and try again."
+)
+
+
+def _safe_log(value: object) -> str:
+    # Escape CR/LF so user-controlled path params cannot forge log entries (CWE-117).
+    return str(value).replace("\r", "\\r").replace("\n", "\\n")
 
 
 def _next_asset_code(db: Session, today: date | None = None) -> str:
@@ -365,7 +373,7 @@ def update_asset(
             raise _validation_error("warranty_expiry must be after purchase_date.")
 
         if asset.version != payload.version:
-            raise _conflict("Resource was modified by another user. Please refresh and try again.")
+            raise _conflict(_STALE_VERSION_MESSAGE)
 
         for field_name, value in update_data.items():
             if field_name in {"location", "department"} and value is None:
@@ -381,7 +389,7 @@ def update_asset(
         db.rollback()
         logger.warning("Asset update conflict for %s: %s", asset_id, exc)
         raise _conflict(
-            "Resource was modified by another user. Please refresh and try again."
+            _STALE_VERSION_MESSAGE
         ) from exc
     except IntegrityError as exc:
         db.rollback()
@@ -421,7 +429,7 @@ def _has_active_repair_request(db: Session, asset_id: str) -> bool:
 
 
 def _transition_503(asset_id: str, exc: SQLAlchemyError, action: str) -> HTTPException:
-    logger.error("Failed to %s asset %s: %s", action, asset_id, exc, exc_info=True)
+    logger.error("Failed to %s asset %s: %s", action, _safe_log(asset_id), exc, exc_info=True)
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail=f"Unable to {action} asset. Please try again later.",
@@ -456,7 +464,7 @@ def assign_asset(
             raise _conflict("Asset already has a responsible person.")
         if asset.version != payload.version:
             raise _conflict(
-                "Resource was modified by another user. Please refresh and try again."
+                _STALE_VERSION_MESSAGE
             )
 
         asset.status = AssetStatus.IN_USE
@@ -469,13 +477,13 @@ def assign_asset(
         raise
     except StaleDataError as exc:
         db.rollback()
-        logger.warning("Asset assign conflict for %s: %s", asset_id, exc)
+        logger.warning("Asset assign conflict for %s: %s", _safe_log(asset_id), exc)
         raise _conflict(
-            "Resource was modified by another user. Please refresh and try again."
+            _STALE_VERSION_MESSAGE
         ) from exc
     except IntegrityError as exc:
         db.rollback()
-        logger.warning("Invalid asset assign for %s: %s", asset_id, exc)
+        logger.warning("Invalid asset assign for %s: %s", _safe_log(asset_id), exc)
         raise _validation_error("Asset assignment violates database constraints.") from exc
     except SQLAlchemyError as exc:
         db.rollback()
@@ -500,7 +508,7 @@ def unassign_asset(
             raise _conflict("Cannot unassign asset with an active repair request.")
         if asset.version != payload.version:
             raise _conflict(
-                "Resource was modified by another user. Please refresh and try again."
+                _STALE_VERSION_MESSAGE
             )
 
         # Reason is validated by the schema and recorded in the application log; persistent
@@ -522,13 +530,13 @@ def unassign_asset(
         raise
     except StaleDataError as exc:
         db.rollback()
-        logger.warning("Asset unassign conflict for %s: %s", asset_id, exc)
+        logger.warning("Asset unassign conflict for %s: %s", _safe_log(asset_id), exc)
         raise _conflict(
-            "Resource was modified by another user. Please refresh and try again."
+            _STALE_VERSION_MESSAGE
         ) from exc
     except IntegrityError as exc:
         db.rollback()
-        logger.warning("Invalid asset unassign for %s: %s", asset_id, exc)
+        logger.warning("Invalid asset unassign for %s: %s", _safe_log(asset_id), exc)
         raise _validation_error("Asset unassign violates database constraints.") from exc
     except SQLAlchemyError as exc:
         db.rollback()
@@ -551,7 +559,7 @@ def dispose_asset(
             raise _conflict("Cannot dispose asset that is still assigned to a holder.")
         if asset.version != payload.version:
             raise _conflict(
-                "Resource was modified by another user. Please refresh and try again."
+                _STALE_VERSION_MESSAGE
             )
 
         asset.status = AssetStatus.DISPOSED
@@ -563,13 +571,13 @@ def dispose_asset(
         raise
     except StaleDataError as exc:
         db.rollback()
-        logger.warning("Asset dispose conflict for %s: %s", asset_id, exc)
+        logger.warning("Asset dispose conflict for %s: %s", _safe_log(asset_id), exc)
         raise _conflict(
-            "Resource was modified by another user. Please refresh and try again."
+            _STALE_VERSION_MESSAGE
         ) from exc
     except IntegrityError as exc:
         db.rollback()
-        logger.warning("Invalid asset dispose for %s: %s", asset_id, exc)
+        logger.warning("Invalid asset dispose for %s: %s", _safe_log(asset_id), exc)
         raise _validation_error("Asset disposal violates database constraints.") from exc
     except SQLAlchemyError as exc:
         db.rollback()
