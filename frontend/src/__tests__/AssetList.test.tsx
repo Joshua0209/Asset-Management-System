@@ -17,6 +17,9 @@ vi.mock("../api", async () => {
       listAssets: vi.fn(),
       listMyAssets: vi.fn(),
     },
+    usersApi: {
+      listUsers: vi.fn(),
+    },
   };
 });
 
@@ -26,6 +29,7 @@ const apiModule = await import("../api");
 const mockUseAuth = vi.mocked(authModule.useAuth);
 const mockListAssets = vi.mocked(apiModule.assetsApi.listAssets);
 const mockListMyAssets = vi.mocked(apiModule.assetsApi.listMyAssets);
+const mockListUsers = vi.mocked(apiModule.usersApi.listUsers);
 
 const managerUser = {
   id: "manager-1",
@@ -83,6 +87,16 @@ describe("AssetList", () => {
   beforeEach(async () => {
     mockListAssets.mockReset();
     mockListMyAssets.mockReset();
+    mockListUsers.mockReset();
+    mockListUsers.mockResolvedValue({
+      data: [],
+      meta: {
+        total: 0,
+        page: 1,
+        per_page: 20,
+        total_pages: 0,
+      },
+    });
     await act(async () => {
       await i18n.changeLanguage("en");
     });

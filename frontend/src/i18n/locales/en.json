@@ -100,7 +100,11 @@
       "actions": "Actions"
     },
     "actions": {
-      "detail": "Detail"
+      "detail": "Detail",
+      "edit": "Edit",
+      "assign": "Assign",
+      "unassign": "Unassign",
+      "dispose": "Dispose"
     },
     "detail": {
       "title": "Asset Detail - {{assetCode}}",
@@ -124,7 +128,89 @@
     "pagination": {
       "total": "Total {{count}} assets"
     },
+    "form": {
+      "name": "Name",
+      "model": "Model",
+      "specs": "Specs",
+      "category": "Category",
+      "supplier": "Supplier",
+      "purchaseDate": "Purchase Date",
+      "purchaseAmount": "Purchase Amount",
+      "location": "Location",
+      "department": "Department",
+      "activationDate": "Activation Date",
+      "warrantyExpiry": "Warranty Expiry",
+      "holder": "Holder",
+      "assignmentDate": "Assignment Date",
+      "unassignReason": "Unassign Reason",
+      "disposalReason": "Disposal Reason"
+    },
+    "manager": {
+      "createButton": "Register Asset",
+      "createTitle": "Register New Asset",
+      "editTitle": "Edit Asset - {{assetCode}}",
+      "assignTitle": "Assign Asset - {{assetCode}}",
+      "unassignTitle": "Unassign Asset - {{assetCode}}",
+      "disposeTitle": "Dispose Asset - {{assetCode}}",
+      "createSuccess": "Asset registered successfully",
+      "editSuccess": "Asset updated successfully",
+      "assignSuccess": "Asset assigned successfully",
+      "unassignSuccess": "Asset unassigned successfully",
+      "disposeSuccess": "Asset disposed successfully",
+      "actionFailedTitle": "Action failed",
+      "holdersLoadErrorTitle": "Failed to load holders"
+    },
     "serverError": "Failed to load assets. Please try again later.",
     "loginFailed": "Incorrect email or password"
+  },
+  "reviews": {
+    "title": "Repair Reviews",
+    "description": "Review, process, and complete repair requests.",
+    "loadError": "Failed to load repair requests. Please try again later.",
+    "empty": "No repair requests found.",
+    "actionFailedTitle": "Action failed",
+    "approveTitle": "Approve Repair Request",
+    "rejectTitle": "Reject Repair Request",
+    "detailsTitle": "Update Repair Details",
+    "completeTitle": "Complete Repair",
+    "approveSuccess": "Repair request approved",
+    "rejectSuccess": "Repair request rejected",
+    "detailsSuccess": "Repair details updated",
+    "completeSuccess": "Repair request completed",
+    "columns": {
+      "assetCode": "Asset Code",
+      "assetName": "Asset Name",
+      "requester": "Requester",
+      "status": "Status",
+      "createdAt": "Created At",
+      "actions": "Actions"
+    },
+    "actions": {
+      "approve": "Approve",
+      "reject": "Reject",
+      "updateDetails": "Update Details",
+      "complete": "Complete"
+    },
+    "status": {
+      "pending_review": "Pending Review",
+      "under_repair": "Under Repair",
+      "completed": "Completed",
+      "rejected": "Rejected"
+    },
+    "filter": {
+      "statusPlaceholder": "Filter by status"
+    },
+    "pagination": {
+      "total": "Total {{count}} requests"
+    },
+    "form": {
+      "repairDate": "Repair Date",
+      "faultContent": "Fault Content",
+      "repairPlan": "Repair Plan",
+      "repairCost": "Repair Cost",
+      "repairVendor": "Repair Vendor",
+      "plannedDate": "Planned Date",
+      "rejectionReason": "Rejection Reason"
+    }
   }
 }
