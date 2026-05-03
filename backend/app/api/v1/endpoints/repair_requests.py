@@ -2,6 +2,7 @@ import logging
 import math
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, cast
@@ -72,11 +73,11 @@ _REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset({
 })
 
 
+@dataclass(frozen=True, kw_only=True)
 class SubmittedImage:
-    def __init__(self, *, filename: str, content_type: str, content: bytes) -> None:
-        self.filename = filename
-        self.content_type = content_type
-        self.content = content
+    filename: str
+    content_type: str
+    content: bytes
 
 
 def _not_found(message: str) -> HTTPException:
