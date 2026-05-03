@@ -557,6 +557,8 @@ def dispose_asset(
             raise _conflict("Asset must be in_stock to dispose.")
         if asset.responsible_person_id is not None:
             raise _conflict("Cannot dispose asset that is still assigned to a holder.")
+        if _has_active_repair_request(db, asset.id):
+            raise _conflict("Cannot dispose asset with an active repair request.")
         if asset.version != payload.version:
             raise _conflict(
                 _STALE_VERSION_MESSAGE
