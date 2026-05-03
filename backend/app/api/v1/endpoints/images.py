@@ -28,7 +28,8 @@ DbSession = Annotated[Session, Depends(get_db)]
 def get_image(
     image_id: str,
     db: DbSession,
-    current_user: CurrentUser,  # noqa: ARG001 — auth required, identity unused
+    # Auth required, identity unused.
+    current_user: CurrentUser,  # noqa: ARG001
     storage: ImageStorageDep,
 ) -> Response:
     try:
