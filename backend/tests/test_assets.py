@@ -1289,6 +1289,92 @@ class TestDisposeAsset:
         )
         assert response.status_code == 409
 
+    @pytest.mark.parametrize(
+        "active_status",
+        [RepairRequestStatus.PENDING_REVIEW, RepairRequestStatus.UNDER_REPAIR],
+    )
+    def test_blocked_by_active_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        active_status: RepairRequestStatus,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=active_status,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["message"] == (
+            "Cannot dispose asset with an active repair request."
+        )
+
+    @pytest.mark.parametrize(
+        "inactive_status",
+        [RepairRequestStatus.COMPLETED, RepairRequestStatus.REJECTED],
+    )
+    def test_inactive_repair_request_does_not_block(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        inactive_status: RepairRequestStatus,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=inactive_status,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 200
+
+    def test_soft_deleted_repair_request_does_not_block(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=RepairRequestStatus.PENDING_REVIEW,
+            deleted_at=datetime.now(UTC),
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 200
+
     def test_returns_404_for_missing_asset(
         self,
         client: TestClient,
