@@ -35,6 +35,7 @@ from app.schemas.repair_request import (
     RepairRequestRead,
     RepairRequestReject,
 )
+from app.services.image_storage import ImageStorageDep
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -314,39 +315,31 @@ def _validate_images(images: list[SubmittedImage]) -> None:
 def _persist_images(
     repair_request: RepairRequest,
     images: list[SubmittedImage],
-    written: list[Path],
+    storage: ImageStorageDep,
+    saved_keys: list[str],
 ) -> None:
-    """Write images to disk, appending each successful path to `written`.
+    """Persist images via the storage backend and attach DB rows.
 
-    The caller MUST clean up `written` if any later step (DB flush, commit) fails,
-    otherwise files are orphaned with no DB row pointing at them.
+    The caller MUST call ``storage.cleanup(saved_keys)`` if any later step
+    (DB flush, commit) fails, otherwise stored objects are orphaned.
     """
-    if not images:
-        return
-    upload_root = Path(get_settings().repair_upload_dir)
-    request_dir = upload_root / repair_request.id
-    request_dir.mkdir(parents=True, exist_ok=True)
     for image in images:
         image_id = str(uuid.uuid4())
         suffix = _ALLOWED_IMAGE_TYPES[image.content_type]
-        target = request_dir / f"{image_id}{suffix}"
-        target.write_bytes(image.content)
-        written.append(target)
+        storage_key = storage.save(
+            repair_request_id=repair_request.id,
+            image_id=image_id,
+            suffix=suffix,
+            content=image.content,
+        )
+        saved_keys.append(storage_key)
         repair_request.images.append(
             RepairImage(
                 id=image_id,
                 repair_request_id=repair_request.id,
-                image_url=f"/uploads/repair-requests/{repair_request.id}/{target.name}",
+                image_url=storage_key,
             )
         )
-
-
-def _cleanup_uploads(paths: list[Path]) -> None:
-    for path in paths:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError as exc:
-            logger.warning("Failed to remove orphaned upload %s: %s", path, exc)
 
 
 async def _repair_payload_from_request(
@@ -645,8 +638,9 @@ async def submit_repair_request(
     db: DbSession,
     response: Response,
     current_user: HolderUser,
+    storage: ImageStorageDep,
 ) -> DataResponse[RepairRequestRead]:
-    written_paths: list[Path] = []
+    saved_keys: list[str] = []
     committed = False
     try:
         payload, images = await _repair_payload_from_request(request)
@@ -685,7 +679,7 @@ async def submit_repair_request(
         asset.status = AssetStatus.PENDING_REPAIR
         db.add(repair_request)
         db.flush()
-        _persist_images(repair_request, images, written_paths)
+        _persist_images(repair_request, images, storage, saved_keys)
         db.flush()
         response.headers["Location"] = f"/api/v1/repair-requests/{repair_request.id}"
         result = DataResponse(data=RepairRequestRead.model_validate(repair_request))
@@ -722,4 +716,4 @@ async def submit_repair_request(
         ) from exc
     finally:
         if not committed:
-            _cleanup_uploads(written_paths)
+            storage.cleanup(saved_keys)

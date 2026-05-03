@@ -56,6 +56,15 @@ Non-obvious patterns established in the Week 2 Auth API — read before touching
 - **Bootstrap manager**: `scripts/seed_demo_data.py` always idempotently upserts a manager from `BOOTSTRAP_MANAGER_*` env vars. This is the only way to get the first manager into a fresh database — `POST /auth/register` always creates holders.
 - **Error envelope**: all 4xx/5xx responses use `{"error": {"code": "...", "message": "..."}}` via a global `HTTPException` handler in `app/main.py`. Don't return raw `{"detail": ...}` FastAPI defaults.
 
+## Image storage conventions (Week 3+)
+
+Repair-request images are persisted via a small abstraction in `app/services/image_storage.py`:
+
+- **`ImageStorage` Protocol** — narrow interface (`save`, `open`, `cleanup`) so a future S3 backend drops in without touching call sites.
+- **`LocalImageStorage`** — current concrete impl, rooted at `REPAIR_UPLOAD_DIR` (default `uploads/repair-requests/`, git-ignored).
+- **`repair_images.image_url`** stores a **backend storage key** (`"<rr-id>/<img-id>.<ext>"`), NOT a public URL. The public URL `/api/v1/images/<id>` is computed in `RepairImageRead.url` (a Pydantic `computed_field`). When migrating to S3 in Week 5, write a new storage impl, swap `get_image_storage()`, and no DB rows need to be rewritten.
+- The `POST /repair-requests` endpoint owns the multipart parsing inline; the storage service only handles bytes-in / bytes-out plus rollback. If a DB flush fails after files are written, the endpoint's `finally` block calls `storage.cleanup(saved_keys)` to avoid orphans.
+
 ## Working preferences
 
 - Prefer editing existing files over adding new ones; this is an early-stage project and file sprawl is not wanted.

@@ -1206,7 +1206,7 @@ class TestSubmitRepairRequest:
         assert response.status_code == 201
         images = response.json()["data"]["images"]
         assert len(images) == 1
-        assert images[0]["url"].endswith(".png")
+        assert images[0]["url"] == f"/api/v1/images/{images[0]['id']}"
 
     def test_manager_cannot_submit_repair_request(
         self,
