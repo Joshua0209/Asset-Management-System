@@ -10,16 +10,21 @@ Course project for a cloud computing / software engineering class. The repositor
 
 **Weeks 1 & 2 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud), Auth API, Asset CRUD, Repair Request submit/list, Ant Design UI shell, asset list page (mock data), and the i18n framework all shipped. See [docs/roadmap.md](docs/roadmap.md) for the full retrospective.
 
-**Currently working on Week 3 — Core Features Complete (Apr 28 – May 2).** Goal: full repair workflow + all CRUD pages working end-to-end. Three FE PRs from Week 2 carry into Week 3 and are being landed Mon–Tue, after which the original Week 3 scope runs Wed–Fri (compressed).
+**Currently working on Week 3 — Core Features Complete (Apr 28 – May 2).** Goal: full repair workflow + all CRUD pages working end-to-end. Week 2 frontend carry-over entered Week 3; PR #12, PR #13, and auth guard/routing are completed after review, while Asset List API wiring remains open.
 
 ### Week 3 carry-over closure (Mon–Tue, FE only)
 
-| Task | Owner | Notes |
-|------|-------|-------|
-| Land PR [#12](https://github.com/Joshua0209/Asset-Management-System/pull/12) — Login / Register pages | FE-2 → FE-3 reviews | Connected to real auth API; addresses review feedback then merges. Unblocks the auth guard PR review |
-| Land PR [#13](https://github.com/Joshua0209/Asset-Management-System/pull/13) — Repair request submit form | FE-2 → FE-3 reviews | Asset ID, fault description, image upload (max 5) |
-| Open + land PR for auth guard + role-based routing | FE-3 → FE-1 reviews | Branch `feature/auth-guard-role-routing` — depends on PR #12 being merged |
-| Wire Asset List to real `GET /assets` API | FE-1 → FE-3 reviews | Replace `frontend/src/mocks/assets.ts` with API call. Add `GET /assets/mine` for holder view. **First real FE↔BE integration** — surfaces contract drift early |
+| Task | Status | Owner | Notes |
+|------|--------|-------|-------|
+| Land PR [#12](https://github.com/Joshua0209/Asset-Management-System/pull/12) — Login / Register pages | ✅ Done | FE-2 → FE-3 reviews | Merged after review; connected to real auth API |
+| Land PR [#13](https://github.com/Joshua0209/Asset-Management-System/pull/13) — Repair request submit form | ✅ Done | FE-2 → FE-3 reviews | Merged after review; holder submit form available at `/repairs/new` |
+| Open + land PR for auth guard + role-based routing | ✅ Done | FE-3 → FE-1 reviews | Merged after review; role-based route protection active |
+| Wire Asset List to real `GET /assets` API | ⏳ Pending | FE-1 → FE-3 reviews | `frontend/src/pages/AssetList.tsx` still reads `frontend/src/mocks/assets.ts` (real `/assets` + `/assets/mine` wiring not landed) |
+
+- [x] Login / Register pages landed and routed in app shell
+- [x] Repair request submit form landed (holder route: `/repairs/new`)
+- [x] Auth guard + role-based routing landed (`ProtectedRoute` + role landing redirect)
+- [ ] Asset list wired to real `GET /assets` and `GET /assets/mine` (still mock-backed)
 
 ### Week 3 — Wed–Fri (compressed scope)
 

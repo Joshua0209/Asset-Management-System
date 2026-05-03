@@ -66,7 +66,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 - [x] FastAPI auto-generated docs available at `/docs`
 - [x] CI pipeline runs lint + type-check + tests + secret scan + SAST + SonarQube on every push
 - [x] No auth yet — that's Week 2
-- [ ] **Carry-over:** UI library picked and layout shell rendered (blocks feature pages in Week 2)
+- [x] **Carry-over closed:** UI library picked and layout shell rendered
 
 ---
 
@@ -76,7 +76,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 **Resources:** 2 BE + 3 FE
 
-**Status summary:** Backend fully delivered (PR #14): Auth + Asset CRUD + Repair Request submit/list, all with FSM validation. Frontend Week 1 carry-overs (UI library + layout shell) closed early (PR #8); asset list page landed against a mock dataset (PR #11). Three FE PRs are still in flight at end-of-week — login/register, repair submit form, auth guard — and slip into Week 3.
+**Status summary:** Backend fully delivered (PR #14): Auth + Asset CRUD + Repair Request submit/list, all with FSM validation. Frontend Week 1 carry-overs (UI library + layout shell) closed early (PR #8); asset list page landed against a mock dataset (PR #11). Week 2 FE carry-over reviews are complete in Week 3: login/register, repair submit form, and auth guard are merged. Asset list API wiring remains pending.
 
 ### Backend (2 people) — ✅ Done
 
@@ -87,25 +87,25 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Repair Request APIs (submit + list) | ✅ Done | Submit + list endpoints with server-side FSM validation per `11-asset-fsm.md`. Full review/approve/complete workflow rolls into Week 3 |
 | Input validation + error handling | ✅ Done | Global `HTTPException` handler returns `{"error": {"code": ..., "message": ...}}` envelope; Pydantic schemas in `app/schemas/` |
 
-### Frontend (3 people) — ⚠ Partial (3 PRs in flight at week end)
+### Frontend (3 people) — ⚠ Partial (asset list API wiring pending)
 
 | Task | Status | Owner | Notes |
 |------|--------|-------|-------|
 | **[Carry-over]** UI library setup | ✅ Done | FE-1 | Ant Design v6 (`antd` + `@ant-design/icons`), theme toggle via `ConfigProvider` (PR #8) |
 | **[Carry-over]** Layout shell: sidebar nav + header | ✅ Done | FE-1 | Collapsible sidebar + header + theme switch using Ant Design `Layout` (PR #8) |
 | Asset list page (table + pagination) | ✅ Done (mock data) | FE-1 | Ant Design table + client-side pagination + status tags (PR #11). **Reads from `frontend/src/mocks/assets.ts`** — wiring to real `GET /assets` API is a Week 3 carry-over |
-| Login / Register pages | ⏳ In review | FE-2 | PR #12 (`fe/auth`) — connected to real auth API, zh-TW + en strings |
-| Repair request: submit form | ⏳ In review | FE-2 | PR #13 (`fe/repair-request-submit-form`) — asset ID, fault description, image upload (max 5) |
-| Auth guard + role-based routing | ⏳ In dev | FE-3 | Branch `feature/auth-guard-role-routing`, no PR yet — redirect holder away from manager-only pages |
+| Login / Register pages | ✅ Done | FE-2 | PR #12 (`fe/auth`) merged after review; connected to real auth API with zh-TW + en strings |
+| Repair request: submit form | ✅ Done | FE-2 | PR #13 (`fe/repair-request-submit-form`) merged after review; asset ID, fault description, image upload (max 5) |
+| Auth guard + role-based routing | ✅ Done | FE-3 | Merged after review; holder is redirected away from manager-only pages |
 
 ### Milestone: `M2 — Auth + CRUD Basics`
 - [x] UI library picked and theme tokens wired (Week 1 carry-over closed)
 - [x] Layout shell renders on every route (sidebar + header)
 - [x] Manager can register an asset (backend API)
-- [ ] Login/register works end-to-end (PR #12 in review)
+- [x] Login/register works end-to-end
 - [ ] Holder can view own assets (frontend list reads from mocks; needs `/assets/mine` wiring)
-- [ ] Holder can submit a repair request (PR #13 in review)
-- [ ] Role-based access enforced on FE + BE (BE done; FE auth guard branch in dev)
+- [x] Holder can submit a repair request
+- [x] Role-based access enforced on FE + BE
 
 ---
 
@@ -115,7 +115,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 **Resources:** 2 BE + 3 FE
 
-**⚠ Carry-over from Week 2:** Three FE PRs are still in flight at start of Week 3 — login/register (PR #12), repair submit form (PR #13), and auth guard (`feature/auth-guard-role-routing`, no PR yet). Plus Asset List currently reads from `frontend/src/mocks/assets.ts` and needs to be wired to the real `GET /assets` API. **Schedule risk:** Week 3 originally planned 5 FE workdays; carry-over closure costs the first ~2 days, compressing the original Week 3 scope into Wed–Fri.
+**⚠ Carry-over from Week 2 (current):** Frontend review tasks are complete — login/register (PR #12), repair submit form (PR #13), and auth guard/role routing are done. Asset List still reads from `frontend/src/mocks/assets.ts` and remains pending real `GET /assets` and `GET /assets/mine` wiring.
 
 **FE task division for Week 3 (new):** the three FE engineers split by audience and responsibility, not by feature.
 
@@ -125,12 +125,12 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 ### Week 2 carry-over closure (Mon–Tue, FE only)
 
-| Task | Target | Owner | Notes |
-|------|--------|-------|-------|
-| Land PR #12 — Login / Register pages | Mon | FE-2 → FE-3 reviews | FE-2 addresses review feedback; FE-3 reviews + merges. Unblocks the auth guard PR review |
-| Land PR #13 — Repair request submit form | Mon | FE-2 → FE-3 reviews | FE-2 addresses review feedback; FE-3 reviews + merges |
-| Open + land PR for auth guard + role-based routing | Mon–Tue | FE-3 (author) → FE-1 reviews | Branch `feature/auth-guard-role-routing` → PR → review → merge. Depends on #12 being merged. FE-3 authors but rotates review to FE-1 to avoid self-review |
-| Wire Asset List to real `GET /assets` API | Mon–Tue | FE-1 → FE-3 reviews | Replace `frontend/src/mocks/assets.ts` with real API call. Add `GET /assets/mine` for holder view. First real FE↔BE integration — surface contract drift early |
+| Task | Status | Target | Owner | Notes |
+|------|--------|--------|-------|-------|
+| Land PR #12 — Login / Register pages | ✅ Done | Mon | FE-2 → FE-3 reviews | Review complete and merged. Unblocked auth guard work |
+| Land PR #13 — Repair request submit form | ✅ Done | Mon | FE-2 → FE-3 reviews | Review complete and merged |
+| Open + land PR for auth guard + role-based routing | ✅ Done | Mon–Tue | FE-3 (author) → FE-1 reviews | Review complete and merged; role-based route protection is active |
+| Wire Asset List to real `GET /assets` API | ⏳ Pending | Mon–Tue | FE-1 → FE-3 reviews | Asset list still uses `frontend/src/mocks/assets.ts`; real `/assets` + `/assets/mine` wiring is outstanding |
 
 ### Backend (2 people)
 
