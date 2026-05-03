@@ -415,8 +415,7 @@ def get_repair_request(
         raise
     except SQLAlchemyError as exc:
         logger.error(
-            "Failed to get repair request %s: %s",
-            repair_request_id,
+            "Failed to get repair request: %s",
             exc,
             exc_info=True,
         )

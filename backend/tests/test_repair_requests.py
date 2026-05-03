@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -323,6 +325,35 @@ class TestGetRepairRequest:
         )
 
         assert response.status_code == 403
+
+    def test_database_error_does_not_log_user_controlled_request_id(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        malicious_id = "repair-1%0Aforged-log-entry"
+
+        with (
+            patch(
+                "app.api.v1.endpoints.repair_requests._get_repair_request",
+                side_effect=SQLAlchemyError("database unavailable"),
+            ),
+            caplog.at_level(
+                logging.ERROR,
+                logger="app.api.v1.endpoints.repair_requests",
+            ),
+        ):
+            response = client.get(
+                f"/api/v1/repair-requests/{malicious_id}",
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 503
+        assert "repair-1" not in caplog.text
+        assert "forged-log-entry" not in caplog.text
 
 
 class TestRepairWorkflow:
