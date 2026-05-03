@@ -1,5 +1,43 @@
 import "@testing-library/jest-dom";
 
+// Node 25+ ships an unfinished WebStorage at globalThis.localStorage that
+// lacks setItem/clear, and under vitest+jsdom `window === globalThis`, so
+// jsdom never gets to install its own working store — both names resolve to
+// the broken stub. Detect that case and install an in-memory Storage so the
+// suite is portable across runtimes. No-op on Node 22 (CI default), where
+// jsdom's Storage is already in place with a real setItem.
+class MemoryStorage implements Storage {
+  private readonly store = new Map<string, string>();
+  get length(): number {
+    return this.store.size;
+  }
+  key(index: number): string | null {
+    return Array.from(this.store.keys())[index] ?? null;
+  }
+  getItem(key: string): string | null {
+    return this.store.get(key) ?? null;
+  }
+  setItem(key: string, value: string): void {
+    this.store.set(key, String(value));
+  }
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+for (const name of ['localStorage', 'sessionStorage'] as const) {
+  if (typeof globalThis[name]?.setItem !== 'function') {
+    Object.defineProperty(globalThis, name, {
+      writable: true,
+      configurable: true,
+      value: new MemoryStorage(),
+    });
+  }
+}
+
 // Mock matchMedia for Ant Design
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
