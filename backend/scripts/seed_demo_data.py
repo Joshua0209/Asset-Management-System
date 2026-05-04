@@ -3,8 +3,10 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 from sqlalchemy import delete
 
@@ -44,6 +46,7 @@ FAULT_DESCRIPTIONS = [
     "Wi-Fi disconnects several times a day.",
     "Keyboard keys sometimes stop responding.",
 ]
+DEMO_JPEG_BYTES = b"\xff\xd8\xff\xe0demo-repair-image\xff\xd9"
 
 
 def build_bootstrap_manager() -> User:
@@ -168,11 +171,18 @@ def build_repair_requests(
 
 def build_images(repair_requests: list[RepairRequest]) -> list[RepairImage]:
     images: list[RepairImage] = []
-    for index, request in enumerate(repair_requests[:6]):
+    upload_root = Path(get_settings().repair_upload_dir)
+    for request in repair_requests[:6]:
+        image_id = str(uuid.uuid4())
+        storage_key = f"{request.id}/{image_id}.jpg"
+        target = upload_root / storage_key
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(DEMO_JPEG_BYTES)
         images.append(
             RepairImage(
+                id=image_id,
                 repair_request_id=request.id,
-                image_url=f"/uploads/demo/repair-{index + 1}.jpg",
+                image_url=storage_key,
             )
         )
     return images

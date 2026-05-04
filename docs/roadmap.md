@@ -137,7 +137,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Task | Target | Notes |
 |------|--------|-------|
 | Repair Request APIs (full workflow) | Mon–Wed | Complete state machine: `pending_review → under_repair → completed` and `pending_review → rejected`. All FSM transitions validated server-side |
-| Image upload endpoint | Wed–Thu | Upload-through-server. Store to local disk for now, abstract with a service layer for future S3 migration |
+| Image upload + retrieval endpoint | Wed–Thu | ✅ Done. Upload bundled into `POST /repair-requests` (multipart, ≤5 files × 5 MB, JPEG/PNG). Retrieval via `GET /api/v1/images/:id` (auth required, FR-31 — any role). Persistence abstracted behind `ImageStorage` Protocol with `LocalImageStorage` impl; S3 swap in Week 5 only touches `app/services/image_storage.py`. DB column `repair_images.image_url` stores a backend storage key, not a public URL — the public URL is computed in `RepairImageRead.url` |
 | Asset assign/unassign/dispose | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose) |
 | API documentation review | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
 

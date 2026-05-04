@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from pydantic import Field, model_validator
+from pydantic import Field, computed_field, model_validator
 
 from app.models.repair_request import RepairRequestStatus
 from app.schemas.common import APIModel
@@ -25,8 +25,14 @@ RowVersion = Annotated[int, Field(ge=1)]
 
 class RepairImageRead(APIModel):
     id: str
-    url: str = Field(validation_alias="image_url")
     uploaded_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def url(self) -> str:
+        # Public URL is derived from the image id; the DB stores a backend
+        # storage key (`<rr-id>/<img-id>.<ext>`) that callers should never see.
+        return f"/api/v1/images/{self.id}"
 
 
 class RepairAssetRead(APIModel):

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import assets, auth, repair_requests, users
+from app.api.v1.endpoints import assets, auth, images, repair_requests, users
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -11,3 +11,4 @@ api_router.include_router(
     prefix="/repair-requests",
     tags=["repair_requests"],
 )
+api_router.include_router(images.router, prefix="/images", tags=["images"])

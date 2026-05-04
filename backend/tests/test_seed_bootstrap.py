@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from app.core.config import get_settings
 from app.core.security import verify_password
+from app.models.repair_request import RepairRequest
 from app.models.user import UserRole
-from scripts.seed_demo_data import build_bootstrap_manager, build_users
+from scripts.seed_demo_data import build_bootstrap_manager, build_images, build_users
 
 
 class TestBootstrapManager:
@@ -24,3 +29,23 @@ class TestBootstrapManager:
         users = build_users()
         emails = {u.email for u in users}
         assert settings.bootstrap_manager_email in emails
+
+
+class TestSeedRepairImages:
+    def test_build_images_writes_storage_key_backed_demo_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("REPAIR_UPLOAD_DIR", str(tmp_path))
+        get_settings.cache_clear()
+        try:
+            repair_request = RepairRequest(id="repair-request-1")
+
+            images = build_images([repair_request])
+
+            assert len(images) == 1
+            image = images[0]
+            assert image.image_url == f"{repair_request.id}/{image.id}.jpg"
+            assert not image.image_url.startswith("/")
+            assert (tmp_path / image.image_url).read_bytes().startswith(b"\xff\xd8")
+        finally:
+            get_settings.cache_clear()

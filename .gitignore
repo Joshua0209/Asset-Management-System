@@ -23,6 +23,10 @@ venv/
 coverage.xml
 htmlcov/
 
+# ── Backend uploads (local-disk image storage) ───────────────────────────────
+backend/uploads/
+uploads/
+
 # ── Frontend ──────────────────────────────────────────────────────────────────
 frontend/node_modules/
 frontend/dist/

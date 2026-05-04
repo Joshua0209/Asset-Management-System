@@ -35,8 +35,8 @@ The team adopts a new FE division for Week 3: **split by audience, not by featur
 | Track | Status | Owner | Target | Notes |
 |-------|--------|-------|--------|-------|
 | Repair Request APIs (full workflow) | ✅ Done (PR [#16](https://github.com/Joshua0209/Asset-Management-System/pull/16)) | BE-1 | Mon–Wed | FSM `pending_review → under_repair → completed` and `pending_review → rejected`, all server-validated |
-| Image upload endpoint | ✅ Done | BE-2 | Wed–Thu | Upload-through-server shipped inline with `POST /repair-requests` (multipart + `RepairImage` persistence); local disk for now, abstracted behind a service layer for future S3 migration |
-| Asset assign / unassign / dispose | 🔍 In Review (PR [#17](https://github.com/Joshua0209/Asset-Management-System/pull/17)) | BE-2 | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose). Implementation + 45 tests landed on `feature/asset-fsm-assign-unassign-dispose`; awaiting merge |
+| Image upload + retrieval endpoint | ✅ Done | BE-2 | Wed–Thu | `POST /repair-requests` accepts up to 5 images (≤5 MB, JPEG/PNG); `GET /api/v1/images/:id` streams bytes back. Storage abstracted behind `ImageStorage` Protocol (`LocalImageStorage` impl); S3 swap in Week 5 only touches `app/services/image_storage.py` |
+| Asset assign / unassign / dispose | ✅ Done (PR [#17](https://github.com/Joshua0209/Asset-Management-System/pull/17)) | BE-2 | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose) |
 | API documentation review | ⏳ Pending | BE-1/BE-2 | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
 
 #### FE-1 — Manager pages
@@ -139,6 +139,10 @@ The Asset List page is implemented and currently runs in a frontend-only mode:
 - Role behavior: manager/holder view simulated in page controls until auth + `/assets/mine` API are completed
 
 This lets the team continue frontend work even when backend asset APIs or DB seed data are unavailable.
+
+### Repair-image storage (local disk, Phase 1–2)
+
+Uploaded repair images are written to `REPAIR_UPLOAD_DIR` (default `uploads/repair-requests/`, git-ignored). The on-disk layout is `<repair-request-id>/<image-id>.<ext>`, and `repair_images.image_url` stores that relative key — **not** a public URL. The public URL `/api/v1/images/<id>` is computed at the schema layer (`RepairImageRead.url`) so the storage backend can be swapped (e.g., S3 in Week 5) without migrating any DB rows.
 
 ## Scripts reference
 

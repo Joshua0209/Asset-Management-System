@@ -19,6 +19,8 @@ class RepairImage(Base):
         ForeignKey("repair_requests.id", ondelete="CASCADE"),
         index=True,
     )
+    # Storage backend key (e.g., ``"<rr-id>/<img-id>.png"``) — NOT a public URL.
+    # The public URL ``/api/v1/images/<id>`` is derived in ``RepairImageRead``.
     image_url: Mapped[str] = mapped_column(String(255))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

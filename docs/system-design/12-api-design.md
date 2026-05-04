@@ -1114,9 +1114,13 @@ GET /api/v1/images/:id
 
 **Access:** Authenticated (any role — images are viewable by all authenticated users per FR-31)
 
-**Response:** `200 OK` — binary image data with appropriate `Content-Type` header (`image/jpeg` or `image/png`).
+**Response:** `200 OK` — binary image data with appropriate `Content-Type` header (`image/jpeg` or `image/png`). Sets `Cache-Control: private, max-age=3600`.
+
+**Errors:** `401` (unauthenticated), `404` (image not found, owning repair-request soft-deleted, or backing file missing).
 
 **Note:** Image upload is handled as part of repair request submission ([3.1](#31-submit-repair-request)). There is no standalone upload endpoint.
+
+**Storage abstraction (implementation note).** Repair images are persisted via `app.services.image_storage.ImageStorage` — a Protocol with a `LocalImageStorage` implementation rooted at `REPAIR_UPLOAD_DIR`. The `repair_images.image_url` column stores a **backend storage key** (`"<rr-id>/<img-id>.<ext>"`), not a public URL; the public URL `/api/v1/images/<id>` is derived at the schema layer (`RepairImageRead.url`). A future S3 backend can drop in by swapping the storage implementation without migrating any DB rows.
 
 ---
 
