@@ -12,9 +12,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.main import app
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
+from app.services.image_storage import ImageStorageError, get_image_storage
 
 _PURCHASE_DATE = date(2026, 1, 1)
 _REPAIR_DATE = date(2026, 4, 20)
@@ -37,6 +39,24 @@ def _details_payload(version: int) -> dict[str, Any]:
 
 def _complete_payload(version: int) -> dict[str, Any]:
     return {**_COMPLETE_PAYLOAD, "version": version}
+
+
+class FailingImageStorage:
+    def save(
+        self,
+        *,
+        repair_request_id: str,
+        image_id: str,
+        suffix: str,
+        content: bytes,
+    ) -> str:
+        raise ImageStorageError("storage backend unavailable")
+
+    def open(self, storage_key: str) -> tuple[bytes, str]:
+        raise ImageStorageError("storage backend unavailable")
+
+    def cleanup(self, storage_keys: list[str]) -> None:
+        return None
 
 
 def _make_asset(
@@ -1232,6 +1252,35 @@ class TestSubmitRepairRequest:
 
         assert response.status_code == 201
         assert len(response.json()["data"]["images"]) == 1
+
+    def test_returns_503_when_storage_backend_save_fails(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        app.dependency_overrides[get_image_storage] = lambda: FailingImageStorage()
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            data={
+                "asset_id": asset.id,
+                "fault_description": "Screen flickers when connected to HDMI.",
+            },
+            files=[("images", ("issue.png", _PNG_BYTES, "image/png"))],
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "error": {
+                "code": "service_unavailable",
+                "message": "Unable to store repair images. Please try again later.",
+            }
+        }
 
     def test_manager_cannot_submit_repair_request(
         self,

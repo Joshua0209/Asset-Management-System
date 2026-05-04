@@ -4,7 +4,6 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Annotated, cast
 from urllib.parse import parse_qs
 
@@ -21,7 +20,6 @@ from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm.interfaces import ORMOption
 
 from app.api.deps import CurrentUser, HolderUser, ManagerUser
-from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_image import RepairImage
@@ -36,7 +34,7 @@ from app.schemas.repair_request import (
     RepairRequestRead,
     RepairRequestReject,
 )
-from app.services.image_storage import ImageStorageDep
+from app.services.image_storage import ImageStorageDep, ImageStorageError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -716,7 +714,7 @@ async def submit_repair_request(
         raise _conflict(
             "Repair request could not be submitted due to a conflicting state."
         ) from exc
-    except OSError as exc:
+    except (ImageStorageError, OSError) as exc:
         db.rollback()
         logger.error("Failed to persist repair-request image: %s", exc, exc_info=True)
         raise HTTPException(
