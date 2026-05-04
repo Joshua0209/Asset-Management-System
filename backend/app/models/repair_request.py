@@ -51,7 +51,9 @@ class RepairRequest(TimestampVersionMixin, Base):
     fault_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     repair_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     repair_cost: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
-    repair_vendor: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Length must match REPAIR_VENDOR_MAX in app.schemas.repair_request; an
+    # Alembic migration is required when changing this value.
+    repair_vendor: Mapped[str | None] = mapped_column(String(200), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

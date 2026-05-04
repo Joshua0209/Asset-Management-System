@@ -867,6 +867,12 @@ GET /api/v1/repair-requests/:id
 
 **Access:** Manager, or Holder if they are the requester
 
+**Note:** Repair-request response bodies (here and in §3.4–3.7) include both
+the embedded `asset`/`requester`/`reviewer` objects AND sibling
+`asset_id`/`requester_id`/`reviewer_id` scalars for client convenience. Clients
+that only need the foreign keys can use the scalars without unpacking the
+embedded objects.
+
 **Response:** `200 OK`
 
 ```json
@@ -1031,7 +1037,7 @@ PATCH /api/v1/repair-requests/:id/repair-details
 | `repair_date` | string (date) | no | ISO 8601 date |
 | `fault_content` | string | no | Max 1000 chars |
 | `repair_plan` | string | no | Max 1000 chars |
-| `repair_cost` | string (decimal) | no | Non-negative, max 2 decimal places |
+| `repair_cost` | string (decimal) | no | Non-negative, max 15 digits, max 2 decimal places |
 | `repair_vendor` | string | no | Max 200 chars |
 | `version` | int | yes | Current repair request version |
 
@@ -1069,7 +1075,7 @@ POST /api/v1/repair-requests/:id/complete
 | `repair_date` | string (date) | yes | ISO 8601 date |
 | `fault_content` | string | yes | 1–1000 chars |
 | `repair_plan` | string | yes | 1–1000 chars |
-| `repair_cost` | string (decimal) | yes | Non-negative, max 2 decimal places |
+| `repair_cost` | string (decimal) | yes | Non-negative, max 15 digits, max 2 decimal places |
 | `repair_vendor` | string | yes | 1–200 chars |
 | `version` | int | yes | Current repair request version |
 
