@@ -23,12 +23,12 @@ from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import UserRole
 from app.schemas.common import DataResponse, PaginatedListResponse, PaginationMeta
 from app.schemas.repair_request import (
+    RepairRequestApprove,
     RepairRequestComplete,
     RepairRequestCreate,
     RepairRequestDetailsUpdate,
     RepairRequestRead,
     RepairRequestReject,
-    RepairRequestVersionPayload,
 )
 
 logger = logging.getLogger(__name__)
@@ -428,7 +428,7 @@ def get_repair_request(
 @router.post("/{repair_request_id}/approve", summary="Approve repair request")
 def approve_repair_request(
     repair_request_id: str,
-    payload: RepairRequestVersionPayload,
+    payload: RepairRequestApprove,
     db: DbSession,
     manager: ManagerUser,
 ) -> DataResponse[RepairRequestRead]:
