@@ -5,8 +5,6 @@ import {
   Card,
   Descriptions,
   Modal,
-  Segmented,
-  Select,
   Space,
   Table,
   Tag,
@@ -15,9 +13,9 @@ import {
 import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import { DUMMY_ASSETS, DUMMY_HOLDERS, type AssetRecord, type AssetStatus } from '../mocks/assets';
-
-type ViewMode = 'manager' | 'holder';
+import { useAuth } from '../auth/AuthContext';
+import { ApiError, assetsApi } from '../api';
+import type { AssetRecord, AssetStatus } from '../api/assets';
 
 const STATUS_COLORS: Record<AssetStatus, string> = {
   in_stock: 'default',
@@ -31,8 +29,11 @@ const PAGE_SIZE_OPTIONS = [5, 10, 20];
 
 const AssetList: React.FC = () => {
   const { t } = useTranslation();
-  const [viewMode, setViewMode] = useState<ViewMode>('manager');
-  const [holderId, setHolderId] = useState<string>(DUMMY_HOLDERS[0]?.id ?? '');
+  const { user } = useAuth();
+  const [assets, setAssets] = useState<AssetRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [detailAsset, setDetailAsset] = useState<AssetRecord | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
@@ -48,13 +49,6 @@ const AssetList: React.FC = () => {
     [],
   );
 
-  const filteredAssets = useMemo(() => {
-    if (viewMode === 'manager') {
-      return DUMMY_ASSETS;
-    }
-    return DUMMY_ASSETS.filter((asset) => asset.responsible_person?.id === holderId);
-  }, [holderId, viewMode]);
-
   const formatDateValue = (value: string | null): string => {
     if (!value) {
       return t('assetList.detail.notAvailable');
@@ -64,14 +58,59 @@ const AssetList: React.FC = () => {
     return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
   };
 
-  const formatAmountValue = (value: string): string => {
-    const parsed = Number.parseFloat(value);
-    return Number.isNaN(parsed) ? value : moneyFormatter.format(parsed);
+  const formatAmountValue = (value: string | number): string => {
+    const parsed = Number.parseFloat(String(value));
+    return Number.isNaN(parsed) ? String(value) : moneyFormatter.format(parsed);
   };
 
   useEffect(() => {
     setPage(1);
-  }, [viewMode, holderId, pageSize]);
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAssets = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response =
+          user.role === 'manager'
+            ? await assetsApi.listAssets({ page, perPage: pageSize })
+            : await assetsApi.listMyAssets({ page, perPage: pageSize });
+        if (cancelled) {
+          return;
+        }
+        setAssets(response.data);
+        setTotal(response.meta.total);
+      } catch (e) {
+        if (cancelled) {
+          return;
+        }
+        setAssets([]);
+        setTotal(0);
+        if (e instanceof ApiError) {
+          setError(e.message);
+        } else {
+          setError(t('assetList.serverError'));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadAssets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page, pageSize, t, user]);
 
   const columns: TableColumnsType<AssetRecord> = [
     {
@@ -151,44 +190,18 @@ const AssetList: React.FC = () => {
         {t('assetList.description')}
       </Typography.Paragraph>
 
-      <Alert message={t('assetList.dataSourceNotice')} type="info" showIcon />
+      {error ? <Alert message={error} type="error" showIcon /> : null}
 
       <Card>
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <Space wrap>
-            <Typography.Text strong>{t('assetList.roleLabel')}</Typography.Text>
-            <Segmented<ViewMode>
-              value={viewMode}
-              onChange={(value) => setViewMode(value)}
-              options={[
-                { label: t('assetList.mode.manager'), value: 'manager' },
-                { label: t('assetList.mode.holder'), value: 'holder' },
-              ]}
-            />
-            {viewMode === 'holder' ? (
-              <>
-                <Typography.Text strong>{t('assetList.holderLabel')}</Typography.Text>
-                <Select
-                  value={holderId}
-                  onChange={setHolderId}
-                  options={DUMMY_HOLDERS.map((holder) => ({
-                    label: holder.label,
-                    value: holder.id,
-                  }))}
-                  style={{ width: 220 }}
-                  placeholder={t('assetList.holderPlaceholder')}
-                />
-              </>
-            ) : null}
-          </Space>
-
           <Typography.Text type="secondary">
-            {t('assetList.summary', { count: filteredAssets.length })}
+            {t('assetList.summary', { count: total })}
           </Typography.Text>
 
           <Table<AssetRecord>
             rowKey="id"
-            dataSource={filteredAssets}
+            loading={loading}
+            dataSource={assets}
             columns={columns}
             locale={{
               emptyText: t('assetList.empty'),
@@ -196,7 +209,7 @@ const AssetList: React.FC = () => {
             pagination={{
               current: page,
               pageSize,
-              total: filteredAssets.length,
+              total,
               pageSizeOptions: PAGE_SIZE_OPTIONS.map(String),
               showSizeChanger: true,
               onChange: (nextPage, nextPageSize) => {

@@ -10,3 +10,4 @@ export { API_BASE, ApiError, apiClient, createApiClient, request } from "./base-
 export type { ErrorDetail } from "./base-client";
 
 export * as authApi from "./auth";
+export * as assetsApi from "./assets";
