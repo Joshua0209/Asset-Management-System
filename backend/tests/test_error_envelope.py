@@ -28,7 +28,6 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.models.user import User, UserRole
 
-
 _PROBE_PATH = "/__test__/raise"
 
 
