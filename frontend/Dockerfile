@@ -7,12 +7,18 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Run as the upstream `node` user (uid 1000) instead of root. /app must be
+# chowned first so the anonymous volume on /app/node_modules inherits the
+# right ownership when the container is first created.
+RUN chown -R node:node /app
+USER node
+
 # --ignore-scripts skips the root-level `prepare` lifecycle which runs
 # `git config core.hooksPath` — there is no git repo inside the container.
-COPY package.json package-lock.json ./
+COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
-COPY . .
+COPY --chown=node:node . .
 
 EXPOSE 5173
 
