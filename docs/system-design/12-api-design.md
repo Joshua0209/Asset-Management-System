@@ -1049,7 +1049,9 @@ PATCH /api/v1/repair-requests/:id/repair-details
 | `repair_vendor` | string | no | Max 200 chars |
 | `version` | int | yes | Current repair request version |
 
-**Preconditions:** Repair request status is `under_repair`.
+**Preconditions:** Repair request status is `under_repair`. The associated asset must also be in status `under_repair`.
+
+**At-least-one rule:** The body **must** carry at least one repair-detail field in addition to `version`. A body of just `{"version": N}` is rejected with `422` — otherwise no columns would change, the row version would not advance, and the client's optimistic lock would silently stay current.
 
 **Response:** `200 OK` with updated repair request.
 
