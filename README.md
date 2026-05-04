@@ -34,7 +34,7 @@ The team adopts a new FE division for Week 3: **split by audience, not by featur
 
 | Track | Status | Owner | Target | Notes |
 |-------|--------|-------|--------|-------|
-| Repair Request APIs (full workflow) | ⏳ Pending | BE-1 | Mon–Wed | FSM `pending_review → under_repair → completed` and `pending_review → rejected`, all server-validated |
+| Repair Request APIs (full workflow) | ✅ Done (PR [#16](https://github.com/Joshua0209/Asset-Management-System/pull/16)) | BE-1 | Mon–Wed | FSM `pending_review → under_repair → completed` and `pending_review → rejected`, all server-validated |
 | Image upload endpoint | ✅ Done | BE-2 | Wed–Thu | Upload-through-server shipped inline with `POST /repair-requests` (multipart + `RepairImage` persistence); local disk for now, abstracted behind a service layer for future S3 migration |
 | Asset assign / unassign / dispose | 🔍 In Review (PR [#17](https://github.com/Joshua0209/Asset-Management-System/pull/17)) | BE-2 | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose). Implementation + 45 tests landed on `feature/asset-fsm-assign-unassign-dispose`; awaiting merge |
 | API documentation review | ⏳ Pending | BE-1/BE-2 | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
