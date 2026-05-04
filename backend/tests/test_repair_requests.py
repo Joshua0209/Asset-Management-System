@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -17,6 +18,23 @@ from app.models.user import User, UserRole
 
 _PURCHASE_DATE = date(2026, 1, 1)
 _REPAIR_DATE = date(2026, 4, 20)
+
+
+_COMPLETE_PAYLOAD: dict[str, Any] = {
+    "repair_date": _REPAIR_DATE.isoformat(),
+    "fault_content": "GPU connector loose.",
+    "repair_plan": "Replaced GPU ribbon cable.",
+    "repair_cost": "3500.00",
+    "repair_vendor": "Apple Authorized Service",
+}
+
+
+def _details_payload(version: int) -> dict[str, Any]:
+    return {"fault_content": "Updated content.", "version": version}
+
+
+def _complete_payload(version: int) -> dict[str, Any]:
+    return {**_COMPLETE_PAYLOAD, "version": version}
 
 
 def _make_asset(
@@ -581,6 +599,536 @@ class TestRepairWorkflow:
         )
 
         assert response.status_code == 403
+
+
+def _seed_under_repair(
+    db_session: Session,
+    holder: User,
+    reviewer: User | None = None,
+) -> tuple[Asset, RepairRequest]:
+    asset = _make_asset(db_session, holder, status=AssetStatus.UNDER_REPAIR)
+    repair_request = _make_repair_request(
+        db_session,
+        asset,
+        holder,
+        status=RepairRequestStatus.UNDER_REPAIR,
+        reviewer=reviewer,
+    )
+    return asset, repair_request
+
+
+def _seed_pending_review(
+    db_session: Session,
+    holder: User,
+    *,
+    asset_status: AssetStatus = AssetStatus.PENDING_REPAIR,
+) -> tuple[Asset, RepairRequest]:
+    asset = _make_asset(db_session, holder, status=asset_status)
+    repair_request = _make_repair_request(db_session, asset, holder)
+    return asset, repair_request
+
+
+class TestRepairWorkflowRBAC:
+    """RBAC parity for the four manager-only workflow endpoints."""
+
+    def test_holder_cannot_reject_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/reject",
+            json={"rejection_reason": "x", "version": rr.version},
+            headers=auth_headers(holder),
+        )
+        assert response.status_code == 403
+
+    def test_holder_cannot_update_repair_details(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{rr.id}/repair-details",
+            json=_details_payload(rr.version),
+            headers=auth_headers(holder),
+        )
+        assert response.status_code == 403
+
+    def test_holder_cannot_complete_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/complete",
+            json=_complete_payload(rr.version),
+            headers=auth_headers(holder),
+        )
+        assert response.status_code == 403
+
+
+class TestRepairWorkflowSoftDelete:
+    """Soft-deleted requests must surface as 404 on every endpoint."""
+
+    def test_get_returns_404_for_soft_deleted_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        rr.deleted_at = datetime.now(UTC)
+        db_session.commit()
+
+        response = client.get(
+            f"/api/v1/repair-requests/{rr.id}",
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_approve_returns_404_for_soft_deleted_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        rr.deleted_at = datetime.now(UTC)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/approve",
+            json={"version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_reject_returns_404_for_soft_deleted_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        rr.deleted_at = datetime.now(UTC)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/reject",
+            json={"rejection_reason": "x", "version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_repair_details_returns_404_for_soft_deleted_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        rr.deleted_at = datetime.now(UTC)
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{rr.id}/repair-details",
+            json=_details_payload(rr.version),
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_complete_returns_404_for_soft_deleted_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        rr.deleted_at = datetime.now(UTC)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/complete",
+            json=_complete_payload(rr.version),
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+
+class TestRepairWorkflowStaleVersion:
+    """Optimistic-lock parity across approve/reject/repair-details."""
+
+    def test_approve_rejects_stale_request_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/approve",
+            json={"version": rr.version + 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_reject_rejects_stale_request_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/reject",
+            json={"rejection_reason": "x", "version": rr.version + 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_repair_details_rejects_stale_request_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{rr.id}/repair-details",
+            json=_details_payload(rr.version + 1),
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+
+class TestRepairWorkflowFSMGuards:
+    """Negative-path coverage for request-status and asset-status preconditions."""
+
+    def test_approve_rejects_request_already_under_repair(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/approve",
+            json={"version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_approve_rejects_asset_in_use(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        # Desync: request stuck in pending_review, asset somehow back to in_use.
+        _, rr = _seed_pending_review(
+            db_session, holder, asset_status=AssetStatus.IN_USE
+        )
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/approve",
+            json={"version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_complete_rejects_request_in_pending_review(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/complete",
+            json=_complete_payload(rr.version),
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_complete_rejects_when_asset_is_in_stock(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.IN_STOCK)
+        rr = _make_repair_request(
+            db_session,
+            asset,
+            holder,
+            status=RepairRequestStatus.UNDER_REPAIR,
+        )
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/complete",
+            json=_complete_payload(rr.version),
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_repair_details_rejects_request_in_pending_review(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{rr.id}/repair-details",
+            json=_details_payload(rr.version),
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_repair_details_rejects_when_asset_not_under_repair(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        # Desync: request still under_repair, asset already in_use.
+        asset = _make_asset(db_session, holder, status=AssetStatus.IN_USE)
+        rr = _make_repair_request(
+            db_session,
+            asset,
+            holder,
+            status=RepairRequestStatus.UNDER_REPAIR,
+        )
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{rr.id}/repair-details",
+            json=_details_payload(rr.version),
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_approve_returns_409_when_asset_is_soft_deleted(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset, rr = _seed_pending_review(db_session, holder)
+        asset.deleted_at = datetime.now(UTC)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/approve",
+            json={"version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+
+class TestRepairWorkflowValidation:
+    """Schema-level validation guarantees that the FSM contract relies on."""
+
+    def test_repair_details_rejects_empty_payload(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{rr.id}/repair-details",
+            json={"version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_reject_requires_non_empty_rejection_reason(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/reject",
+            json={"rejection_reason": "", "version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_complete_requires_all_repair_detail_fields(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/complete",
+            json={"version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_repair_details_rejects_negative_cost(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{rr.id}/repair-details",
+            json={"repair_cost": "-1.00", "version": rr.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_get_returns_404_for_unknown_id(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        response = client.get(
+            "/api/v1/repair-requests/00000000-0000-0000-0000-000000000000",
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+
+class TestRepairWorkflowAtomicity:
+    """A failed commit must roll back both the request and the asset together."""
+
+    def test_approve_rolls_back_both_rows_on_commit_failure(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        # The endpoint and db_session share the same session via the
+        # dependency override in conftest.py; patching the instance method
+        # forces _commit_repair_change down its rollback path.
+        with patch.object(
+            db_session, "commit", side_effect=SQLAlchemyError("boom")
+        ):
+            response = client.post(
+                f"/api/v1/repair-requests/{rr.id}/approve",
+                json={"version": rr.version},
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code in {500, 503}
+        db_session.refresh(rr)
+        db_session.refresh(asset)
+        assert rr.status == RepairRequestStatus.PENDING_REVIEW
+        assert asset.status == AssetStatus.PENDING_REPAIR
 
 
 class TestSubmitRepairRequest:
