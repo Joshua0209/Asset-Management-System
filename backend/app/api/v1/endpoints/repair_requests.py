@@ -55,6 +55,9 @@ _ALLOWED_IMAGE_TYPES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
 }
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_JPEG_START = b"\xff\xd8"
+_JPEG_END = b"\xff\xd9"
 _MAX_IMAGE_COUNT = 5
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024
 _MAX_IMAGE_MEGABYTES = _MAX_IMAGE_BYTES // (1024 * 1024)
@@ -307,10 +310,22 @@ def _validate_images(images: list[SubmittedImage]) -> None:
             raise _validation_error(
                 f"Image {image.filename!r} must be JPEG or PNG."
             )
+        if not _content_matches_declared_type(image.content, image.content_type):
+            raise _validation_error(
+                f"Image {image.filename!r} content does not match its declared type."
+            )
         if len(image.content) > _MAX_IMAGE_BYTES:
             raise _validation_error(
                 f"Image {image.filename!r} must be {_MAX_IMAGE_MEGABYTES} MB or smaller."
             )
+
+
+def _content_matches_declared_type(content: bytes, content_type: str) -> bool:
+    if content_type == "image/png":
+        return content.startswith(_PNG_SIGNATURE)
+    if content_type == "image/jpeg":
+        return content.startswith(_JPEG_START) and content.endswith(_JPEG_END)
+    return False
 
 
 def _persist_images(

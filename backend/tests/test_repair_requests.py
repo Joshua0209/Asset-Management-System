@@ -18,6 +18,8 @@ from app.models.user import User, UserRole
 
 _PURCHASE_DATE = date(2026, 1, 1)
 _REPAIR_DATE = date(2026, 4, 20)
+_PNG_BYTES = b"\x89PNG\r\n\x1a\nvalid-png-payload"
+_JPEG_BYTES = b"\xff\xd8valid-jpeg-payload\xff\xd9"
 
 
 _COMPLETE_PAYLOAD: dict[str, Any] = {
@@ -1199,7 +1201,7 @@ class TestSubmitRepairRequest:
                 "asset_id": asset.id,
                 "fault_description": "Screen flickers when connected to HDMI.",
             },
-            files=[("images", ("issue.png", b"png-bytes", "image/png"))],
+            files=[("images", ("issue.png", _PNG_BYTES, "image/png"))],
             headers=auth_headers(holder),
         )
 
@@ -1207,6 +1209,29 @@ class TestSubmitRepairRequest:
         images = response.json()["data"]["images"]
         assert len(images) == 1
         assert images[0]["url"] == f"/api/v1/images/{images[0]['id']}"
+
+    def test_submits_repair_request_with_jpeg_image(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            data={
+                "asset_id": asset.id,
+                "fault_description": "Screen flickers when connected to HDMI.",
+            },
+            files=[("images", ("issue.jpg", _JPEG_BYTES, "image/jpeg"))],
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 201
+        assert len(response.json()["data"]["images"]) == 1
 
     def test_manager_cannot_submit_repair_request(
         self,
@@ -1357,6 +1382,25 @@ class TestSubmitRepairRequest:
             files=[("images", ("issue.gif", b"GIF89a-bytes", "image/gif"))],
             headers=auth_headers(holder),
         )
+        assert response.status_code == 422
+
+    def test_rejects_image_with_mismatched_content_signature(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            data={"asset_id": asset.id, "fault_description": "Cracked screen."},
+            files=[("images", ("fake.png", b"not-a-real-png", "image/png"))],
+            headers=auth_headers(holder),
+        )
+
         assert response.status_code == 422
 
     def test_rejects_image_above_size_limit(
