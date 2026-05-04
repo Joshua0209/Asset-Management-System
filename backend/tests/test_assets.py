@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.asset import Asset, AssetStatus
+from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
 from app.schemas.asset import AssetCreate
 
@@ -50,6 +51,27 @@ def _make_asset(
     session.add(asset)
     session.commit()
     return asset
+
+
+def _make_repair_request(
+    session: Session,
+    *,
+    asset: Asset,
+    requester: User,
+    status: RepairRequestStatus = RepairRequestStatus.PENDING_REVIEW,
+    deleted_at: datetime | None = None,
+    fault_description: str = "Screen flickering.",
+) -> RepairRequest:
+    repair_request = RepairRequest(
+        asset_id=asset.id,
+        requester_id=requester.id,
+        status=status,
+        fault_description=fault_description,
+        deleted_at=deleted_at,
+    )
+    session.add(repair_request)
+    session.commit()
+    return repair_request
 
 
 class TestListAssets:
@@ -637,3 +659,813 @@ class TestAssetCreateSchema:
                 purchase_amount=Decimal("1500.00"),
                 warranty_expiry=date(2025, 12, 31),
             )
+
+
+class TestAssignAsset:
+    """FSM T2: in_stock -> in_use, manager-only."""
+
+    def test_assigns_in_stock_asset_to_holder(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER, name="Alice")
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        current_version = asset.version
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": holder.id, "version": current_version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["status"] == "in_use"
+        assert data["responsible_person_id"] == holder.id
+        assert data["responsible_person"]["id"] == holder.id
+        assert data["version"] == current_version + 1
+
+    def test_holder_cannot_assign(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version},
+            headers=auth_headers(holder),
+        )
+        assert response.status_code == 403
+
+    def test_anonymous_cannot_assign(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+    ) -> None:
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version},
+        )
+        assert response.status_code == 401
+
+    @pytest.mark.parametrize(
+        "current_status",
+        [
+            AssetStatus.IN_USE,
+            AssetStatus.PENDING_REPAIR,
+            AssetStatus.UNDER_REPAIR,
+            AssetStatus.DISPOSED,
+        ],
+    )
+    def test_rejects_non_in_stock_status(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        current_status: AssetStatus,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=current_status)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_returns_404_for_missing_asset(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        response = client.post(
+            "/api/v1/assets/00000000-0000-0000-0000-000000000000/assign",
+            json={"responsible_person_id": target.id, "version": 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_returns_404_for_soft_deleted_asset(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, deleted_at=datetime.now(UTC))
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_rejects_unknown_target_user(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": "00000000-0000-0000-0000-000000000000",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_rejects_manager_role_target(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        another_manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": another_manager.id, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_rejects_soft_deleted_target(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER, deleted=True)
+        asset = _make_asset(db_session)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_rejects_in_stock_asset_with_stray_responsible_person(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # FSM T2 requires responsible_person_id IS NULL even when status is in_stock.
+        manager = make_user(role=UserRole.MANAGER)
+        existing_holder = make_user(role=UserRole.HOLDER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_STOCK,
+            responsible_person_id=existing_holder.id,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_rejects_stale_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version + 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_returns_503_on_db_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+
+        with patch.object(db_session, "commit", side_effect=SQLAlchemyError("DB error")):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/assign",
+                json={"responsible_person_id": target.id, "version": asset.version},
+                headers=auth_headers(manager),
+            )
+        assert response.status_code == 503
+
+
+class TestUnassignAsset:
+    """FSM T5: in_use -> in_stock, manager-only."""
+
+    def test_unassigns_in_use_asset(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        current_version = asset.version
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "Employee transfer", "version": current_version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["status"] == "in_stock"
+        assert data["responsible_person_id"] is None
+        assert data["responsible_person"] is None
+        assert data["version"] == current_version + 1
+
+    def test_holder_cannot_unassign(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version},
+            headers=auth_headers(holder),
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize(
+        "current_status",
+        [
+            AssetStatus.IN_STOCK,
+            AssetStatus.PENDING_REPAIR,
+            AssetStatus.UNDER_REPAIR,
+            AssetStatus.DISPOSED,
+        ],
+    )
+    def test_rejects_non_in_use_status(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        current_status: AssetStatus,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, status=current_status)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_returns_404_for_missing_asset(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        response = client.post(
+            "/api/v1/assets/00000000-0000-0000-0000-000000000000/unassign",
+            json={"reason": "transfer", "version": 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_returns_404_for_soft_deleted_asset(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            deleted_at=datetime.now(UTC),
+        )
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_requires_reason(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_rejects_reason_over_500_chars(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "x" * 501, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_rejects_stale_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version + 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    @pytest.mark.parametrize(
+        "active_status",
+        [RepairRequestStatus.PENDING_REVIEW, RepairRequestStatus.UNDER_REPAIR],
+    )
+    def test_blocked_by_active_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        active_status: RepairRequestStatus,
+    ) -> None:
+        # Belt-and-suspenders: even if asset.status somehow remains in_use, an active repair
+        # request must block unassign per FSM T5.
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=active_status,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    @pytest.mark.parametrize(
+        "inactive_status",
+        [RepairRequestStatus.COMPLETED, RepairRequestStatus.REJECTED],
+    )
+    def test_inactive_repair_request_does_not_block(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        inactive_status: RepairRequestStatus,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=inactive_status,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 200
+
+    def test_soft_deleted_repair_request_does_not_block(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=RepairRequestStatus.PENDING_REVIEW,
+            deleted_at=datetime.now(UTC),
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 200
+
+    def test_returns_503_on_db_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        with patch.object(db_session, "commit", side_effect=SQLAlchemyError("DB error")):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/unassign",
+                json={"reason": "transfer", "version": asset.version},
+                headers=auth_headers(manager),
+            )
+        assert response.status_code == 503
+
+
+class TestDisposeAsset:
+    """FSM T3: in_stock -> disposed, manager-only."""
+
+    def test_disposes_in_stock_asset(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        current_version = asset.version
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={
+                "disposal_reason": "End of life — exceeded warranty",
+                "version": current_version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["status"] == "disposed"
+        assert data["disposal_reason"] == "End of life — exceeded warranty"
+        assert data["version"] == current_version + 1
+
+    def test_holder_cannot_dispose(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(holder),
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize(
+        "current_status",
+        [
+            AssetStatus.IN_USE,
+            AssetStatus.PENDING_REPAIR,
+            AssetStatus.UNDER_REPAIR,
+            AssetStatus.DISPOSED,
+        ],
+    )
+    def test_rejects_non_in_stock_status(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        current_status: AssetStatus,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, status=current_status)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_rejects_in_stock_asset_with_stray_responsible_person(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_STOCK,
+            responsible_person_id=holder.id,
+        )
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    @pytest.mark.parametrize(
+        "active_status",
+        [RepairRequestStatus.PENDING_REVIEW, RepairRequestStatus.UNDER_REPAIR],
+    )
+    def test_blocked_by_active_repair_request(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        active_status: RepairRequestStatus,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=active_status,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+        assert response.json()["error"]["message"] == (
+            "Cannot dispose asset with an active repair request."
+        )
+
+    @pytest.mark.parametrize(
+        "inactive_status",
+        [RepairRequestStatus.COMPLETED, RepairRequestStatus.REJECTED],
+    )
+    def test_inactive_repair_request_does_not_block(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        inactive_status: RepairRequestStatus,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=inactive_status,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 200
+
+    def test_soft_deleted_repair_request_does_not_block(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=RepairRequestStatus.PENDING_REVIEW,
+            deleted_at=datetime.now(UTC),
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 200
+
+    def test_returns_404_for_missing_asset(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        response = client.post(
+            "/api/v1/assets/00000000-0000-0000-0000-000000000000/dispose",
+            json={"disposal_reason": "EOL", "version": 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_returns_404_for_soft_deleted_asset(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, deleted_at=datetime.now(UTC))
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 404
+
+    def test_requires_disposal_reason(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_rejects_disposal_reason_over_500_chars(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "x" * 501, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 422
+
+    def test_rejects_stale_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version + 1},
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 409
+
+    def test_returns_503_on_db_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+        with patch.object(db_session, "commit", side_effect=SQLAlchemyError("DB error")):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/dispose",
+                json={"disposal_reason": "EOL", "version": asset.version},
+                headers=auth_headers(manager),
+            )
+        assert response.status_code == 503

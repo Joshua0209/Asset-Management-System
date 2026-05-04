@@ -32,43 +32,43 @@ The team adopts a new FE division for Week 3: **split by audience, not by featur
 
 #### Backend (2 people)
 
-| Track | Owner | Target | Notes |
-|-------|-------|--------|-------|
-| Repair Request APIs (full workflow) | BE-1 | Mon–Wed | FSM `pending_review → under_repair → completed` and `pending_review → rejected`, all server-validated |
-| Image upload endpoint | BE-2 | Wed–Thu | Upload-through-server, local disk for now, abstracted behind a service layer for future S3 migration |
-| Asset assign / unassign / dispose | BE-2 | Thu–Fri | FSM transitions T2 (assign), T3 (unassign), T5 (dispose) |
-| API documentation review | BE-1/BE-2 | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
+| Track | Status | Owner | Target | Notes |
+|-------|--------|-------|--------|-------|
+| Repair Request APIs (full workflow) | ⏳ Pending | BE-1 | Mon–Wed | FSM `pending_review → under_repair → completed` and `pending_review → rejected`, all server-validated |
+| Image upload endpoint | ✅ Done | BE-2 | Wed–Thu | Upload-through-server shipped inline with `POST /repair-requests` (multipart + `RepairImage` persistence); local disk for now, abstracted behind a service layer for future S3 migration |
+| Asset assign / unassign / dispose | 🔍 In Review (PR [#17](https://github.com/Joshua0209/Asset-Management-System/pull/17)) | BE-2 | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose). Implementation + 45 tests landed on `feature/asset-fsm-assign-unassign-dispose`; awaiting merge |
+| API documentation review | ⏳ Pending | BE-1/BE-2 | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
 
 #### FE-1 — Manager pages
 
-| Page | Target | Notes |
-|------|--------|-------|
-| Asset create / edit | Wed–Thu | Form validation, category dropdown (2-level flat list), purchase amount + warranty expiry validation matching backend Pydantic schema |
-| Asset assign / unassign | Thu | FSM T2/T3 — manager picks holder from user list, sets assignment date |
-| Asset dispose | Thu | FSM T5 — confirm dialog with reason; status → `disposed` |
-| Repair review / approve / reject | Thu–Fri | Approve → fill repair plan form (vendor, planned cost, planned date). Reject → confirm dialog with reason. Drives `pending_review → under_repair` or `pending_review → rejected` |
-| Repair complete | Fri | Fill repair date, content, actual cost, vendor → mark complete. Drives `under_repair → completed` |
+| Page | Status | Target | Notes |
+|------|--------|--------|-------|
+| Asset create / edit | ⏳ Pending | Wed–Thu | Form validation, category dropdown (2-level flat list), purchase amount + warranty expiry validation matching backend Pydantic schema |
+| Asset assign / unassign | ⏳ Pending | Thu | FSM T2/T5 — manager picks holder from user list, sets assignment date |
+| Asset dispose | ⏳ Pending | Thu | FSM T3 — confirm dialog with reason; status → `disposed` |
+| Repair review / approve / reject | ⏳ Pending | Thu–Fri | Approve → fill repair plan form (vendor, planned cost, planned date). Reject → confirm dialog with reason. Drives `pending_review → under_repair` or `pending_review → rejected` |
+| Repair complete | ⏳ Pending | Fri | Fill repair date, content, actual cost, vendor → mark complete. Drives `under_repair → completed` |
 
 #### FE-2 — Holder pages
 
-| Page | Target | Notes |
-|------|--------|-------|
-| Asset detail | Wed | Read-only view of asset metadata; manager view (FE-1) layers in edit/assign actions |
-| My assets list (holder view) | Wed | Reuses the shared list table component but reads from `GET /assets/mine` |
-| Repair request list | Wed–Thu | Status badges, sortable columns. Manager sees all; holder sees own only — same component, role-aware filter |
-| Repair request detail | Thu–Fri | Timeline view of workflow stages, status transitions, manager comments |
-| Image display on repair detail | Fri | Thumbnail grid, click-to-enlarge modal. **Risk:** depends on backend image upload landing Wed–Thu. Fallback: placeholder thumbnails using mock URLs if BE slips, real wiring lands first thing W4 |
+| Page | Status | Target | Notes |
+|------|--------|--------|-------|
+| Asset detail | ⏳ Pending | Wed | Read-only view of asset metadata; manager view (FE-1) layers in edit/assign actions |
+| My assets list (holder view) | ⏳ Pending | Wed | Reuses the shared list table component but reads from `GET /assets/mine` |
+| Repair request list | ⏳ Pending | Wed–Thu | Status badges, sortable columns. Manager sees all; holder sees own only — same component, role-aware filter |
+| Repair request detail | ⏳ Pending | Thu–Fri | Timeline view of workflow stages, status transitions, manager comments |
+| Image display on repair detail | ⏳ Pending | Fri | Thumbnail grid, click-to-enlarge modal. **Risk:** depends on backend image upload landing Wed–Thu. Fallback: placeholder thumbnails using mock URLs if BE slips, real wiring lands first thing W4 |
 
 #### FE-3 — Integration & quality
 
-| Responsibility | Cadence | Notes |
-|----------------|---------|-------|
-| PR review for FE-1 and FE-2 work | Rolling | Same-day SLA on review to keep FE-1/FE-2 unblocked |
-| Merge coordination | Rolling | Resolve conflicts between FE-1/FE-2 branches (likely on shared layout, routing, i18n keys). Keep `main` green |
-| vitest coverage on new pages | Wed–Fri | Each new page ships with at least one render test + one role-gating test. Maintain ≥ 80% FE coverage |
-| i18n keys (zh-TW + en) | Rolling | Audit `src/i18n/locales/` after each PR merges; no hardcoded user-facing strings |
-| Cross-cutting UX (loading, empty, error) | Thu–Fri | Consistent patterns across manager + holder pages via Ant Design's `Spin`, `Empty`, `notification` |
-| Optional: integration smoke test | Fri | Manual end-to-end run of the 3 critical flows (manager registers asset, holder submits repair, manager completes) before week close |
+| Responsibility | Status | Cadence | Notes |
+|----------------|--------|---------|-------|
+| PR review for FE-1 and FE-2 work | ⏳ Pending | Rolling | Same-day SLA on review to keep FE-1/FE-2 unblocked. No FE-1/FE-2 PRs opened yet |
+| Merge coordination | ⏳ Pending | Rolling | Resolve conflicts between FE-1/FE-2 branches (likely on shared layout, routing, i18n keys). Keep `main` green |
+| vitest coverage on new pages | ⏳ Pending | Wed–Fri | Each new page ships with at least one render test + one role-gating test. Maintain ≥ 80% FE coverage |
+| i18n keys (zh-TW + en) | ⏳ Pending | Rolling | Audit `src/i18n/locales/` after each PR merges; no hardcoded user-facing strings |
+| Cross-cutting UX (loading, empty, error) | ⏳ Pending | Thu–Fri | Consistent patterns across manager + holder pages via Ant Design's `Spin`, `Empty`, `notification` |
+| Optional: integration smoke test | ⏳ Pending | Fri | Manual end-to-end run of the 3 critical flows (manager registers asset, holder submits repair, manager completes) before week close |
 
 ### Week 3 milestone (`M3 — Feature Complete (Core)`)
 

@@ -12,8 +12,16 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.api.deps import CurrentUser, HolderUser, ManagerUser
 from app.db.session import get_db
 from app.models.asset import Asset, AssetStatus
+from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
-from app.schemas.asset import AssetCreate, AssetRead, AssetUpdate
+from app.schemas.asset import (
+    AssetAssignRequest,
+    AssetCreate,
+    AssetDisposeRequest,
+    AssetRead,
+    AssetUnassignRequest,
+    AssetUpdate,
+)
 from app.schemas.common import DataResponse, PaginatedListResponse, PaginationMeta
 
 logger = logging.getLogger(__name__)
@@ -29,6 +37,18 @@ _SORT_COLUMNS = {
     "status": Asset.status,
 }
 _ASSET_CODE_CREATE_ATTEMPTS = 3
+_ACTIVE_REPAIR_STATUSES = {
+    RepairRequestStatus.PENDING_REVIEW,
+    RepairRequestStatus.UNDER_REPAIR,
+}
+_STALE_VERSION_MESSAGE = (
+    "Resource was modified by another user. Please refresh and try again."
+)
+
+
+def _safe_log(value: object) -> str:
+    # Escape CR/LF so user-controlled path params cannot forge log entries (CWE-117).
+    return str(value).replace("\r", "\\r").replace("\n", "\\n")
 
 
 def _next_asset_code(db: Session, today: date | None = None) -> str:
@@ -353,7 +373,7 @@ def update_asset(
             raise _validation_error("warranty_expiry must be after purchase_date.")
 
         if asset.version != payload.version:
-            raise _conflict("Resource was modified by another user. Please refresh and try again.")
+            raise _conflict(_STALE_VERSION_MESSAGE)
 
         for field_name, value in update_data.items():
             if field_name in {"location", "department"} and value is None:
@@ -369,7 +389,7 @@ def update_asset(
         db.rollback()
         logger.warning("Asset update conflict for %s: %s", asset_id, exc)
         raise _conflict(
-            "Resource was modified by another user. Please refresh and try again."
+            _STALE_VERSION_MESSAGE
         ) from exc
     except IntegrityError as exc:
         db.rollback()
@@ -382,3 +402,185 @@ def update_asset(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to update asset. Please try again later.",
         ) from exc
+
+
+def _load_asset_for_transition(db: Session, asset_id: str) -> Asset:
+    asset = db.scalar(
+        select(Asset)
+        .options(joinedload(Asset.responsible_person.and_(User.deleted_at.is_(None))))
+        .where(Asset.id == asset_id, Asset.deleted_at.is_(None))
+    )
+    if asset is None:
+        raise _not_found()
+    return asset
+
+
+def _has_active_repair_request(db: Session, asset_id: str) -> bool:
+    count = db.scalar(
+        select(func.count())
+        .select_from(RepairRequest)
+        .where(
+            RepairRequest.asset_id == asset_id,
+            RepairRequest.deleted_at.is_(None),
+            RepairRequest.status.in_(_ACTIVE_REPAIR_STATUSES),
+        )
+    )
+    return bool(count)
+
+
+def _transition_503(asset_id: str, exc: SQLAlchemyError, action: str) -> HTTPException:
+    logger.error("Failed to %s asset %s: %s", action, _safe_log(asset_id), exc, exc_info=True)
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=f"Unable to {action} asset. Please try again later.",
+    )
+
+
+@router.post("/{asset_id}/assign", summary="Assign asset to a holder (FSM T2)")
+def assign_asset(
+    asset_id: str,
+    payload: AssetAssignRequest,
+    db: DbSession,
+    _manager: ManagerUser,
+) -> DataResponse[AssetRead]:
+    try:
+        asset = _load_asset_for_transition(db, asset_id)
+
+        target = db.scalar(
+            select(User).where(
+                User.id == payload.responsible_person_id,
+                User.deleted_at.is_(None),
+                User.role == UserRole.HOLDER,
+            )
+        )
+        if target is None:
+            raise _validation_error(
+                "responsible_person_id must reference an active holder."
+            )
+
+        if asset.status is not AssetStatus.IN_STOCK:
+            raise _conflict("Asset must be in_stock to assign.")
+        if asset.responsible_person_id is not None:
+            raise _conflict("Asset already has a responsible person.")
+        if asset.version != payload.version:
+            raise _conflict(
+                _STALE_VERSION_MESSAGE
+            )
+
+        asset.status = AssetStatus.IN_USE
+        asset.responsible_person_id = target.id
+        asset.responsible_person = target
+        db.commit()
+        db.refresh(asset)
+        return DataResponse(data=AssetRead.model_validate(asset))
+    except HTTPException:
+        raise
+    except StaleDataError as exc:
+        db.rollback()
+        logger.warning("Asset assign conflict for %s: %s", _safe_log(asset_id), exc)
+        raise _conflict(
+            _STALE_VERSION_MESSAGE
+        ) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        logger.warning("Invalid asset assign for %s: %s", _safe_log(asset_id), exc)
+        raise _validation_error("Asset assignment violates database constraints.") from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise _transition_503(asset_id, exc, "assign") from exc
+
+
+@router.post("/{asset_id}/unassign", summary="Unassign / reclaim asset (FSM T5)")
+def unassign_asset(
+    asset_id: str,
+    payload: AssetUnassignRequest,
+    db: DbSession,
+    manager: ManagerUser,
+) -> DataResponse[AssetRead]:
+    try:
+        asset = _load_asset_for_transition(db, asset_id)
+
+        if asset.status is not AssetStatus.IN_USE:
+            raise _conflict("Asset must be in_use to unassign.")
+        # Belt-and-suspenders: per FSM T5, an active repair request blocks unassign even
+        # if the asset's status somehow remained in_use through a prior bug.
+        if _has_active_repair_request(db, asset.id):
+            raise _conflict("Cannot unassign asset with an active repair request.")
+        if asset.version != payload.version:
+            raise _conflict(
+                _STALE_VERSION_MESSAGE
+            )
+
+        # Reason is validated by the schema and recorded in the application log; persistent
+        # audit trail lands in Week 4 with the asset_action_histories table.
+        logger.info(
+            "Asset %s unassigned by %s. reason=%r",
+            asset.asset_code,
+            manager.id,
+            payload.reason,
+        )
+
+        asset.status = AssetStatus.IN_STOCK
+        asset.responsible_person_id = None
+        asset.responsible_person = None
+        db.commit()
+        db.refresh(asset)
+        return DataResponse(data=AssetRead.model_validate(asset))
+    except HTTPException:
+        raise
+    except StaleDataError as exc:
+        db.rollback()
+        logger.warning("Asset unassign conflict for %s: %s", _safe_log(asset_id), exc)
+        raise _conflict(
+            _STALE_VERSION_MESSAGE
+        ) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        logger.warning("Invalid asset unassign for %s: %s", _safe_log(asset_id), exc)
+        raise _validation_error("Asset unassign violates database constraints.") from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise _transition_503(asset_id, exc, "unassign") from exc
+
+
+@router.post("/{asset_id}/dispose", summary="Scrap asset (FSM T3)")
+def dispose_asset(
+    asset_id: str,
+    payload: AssetDisposeRequest,
+    db: DbSession,
+    _manager: ManagerUser,
+) -> DataResponse[AssetRead]:
+    try:
+        asset = _load_asset_for_transition(db, asset_id)
+
+        if asset.status is not AssetStatus.IN_STOCK:
+            raise _conflict("Asset must be in_stock to dispose.")
+        if asset.responsible_person_id is not None:
+            raise _conflict("Cannot dispose asset that is still assigned to a holder.")
+        if _has_active_repair_request(db, asset.id):
+            raise _conflict("Cannot dispose asset with an active repair request.")
+        if asset.version != payload.version:
+            raise _conflict(
+                _STALE_VERSION_MESSAGE
+            )
+
+        asset.status = AssetStatus.DISPOSED
+        asset.disposal_reason = payload.disposal_reason
+        db.commit()
+        db.refresh(asset)
+        return DataResponse(data=AssetRead.model_validate(asset))
+    except HTTPException:
+        raise
+    except StaleDataError as exc:
+        db.rollback()
+        logger.warning("Asset dispose conflict for %s: %s", _safe_log(asset_id), exc)
+        raise _conflict(
+            _STALE_VERSION_MESSAGE
+        ) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        logger.warning("Invalid asset dispose for %s: %s", _safe_log(asset_id), exc)
+        raise _validation_error("Asset disposal violates database constraints.") from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise _transition_503(asset_id, exc, "dispose") from exc
