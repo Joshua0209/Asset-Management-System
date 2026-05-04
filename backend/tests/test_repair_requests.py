@@ -1513,3 +1513,179 @@ class TestSubmitRepairRequest:
             },
         )
         assert response.status_code == 415
+
+
+class TestRepairRequest409ErrorCodes:
+    """Pin the granular `error.code` values for 409s on the repair-request workflow.
+
+    `docs/system-design/12-api-design.md` distinguishes:
+      - `invalid_transition` — FSM precondition violated
+      - `duplicate_request`  — an active request already exists for the asset
+      - `conflict`           — optimistic-lock version mismatch
+    """
+
+    def test_submit_returns_invalid_transition_when_asset_not_in_use(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Desync: holder is still on the asset row but status is no longer in_use.
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder, status=AssetStatus.IN_STOCK)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            json={
+                "asset_id": asset.id,
+                "fault_description": "Screen flickers.",
+                "version": asset.version,
+            },
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_submit_returns_duplicate_request_when_active_request_exists(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        db_session.add(
+            RepairRequest(
+                asset_id=asset.id,
+                requester_id=holder.id,
+                status=RepairRequestStatus.PENDING_REVIEW,
+                fault_description="Existing issue.",
+            )
+        )
+        db_session.commit()
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            json={
+                "asset_id": asset.id,
+                "fault_description": "New issue.",
+                "version": asset.version,
+            },
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 409
+        body = response.json()["error"]
+        assert body["code"] == "duplicate_request"
+        assert body["message"] == "Repair request already exists for this asset."
+
+    def test_submit_returns_conflict_on_stale_asset_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            json={
+                "asset_id": asset.id,
+                "fault_description": "Screen flickers.",
+                "version": asset.version + 1,
+            },
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 409
+        # Stale-version on submit uses the default `_conflict()` code.
+        assert response.json()["error"]["code"] == "conflict"
+
+    def test_approve_returns_invalid_transition_when_request_already_under_repair(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/approve",
+            json={"version": rr.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_complete_returns_invalid_transition_when_request_still_pending_review(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/complete",
+            json=_complete_payload(rr.version),
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_complete_returns_conflict_on_stale_request_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_under_repair(db_session, holder)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/repair-requests/{rr.id}/complete",
+            json=_complete_payload(rr.version + 1),
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "conflict"
+
+    def test_repair_details_returns_invalid_transition_when_request_in_pending_review(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        response = client.patch(
+            f"/api/v1/repair-requests/{rr.id}/repair-details",
+            json=_details_payload(rr.version),
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"

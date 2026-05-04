@@ -89,8 +89,11 @@ def _forbidden(message: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
 
 
-def _conflict(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
+def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"code": code, "message": message},
+    )
 
 
 def _validation_error(message: str) -> HTTPException:
@@ -160,7 +163,7 @@ def _ensure_asset_status(
             "Associated asset has been deleted; repair request cannot proceed."
         )
     if asset.status is not expected_status:
-        raise _conflict(message)
+        raise _conflict(message, code="invalid_transition")
     return cast(Asset, asset)
 
 
@@ -170,7 +173,7 @@ def _ensure_request_status(
     message: str,
 ) -> None:
     if repair_request.status is not expected_status:
-        raise _conflict(message)
+        raise _conflict(message, code="invalid_transition")
 
 
 def _commit_repair_change(
@@ -668,7 +671,10 @@ async def submit_repair_request(
         if payload.version is not None and asset.version != payload.version:
             raise _conflict("Asset was modified by another user. Please refresh and try again.")
         if asset.status is not AssetStatus.IN_USE:
-            raise _conflict("Repair request is only allowed for assets in use.")
+            raise _conflict(
+                "Repair request is only allowed for assets in use.",
+                code="invalid_transition",
+            )
 
         active_count = db.scalar(
             select(func.count())
@@ -680,7 +686,10 @@ async def submit_repair_request(
             )
         )
         if active_count:
-            raise _conflict("Repair request already exists for this asset.")
+            raise _conflict(
+                "Repair request already exists for this asset.",
+                code="duplicate_request",
+            )
 
         repair_request = RepairRequest(
             asset_id=asset.id,

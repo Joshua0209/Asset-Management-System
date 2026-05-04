@@ -1469,3 +1469,243 @@ class TestDisposeAsset:
                 headers=auth_headers(manager),
             )
         assert response.status_code == 503
+
+
+class TestAssetTransition409ErrorCodes:
+    """Pin the granular `error.code` values for 409s on FSM transitions.
+
+    `docs/system-design/12-api-design.md` distinguishes:
+      - `invalid_transition` — FSM precondition violated
+      - `conflict`           — optimistic-lock version mismatch
+    A regression that collapses these back to a single `"conflict"` code would
+    break clients that branch on `error.code`.
+    """
+
+    def test_assign_returns_invalid_transition_when_asset_not_in_stock(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_USE, responsible_person_id=target.id)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_assign_returns_invalid_transition_when_in_stock_asset_already_assigned(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # FSM T2 desync guard: status=in_stock but responsible_person_id is set.
+        manager = make_user(role=UserRole.MANAGER)
+        existing_holder = make_user(role=UserRole.HOLDER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_STOCK,
+            responsible_person_id=existing_holder.id,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_assign_returns_conflict_on_stale_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={"responsible_person_id": target.id, "version": asset.version + 1},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "conflict"
+
+    def test_unassign_returns_invalid_transition_when_asset_not_in_use(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_unassign_returns_invalid_transition_when_blocked_by_active_repair(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=RepairRequestStatus.UNDER_REPAIR,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        body = response.json()["error"]
+        assert body["code"] == "invalid_transition"
+        assert body["message"] == "Cannot unassign asset with an active repair request."
+
+    def test_unassign_returns_conflict_on_stale_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={"reason": "transfer", "version": asset.version + 1},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "conflict"
+
+    def test_dispose_returns_invalid_transition_when_asset_not_in_stock(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_USE)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_dispose_returns_invalid_transition_when_in_stock_asset_still_assigned(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_STOCK,
+            responsible_person_id=holder.id,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_dispose_returns_invalid_transition_when_blocked_by_active_repair(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        _make_repair_request(
+            db_session,
+            asset=asset,
+            requester=holder,
+            status=RepairRequestStatus.PENDING_REVIEW,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "invalid_transition"
+
+    def test_dispose_returns_conflict_on_stale_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/dispose",
+            json={"disposal_reason": "EOL", "version": asset.version + 1},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "conflict"

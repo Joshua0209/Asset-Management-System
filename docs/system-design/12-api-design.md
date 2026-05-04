@@ -649,7 +649,7 @@ POST /api/v1/assets/:id/unassign
 }
 ```
 
-**Errors:** `409 invalid_transition` (active repair exists or wrong state)
+**Errors:** `409 invalid_transition` (active repair exists or wrong state), `409 conflict` (version mismatch)
 
 ---
 
