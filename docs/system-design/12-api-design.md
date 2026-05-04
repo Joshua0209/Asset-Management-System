@@ -222,7 +222,9 @@ POST /api/v1/auth/register
     "name": "Alice Chen",
     "department": "IT",
     "role": "holder",
-    "created_at": "2026-04-15T10:30:00Z"
+    "version": 1,
+    "created_at": "2026-04-15T10:30:00Z",
+    "updated_at": "2026-04-15T10:30:00Z"
   }
 }
 ```
@@ -287,7 +289,9 @@ GET /api/v1/auth/me
     "name": "Alice Chen",
     "department": "IT",
     "role": "holder",
-    "created_at": "2026-04-15T10:30:00Z"
+    "version": 1,
+    "created_at": "2026-04-15T10:30:00Z",
+    "updated_at": "2026-04-15T10:30:00Z"
   }
 }
 ```
@@ -1156,7 +1160,10 @@ GET /api/v1/users
       "email": "alice@example.com",
       "name": "Alice Chen",
       "department": "Engineering",
-      "role": "holder"
+      "role": "holder",
+      "version": 1,
+      "created_at": "2026-04-15T10:30:00Z",
+      "updated_at": "2026-04-15T10:30:00Z"
     }
   ],
   "meta": { "total": 45, "page": 1, "per_page": 20, "total_pages": 3 }
