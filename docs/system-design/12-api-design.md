@@ -763,13 +763,14 @@ POST /api/v1/repair-requests
 
 **Access:** Holder
 
-**Request:** `multipart/form-data`
+**Request:** `multipart/form-data`, `application/json`, or `application/x-www-form-urlencoded` (the endpoint dispatches on `Content-Type`; only `multipart/form-data` accepts files).
 
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `asset_id` | uuid | yes | Must be an asset assigned to the current user |
 | `fault_description` | string | yes | 1–1000 chars |
-| `images` | file[] | no | Max 5 files, each ≤ 5 MB, JPEG/PNG only |
+| `version` | int | no | Optional optimistic-lock token for the **asset** (not the repair request). When present, must match the asset's current `version`; a mismatch returns `409 conflict`. Omit this on first submit. |
+| `images` | file[] | no | Max 5 files, each ≤ 5 MB, JPEG/PNG only. Magic-byte signature is verified against the declared `Content-Type` (PNG: `\x89PNG…`, JPEG: starts `\xff\xd8`, ends `\xff\xd9`); a mismatch returns `422`. |
 
 **Preconditions (FSM T4):**
 - Asset status is `in_use`
@@ -809,9 +810,10 @@ POST /api/v1/repair-requests
 **Side effects:**
 - Asset status changes to `pending_repair`
 - Asset version incremented
+- Images written via `ImageStorage`; on any DB failure after files were written, the endpoint's `finally` block cleans up the saved storage keys to avoid orphans
 - Audit log entry written
 
-**Errors:** `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `422` (validation)
+**Errors:** `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `409 conflict` (asset version mismatch), `413` (request body exceeds the multipart budget), `415` (unsupported `Content-Type`), `422` (validation, including image signature mismatch)
 
 ---
 
