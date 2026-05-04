@@ -9,7 +9,12 @@ from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import ColumnElement, Select, func, select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import (
+    DataError,
+    IntegrityError,
+    OperationalError,
+    SQLAlchemyError,
+)
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm.interfaces import ORMOption
@@ -53,6 +58,17 @@ _MAX_IMAGE_BYTES = 5 * 1024 * 1024
 _MAX_IMAGE_MEGABYTES = _MAX_IMAGE_BYTES // (1024 * 1024)
 _MULTIPART_OVERHEAD_BYTES = 64 * 1024
 _MAX_REQUEST_BYTES = _MAX_IMAGE_COUNT * _MAX_IMAGE_BYTES + _MULTIPART_OVERHEAD_BYTES
+
+# Whitelist of fields that update_repair_details may forward to the ORM via
+# setattr. Guards against silent schema/model drift if the schema gains a
+# field that does not exist on RepairRequest.
+_REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset({
+    "repair_date",
+    "fault_content",
+    "repair_plan",
+    "repair_cost",
+    "repair_vendor",
+})
 
 
 class SubmittedImage:
@@ -120,8 +136,26 @@ def _ensure_asset_status(
     message: str,
 ) -> Asset:
     asset = repair_request.asset
-    if asset is None or asset.deleted_at is not None:
-        raise _not_found("Asset not found.")
+    if asset is None:
+        # asset_id is a NOT NULL FK with ondelete=CASCADE; reaching this branch
+        # means schema integrity is broken, not that the user gave a bad URL.
+        logger.error(
+            "Repair request %s has no associated asset (data integrity error)",
+            repair_request.id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal data integrity error.",
+        )
+    if asset.deleted_at is not None:
+        logger.warning(
+            "Repair request %s references soft-deleted asset %s",
+            repair_request.id,
+            asset.id,
+        )
+        raise _conflict(
+            "Associated asset has been deleted; repair request cannot proceed."
+        )
     if asset.status is not expected_status:
         raise _conflict(message)
     return cast(Asset, asset)
@@ -151,12 +185,36 @@ def _commit_repair_change(
         raise _conflict(
             "Repair request was modified by another user. Please refresh and try again."
         ) from exc
-    except SQLAlchemyError as exc:
+    except OperationalError as exc:
+        # Connection lost, deadlock, lock timeout — caller may retry.
         db.rollback()
-        logger.error("%s failed: %s", log_context, exc, exc_info=True)
+        logger.error("%s transient DB error: %s", log_context, exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to update repair request. Please try again later.",
+        ) from exc
+    except IntegrityError as exc:
+        # FK / unique / NOT NULL / check-constraint violation — surfaces a
+        # state conflict that retrying will not resolve.
+        db.rollback()
+        logger.warning("%s integrity error: %s", log_context, exc)
+        raise _conflict(
+            "Repair request could not be updated due to a conflicting state."
+        ) from exc
+    except DataError as exc:
+        # Value out of range / invalid enum / oversize column — caller's input.
+        db.rollback()
+        logger.warning("%s data error: %s", log_context, exc)
+        raise _validation_error(
+            "Repair request payload contains invalid values."
+        ) from exc
+    except SQLAlchemyError as exc:
+        # ProgrammingError / InvalidRequestError / unknown — programmer bug.
+        db.rollback()
+        logger.error("%s unexpected DB error: %s", log_context, exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal database error.",
         ) from exc
 
 
@@ -414,6 +472,7 @@ def get_repair_request(
     except HTTPException:
         raise
     except SQLAlchemyError as exc:
+        db.rollback()
         logger.error(
             "Failed to get repair request: %s",
             exc,
@@ -453,6 +512,10 @@ def approve_repair_request(
     except HTTPException:
         db.rollback()
         raise
+    except Exception:
+        db.rollback()
+        logger.exception("Unexpected error in approve_repair_request")
+        raise
 
 
 @router.post("/{repair_request_id}/reject", summary="Reject repair request")
@@ -484,6 +547,10 @@ def reject_repair_request(
     except HTTPException:
         db.rollback()
         raise
+    except Exception:
+        db.rollback()
+        logger.exception("Unexpected error in reject_repair_request")
+        raise
 
 
 @router.patch("/{repair_request_id}/repair-details", summary="Fill repair details")
@@ -501,13 +568,35 @@ def update_repair_details(
             RepairRequestStatus.UNDER_REPAIR,
             "Repair details can only be updated while the request is under repair.",
         )
+        # Defense-in-depth: every other workflow endpoint validates asset
+        # status. If state ever desyncs (e.g., asset disposed out-of-band),
+        # silently writing repair metadata to it would be wrong.
+        _ensure_asset_status(
+            repair_request,
+            AssetStatus.UNDER_REPAIR,
+            "Associated asset must be under repair to update details.",
+        )
 
         update_data = payload.model_dump(exclude={"version"}, exclude_unset=True)
+        unknown_fields = set(update_data) - _REPAIR_DETAILS_UPDATABLE_FIELDS
+        if unknown_fields:
+            logger.error(
+                "update_repair_details schema/model drift — unexpected fields: %s",
+                sorted(unknown_fields),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal configuration error.",
+            )
         for field_name, value in update_data.items():
             setattr(repair_request, field_name, value)
         return _commit_repair_change(db, repair_request, "Repair details update")
     except HTTPException:
         db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Unexpected error in update_repair_details")
         raise
 
 
@@ -543,6 +632,10 @@ def complete_repair_request(
         return _commit_repair_change(db, repair_request, "Repair request completion")
     except HTTPException:
         db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Unexpected error in complete_repair_request")
         raise
 
 
