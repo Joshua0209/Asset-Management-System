@@ -43,7 +43,11 @@ class RepairRequest(TimestampVersionMixin, Base):
         nullable=True,
     )
     status: Mapped[RepairRequestStatus] = mapped_column(
-        Enum(RepairRequestStatus, name="repair_request_status"),
+        Enum(
+            RepairRequestStatus,
+            name="repair_request_status",
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         default=RepairRequestStatus.PENDING_REVIEW,
     )
     fault_description: Mapped[str] = mapped_column(Text)

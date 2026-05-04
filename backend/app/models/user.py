@@ -22,7 +22,9 @@ class User(TimestampVersionMixin, Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(100))
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"))
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="user_role", values_callable=lambda obj: [e.value for e in obj])
+    )
     department: Mapped[str] = mapped_column(String(100))
 
     assets = relationship("Asset", back_populates="responsible_person")

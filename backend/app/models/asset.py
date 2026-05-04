@@ -37,7 +37,7 @@ class Asset(TimestampVersionMixin, Base):
     activation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     warranty_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[AssetStatus] = mapped_column(
-        Enum(AssetStatus, name="asset_status"),
+        Enum(AssetStatus, name="asset_status", values_callable=lambda obj: [e.value for e in obj]),
         default=AssetStatus.IN_STOCK,
     )
     responsible_person_id: Mapped[str | None] = mapped_column(
