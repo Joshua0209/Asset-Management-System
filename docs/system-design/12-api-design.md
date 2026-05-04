@@ -476,17 +476,19 @@ POST /api/v1/assets
 
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
-| `name` | string | yes | 1–200 chars |
-| `model` | string | yes | 1–100 chars |
+| `name` | string | yes | 1–120 chars |
+| `model` | string | yes | 1–120 chars |
 | `specs` | string | no | Max 500 chars |
 | `category` | string | yes | One of: `phone`, `computer`, `tablet`, `monitor`, `printer`, `network_equipment`, `other` |
-| `supplier` | string | yes | 1–200 chars |
+| `supplier` | string | yes | 1–120 chars |
 | `purchase_date` | string (date) | yes | ISO 8601 date, not in future |
-| `purchase_amount` | string (decimal) | yes | Positive number, max 2 decimal places |
-| `location` | string | no | Max 200 chars |
+| `purchase_amount` | string (decimal) | yes | Positive number, max 15 digits, max 2 decimal places |
+| `location` | string | no | Max 120 chars |
 | `department` | string | no | Max 100 chars |
 | `activation_date` | string (date) | no | ISO 8601 date |
 | `warranty_expiry` | string (date) | no | ISO 8601 date, must be after `purchase_date` |
+
+> **Schema note:** the string-length caps mirror the underlying `assets` table column widths (`VARCHAR(120)` for `name` / `model` / `supplier` / `location`; `VARCHAR(100)` for `department`). Bumping any of these requires an Alembic migration on the matching column.
 
 **Response:** `201 Created` with `Location: /api/v1/assets/:id`
 
@@ -503,7 +505,7 @@ POST /api/v1/assets
 ```
 
 **Side effects:**
-- `asset_code` auto-generated
+- `asset_code` auto-generated (format `AST-YYYY-NNNNN`, see [`backend/app/api/v1/endpoints/assets.py`](../../backend/app/api/v1/endpoints/assets.py))
 - `status` set to `in_stock`
 - `responsible_person_id` is `null`
 - Audit log entry written to `asset_action_histories`
