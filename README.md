@@ -99,13 +99,44 @@ Manager registers + assigns assets · holder submits repair with images · manag
 
 ## Quick start
 
-### 0. Start MySQL
+Two ways to run the stack locally. Pick one — they target the same ports (5173 frontend, 8000 backend, 3306 MySQL), so don't run both at the same time.
+
+### Option A — Full stack in Docker (recommended)
+
+Builds and runs MySQL + backend + frontend with hot-reload via bind mounts. The backend container runs `alembic upgrade head` on each start, then serves with `uvicorn --reload`. The frontend runs `vite --host` so HMR reaches the browser.
+
+```bash
+docker compose up --build       # first time: builds backend + frontend images
+docker compose up -d             # subsequent runs
+docker compose logs -f backend   # tail backend logs
+docker compose down              # stop (data persists in named volumes)
+docker compose down -v           # stop and wipe MySQL + uploads
+```
+
+**Seeding demo data (one-shot, destructive):** the seed script wipes all four tables before re-seeding, so it is not part of the boot command. Run it explicitly when you want a fresh demo dataset:
+
+```bash
+docker compose run --rm -e AMS_SEED_CONFIRM=1 backend python scripts/seed_demo_data.py
+```
+
+Endpoints:
+- Frontend: `http://localhost:5173`
+- FastAPI docs: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/health`
+
+Source edits on the host flow into the running containers — no rebuild needed unless you change `pyproject.toml` or `package.json`. If you do, run `docker compose build <service>` to refresh the image.
+
+### Option B — Local dev (no Docker for app code)
+
+Use this when you want a native Python venv and Node toolchain — e.g. when an IDE debugger needs in-process attach, or when iterating on the seed script.
+
+#### 0. Start MySQL only
 
 ```bash
 docker compose up -d mysql
 ```
 
-### 1. Backend
+#### 1. Backend
 
 ```bash
 cd backend
@@ -120,7 +151,7 @@ uvicorn app.main:app --reload
 
 FastAPI docs: `http://localhost:8000/docs`.
 
-### 2. Frontend
+#### 2. Frontend
 
 ```bash
 cd frontend
@@ -215,7 +246,7 @@ Round-robin assignment runs on PR open/reopen via [.github/workflows/assign-revi
 
 ## Environment
 
-Backend defaults live in [backend/.env.example](backend/.env.example). Update `DATABASE_URL` to point at your MySQL instance before running migrations or the seed script. The bundled [docker-compose.yml](docker-compose.yml) matches the default `DATABASE_URL`.
+Backend defaults live in [backend/.env.example](backend/.env.example). Update `DATABASE_URL` to point at your MySQL instance before running migrations or the seed script under **Option B**. The bundled [docker-compose.yml](docker-compose.yml) matches the default `DATABASE_URL` for the host-mode flow, and overrides it to `mysql+pymysql://root:password@mysql:3306/asset_management` when running under **Option A** so the backend container can resolve the `mysql` service hostname.
 
 Key variables:
 
