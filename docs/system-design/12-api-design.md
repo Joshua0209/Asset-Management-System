@@ -208,9 +208,9 @@ POST /api/v1/auth/register
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `email` | string | yes | Valid email, globally unique (a soft-deleted user still occupies the address) |
-| `password` | string | yes | Min 8 chars, at least 1 letter + 1 digit |
+| `password` | string | yes | 8–128 chars, at least 1 letter + 1 digit |
 | `name` | string | yes | 1–100 chars |
-| `department` | string | yes | Non-empty |
+| `department` | string | yes | 1–100 chars |
 
 **Response:** `201 Created`
 
@@ -333,9 +333,9 @@ This endpoint is how managers promote/add other managers (since [1.1 Register](#
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `email` | string | yes | Valid email, globally unique (a soft-deleted user still occupies the address) |
-| `password` | string | yes | Min 8 chars, at least 1 letter + 1 digit |
+| `password` | string | yes | 8–128 chars, at least 1 letter + 1 digit |
 | `name` | string | yes | 1–100 chars |
-| `department` | string | yes | Non-empty |
+| `department` | string | yes | 1–100 chars |
 | `role` | string | yes | `"holder"` or `"manager"` |
 
 **Response:** `201 Created` with the same `UserRead` shape as [1.1 Register](#11-register-public-self-registration--holder-only).
