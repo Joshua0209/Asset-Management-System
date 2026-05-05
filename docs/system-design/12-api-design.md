@@ -31,7 +31,7 @@
 | POST | `/assets/:id/assign` | Assign to holder | Manager | FR-16 | T2 |
 | POST | `/assets/:id/unassign` | Reclaim asset | Manager | FR-16 | T5 |
 | POST | `/assets/:id/dispose` | Scrap asset | Manager | — | T3 |
-| GET | `/assets/:id/history` | View audit trail | Manager | — | — |
+| GET | `/assets/:id/history` | View audit trail *(deferred to Week 4 audit log scope)* | Manager | — | — |
 
 ### Repair Requests
 
@@ -127,7 +127,7 @@ All responses use a consistent envelope:
 
 | HTTP Status | `error.code` | When |
 |-------------|-------------|------|
-| 400 | `bad_request` | Malformed JSON, missing required field |
+| 400 | `bad_request` | Bad request that is not a schema-validation failure |
 | 401 | `unauthorized` | Missing or expired token |
 | 403 | `forbidden` | Valid token but insufficient role |
 | 404 | `not_found` | Resource does not exist (or soft-deleted) |
@@ -136,7 +136,7 @@ All responses use a consistent envelope:
 | 409 | `invalid_transition` | FSM transition not allowed from current state |
 | 413 | `payload_too_large` | Request body exceeds the allowed upload size |
 | 415 | `unsupported_media_type` | Content-Type is not one of the supported formats |
-| 422 | `validation_error` | Semantically invalid input |
+| 422 | `validation_error` | Malformed JSON, missing required field, or semantically invalid input |
 | 429 | `rate_limit_exceeded` | Too many requests |
 | 500 | `internal_server_error` | Unexpected server condition (e.g., corrupted asset code sequence) |
 | 503 | `service_unavailable` | Transient backend failure (e.g., database error) |
@@ -229,7 +229,7 @@ POST /api/v1/auth/register
 }
 ```
 
-**Errors:** `400` (malformed), `422` (validation), `409` (email taken)
+**Errors:** `422` (malformed JSON or validation), `409` (email taken)
 
 ---
 
@@ -512,7 +512,7 @@ POST /api/v1/assets
 - `asset_code` auto-generated (format `AST-YYYY-NNNNN`, see [`backend/app/api/v1/endpoints/assets.py`](../../backend/app/api/v1/endpoints/assets.py))
 - `status` set to `in_stock`
 - `responsible_person_id` is `null`
-- Audit log entry written to `asset_action_histories`
+- Audit log entry written to `asset_action_histories` *(deferred to Week 4 audit log scope)*
 
 **Errors:** `422` (validation)
 
@@ -604,7 +604,7 @@ POST /api/v1/assets/:id/assign
 }
 ```
 
-**Side effects:** Audit log entry written.
+**Side effects:** Audit log entry written *(deferred to Week 4 audit log scope)*.
 
 **Errors:** `409 invalid_transition` (wrong state), `409 conflict` (version mismatch), `422` (invalid holder)
 
@@ -634,7 +634,7 @@ POST /api/v1/assets/:id/unassign
 
 **Preconditions (FSM T5):**
 - Asset status is `in_use`
-- No active repair requests (`pending_repair` or `under_repair`)
+- No active repair requests (`pending_review` or `under_repair`)
 
 **Response:** `200 OK`
 
@@ -693,7 +693,7 @@ POST /api/v1/assets/:id/dispose
 }
 ```
 
-**Side effects:** Audit log entry written. Asset can no longer transition to any other state.
+**Side effects:** Audit log entry written *(deferred to Week 4 audit log scope)*. Asset can no longer transition to any other state.
 
 ---
 
@@ -711,11 +711,13 @@ GET /api/v1/assets/mine
 
 ---
 
-### 2.9 Asset Action History
+### 2.9 Asset Action History *(deferred to Week 4 audit log scope)*
 
-```
-GET /api/v1/assets/:id/history
-```
+*Audit log is scheduled in Week 4 (`docs/roadmap.md`). This endpoint is the
+planned contract for that work and is not part of the Week 3 FastAPI auto-docs
+completion gate.*
+
+~~`GET /api/v1/assets/:id/history`~~
 
 **Access:** Manager
 
@@ -811,9 +813,9 @@ POST /api/v1/repair-requests
 - Asset status changes to `pending_repair`
 - Asset version incremented
 - Images written via `ImageStorage`; on any DB failure after files were written, the endpoint's `finally` block cleans up the saved storage keys to avoid orphans
-- Audit log entry written
+- Audit log entry written *(deferred to Week 4 audit log scope)*
 
-**Errors:** `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `409 conflict` (asset version mismatch), `413` (request body exceeds the multipart budget), `415` (unsupported `Content-Type`), `422` (validation, including image signature mismatch)
+**Errors:** `404` (asset not found), `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `409 conflict` (asset version mismatch), `413` (request body exceeds the multipart budget), `415` (unsupported `Content-Type`), `422` (validation, including image signature mismatch)
 
 ---
 
@@ -966,7 +968,7 @@ POST /api/v1/repair-requests/:id/approve
 - Asset status → `under_repair`
 - Both versions incremented
 - `reviewer_id` set to current user
-- Audit log entry written
+- Audit log entry written *(deferred to Week 4 audit log scope)*
 
 ---
 
@@ -1015,7 +1017,7 @@ POST /api/v1/repair-requests/:id/reject
 **Side effects:**
 - Repair request status → `rejected`
 - Asset status → `in_use` (returns to normal)
-- Audit log entry written
+- Audit log entry written *(deferred to Week 4 audit log scope)*
 
 ---
 
@@ -1110,7 +1112,7 @@ POST /api/v1/repair-requests/:id/complete
 - Repair request status → `completed`, `completed_at` set
 - Asset status → `in_use`
 - `responsible_person_id` unchanged
-- Audit log entry written
+- Audit log entry written *(deferred to Week 4 audit log scope)*
 
 ---
 

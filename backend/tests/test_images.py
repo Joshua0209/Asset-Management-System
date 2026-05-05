@@ -4,6 +4,7 @@ from collections.abc import Callable, Generator
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,7 +54,7 @@ def _attach_image(
     suffix: str,
     content: bytes,
 ) -> RepairImage:
-    image_id = f"img-{rr.id[:8]}-{suffix.lstrip('.')}"
+    image_id = str(uuid4())
     storage_key = f"{rr.id}/{image_id}{suffix}"
     target = upload_dir / storage_key
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -215,7 +216,7 @@ class TestGetImage:
         holder = make_user(role=UserRole.HOLDER)
 
         response = client.get(
-            "/api/v1/images/does-not-exist",
+            "/api/v1/images/00000000-0000-0000-0000-000000000000",
             headers=auth_headers(holder),
         )
 

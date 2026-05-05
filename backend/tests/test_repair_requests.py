@@ -366,7 +366,7 @@ class TestGetRepairRequest:
 
         assert response.status_code == 403
 
-    def test_database_error_does_not_log_user_controlled_request_id(
+    def test_malformed_request_id_is_rejected_before_database_logging(
         self,
         client: TestClient,
         make_user: Callable[..., User],
@@ -391,7 +391,7 @@ class TestGetRepairRequest:
                 headers=auth_headers(manager),
             )
 
-        assert response.status_code == 503
+        assert response.status_code == 422
         assert "repair-1" not in caplog.text
         assert "forged-log-entry" not in caplog.text
 
@@ -1205,6 +1205,47 @@ class TestSubmitRepairRequest:
         assert response.status_code == 201
         assert response.json()["data"]["asset"]["id"] == asset.id
 
+    def test_json_validation_error_uses_project_error_envelope(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            json={"asset_id": "not-a-uuid"},
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+        fields = {detail["field"] for detail in response.json()["error"]["details"]}
+        assert {"asset_id", "fault_description"}.issubset(fields)
+
+    def test_malformed_json_uses_project_error_envelope(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            content="{",
+            headers={
+                **auth_headers(holder),
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["error"]["code"] == "validation_error"
+        assert body["error"]["message"] == "Malformed JSON body."
+
     def test_submits_repair_request_with_image(
         self,
         client: TestClient,
@@ -1281,6 +1322,79 @@ class TestSubmitRepairRequest:
                 "message": "Unable to store repair images. Please try again later.",
             }
         }
+
+    def test_cleanup_failure_in_finally_does_not_mask_original_503(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # If a future storage backend's cleanup raises (violating the Protocol
+        # contract), the finally block must NOT swallow the original 503 and
+        # let the cleanup exception bubble as a 500.
+        class CleanupRaisesStorage:
+            def save(
+                self,
+                *,
+                repair_request_id: str,  # noqa: ARG002
+                image_id: str,  # noqa: ARG002
+                suffix: str,  # noqa: ARG002
+                content: bytes,  # noqa: ARG002
+            ) -> str:
+                raise ImageStorageError("storage save failed")
+
+            def open(self, storage_key: str) -> tuple[bytes, str]:  # noqa: ARG002
+                raise ImageStorageError("not implemented")
+
+            def cleanup(self, storage_keys: list[str]) -> None:  # noqa: ARG002
+                raise RuntimeError("cleanup itself blew up")
+
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        app.dependency_overrides[get_image_storage] = lambda: CleanupRaisesStorage()
+        try:
+            response = client.post(
+                "/api/v1/repair-requests",
+                data={
+                    "asset_id": asset.id,
+                    "fault_description": "Cleanup-failure scenario.",
+                },
+                files=[("images", ("issue.png", _PNG_BYTES, "image/png"))],
+                headers=auth_headers(holder),
+            )
+        finally:
+            app.dependency_overrides.pop(get_image_storage, None)
+
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "service_unavailable"
+
+    def test_malformed_json_body_envelope_has_no_details_array(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Pin the manual JSONDecodeError → 422 path's wire shape: it carries
+        # `code`/`message` but no `details` array (the failure happens before
+        # field-level errors exist). Distinct from FastAPI's RequestValidationError
+        # path which does emit `details`.
+        holder = make_user(role=UserRole.HOLDER)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            content="{",
+            headers={
+                **auth_headers(holder),
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 422
+        body = response.json()["error"]
+        assert body["code"] == "validation_error"
+        assert body["message"] == "Malformed JSON body."
+        assert "details" not in body
 
     def test_manager_cannot_submit_repair_request(
         self,
@@ -1513,6 +1627,159 @@ class TestSubmitRepairRequest:
             },
         )
         assert response.status_code == 415
+
+
+class TestSubmitRepairRequestParsingEdges:
+    """Pin runtime contract on multipart/form parsing edges that are easy to regress."""
+
+    def test_form_field_value_ending_with_double_dash_is_preserved(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Regression for a multipart parser bug where a field whose value
+        # ends with "--" was silently dropped because the parser shortcut
+        # `endswith(b"--")` mistook it for the closing-boundary epilogue.
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            data={
+                "asset_id": asset.id,
+                "fault_description": "Hyphen-mode failure --",
+            },
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 201
+        assert (
+            response.json()["data"]["fault_description"] == "Hyphen-mode failure --"
+        )
+
+    def test_jpeg_payload_ending_with_end_marker_is_persisted_byte_for_byte(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Regression for binary-content corruption in multipart parsing:
+        # a stray `bytes.strip()` would silently chew the trailing 0xFFD9
+        # JPEG end marker, breaking later magic-byte validation.
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        # Real-shape JPEG: SOI marker + payload + EOI marker.
+        jpeg_bytes = b"\xff\xd8" + b"x" * 64 + b"\xff\xd9"
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            data={"asset_id": asset.id, "fault_description": "Cracked screen."},
+            files=[("images", ("issue.jpg", jpeg_bytes, "image/jpeg"))],
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 201
+
+    def test_multipart_without_boundary_param_returns_422(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        _make_asset(db_session, holder)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            content=b"--no-boundary--",
+            headers={
+                **auth_headers(holder),
+                "Content-Type": "multipart/form-data",
+            },
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+
+    def test_invalid_content_length_returns_422(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            content=b"{}",
+            headers={
+                **auth_headers(holder),
+                "Content-Type": "application/json",
+                "Content-Length": "not-an-int",
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_oversized_content_length_returns_413(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        # Declare a Content-Length above the multipart budget; the body
+        # itself is small so the test runs cheaply — the cap fires on the
+        # declared length before any buffering happens.
+        massive = str(64 * 1024 * 1024)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            content=b"--BOUNDARY--",
+            headers={
+                **auth_headers(holder),
+                "Content-Type": "multipart/form-data; boundary=BOUNDARY",
+                "Content-Length": massive,
+            },
+        )
+
+        assert response.status_code == 413
+        assert response.json()["error"]["code"] == "payload_too_large"
+
+    def test_form_urlencoded_duplicate_field_returns_422(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Every documented field is scalar — duplicates would silently
+        # discard data under a "last wins" rule. Reject with 422.
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        body = (
+            f"asset_id={asset.id}&"
+            f"asset_id={asset.id}&"
+            "fault_description=Cracked%20screen."
+        ).encode()
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            content=body,
+            headers={
+                **auth_headers(holder),
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+
+        assert response.status_code == 422
+        body_json = response.json()
+        assert body_json["error"]["code"] == "validation_error"
+        assert "asset_id" in body_json["error"]["message"]
 
 
 class TestRepairRequest409ErrorCodes:

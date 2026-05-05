@@ -68,7 +68,7 @@ The team adopts a new FE division for Week 3: **split by audience, not by featur
 | Repair Request APIs (full workflow) | ✅ Done (PR [#16](https://github.com/Joshua0209/Asset-Management-System/pull/16)) | BE-1 | Mon–Wed | FSM `pending_review → under_repair → completed` and `pending_review → rejected`, all server-validated |
 | Image upload + retrieval endpoint | ✅ Done | BE-2 | Wed–Thu | `POST /repair-requests` accepts up to 5 images (≤5 MB, JPEG/PNG); `GET /api/v1/images/:id` streams bytes back. Storage abstracted behind `ImageStorage` Protocol (`LocalImageStorage` impl); S3 swap in Week 5 only touches `app/services/image_storage.py` |
 | Asset assign / unassign / dispose | ✅ Done (PR [#17](https://github.com/Joshua0209/Asset-Management-System/pull/17)) | BE-2 | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose) |
-| API documentation review | ⏳ Pending | BE-1/BE-2 | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
+| API documentation review | ✅ Done | BE-1/BE-2 | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
 
 #### FE-1 — Manager pages
 

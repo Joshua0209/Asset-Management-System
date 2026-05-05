@@ -93,6 +93,18 @@ class TestRegisterValidation:
         response = client.post("/api/v1/auth/register", json=bad)
         assert response.status_code == 422
 
+    def test_malformed_json_returns_422_envelope(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/v1/auth/register",
+            content="{",
+            headers={"Content-Type": "application/json"},
+        )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["error"]["code"] == "validation_error"
+        assert body["error"]["details"][0]["code"] == "json_invalid"
+
 
 class TestRegisterDecisionA2ManagerSuppression:
     def test_client_cannot_self_elevate_to_manager(

@@ -1,13 +1,15 @@
+import json
 import logging
-import math
 import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 from urllib.parse import parse_qs
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import ValidationError
 from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.exc import (
     DataError,
@@ -25,7 +27,13 @@ from app.models.asset import Asset, AssetStatus
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import UserRole
-from app.schemas.common import DataResponse, PaginatedListResponse, PaginationMeta
+from app.schemas.common import (
+    DataResponse,
+    PaginatedListResponse,
+    PaginationMeta,
+    UUIDPath,
+    error_responses,
+)
 from app.schemas.repair_request import (
     RepairRequestApprove,
     RepairRequestComplete,
@@ -37,9 +45,17 @@ from app.schemas.repair_request import (
 from app.services.image_storage import ImageStorageDep, ImageStorageError
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(
+    responses=error_responses(
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+)
 
 DbSession = Annotated[Session, Depends(get_db)]
+RepairRequestIdPath = UUIDPath
 
 _ACTIVE_REPAIR_STATUSES = {
     RepairRequestStatus.PENDING_REVIEW,
@@ -73,6 +89,69 @@ _REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset({
     "repair_vendor",
 })
 
+_ERROR_RESPONSES = error_responses(
+    status.HTTP_401_UNAUTHORIZED,
+    status.HTTP_403_FORBIDDEN,
+    status.HTTP_404_NOT_FOUND,
+    status.HTTP_409_CONFLICT,
+    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+    status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    status.HTTP_422_UNPROCESSABLE_ENTITY,
+    status.HTTP_503_SERVICE_UNAVAILABLE,
+)
+
+def _build_repair_submit_openapi_extra() -> dict[str, Any]:
+    """Build the multipart schema from `RepairRequestCreate` so it never drifts.
+
+    The `application/json` and `application/x-www-form-urlencoded` bodies share
+    the auto-generated schema via $ref. The multipart variant has to be hand
+    composed because it adds an `images` file array, but its scalar fields
+    must stay in lockstep with the Pydantic model — so we read them out of
+    `model_json_schema()` rather than hard-coding them a second time.
+    """
+    base_schema = RepairRequestCreate.model_json_schema(
+        ref_template="#/components/schemas/{model}"
+    )
+    multipart_properties = dict(base_schema.get("properties", {}))
+    multipart_properties["images"] = {
+        "type": "array",
+        "maxItems": _MAX_IMAGE_COUNT,
+        "items": {"type": "string", "format": "binary"},
+        "description": (
+            "Optional JPEG/PNG repair images; max "
+            f"{_MAX_IMAGE_COUNT} files, {_MAX_IMAGE_MEGABYTES} MB each."
+        ),
+    }
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/RepairRequestCreate"}
+                },
+                "application/x-www-form-urlencoded": {
+                    "schema": {"$ref": "#/components/schemas/RepairRequestCreate"}
+                },
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": list(base_schema.get("required", [])),
+                        "properties": multipart_properties,
+                    },
+                    "encoding": {
+                        "images": {
+                            # OpenAPI 3.x prefers a comma+space separator.
+                            "contentType": ", ".join(sorted(_ALLOWED_IMAGE_TYPES)),
+                        }
+                    },
+                },
+            },
+        }
+    }
+
+
+_REPAIR_SUBMIT_OPENAPI_EXTRA: dict[str, Any] = _build_repair_submit_openapi_extra()
+
 
 @dataclass(frozen=True, kw_only=True)
 class SubmittedImage:
@@ -98,6 +177,28 @@ def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
 
 def _validation_error(message: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
+
+
+def _repair_create_from_mapping(raw_payload: object) -> RepairRequestCreate:
+    try:
+        return RepairRequestCreate.model_validate(raw_payload)
+    except ValidationError as exc:
+        details = [
+            {
+                "field": ".".join(str(part) for part in error.get("loc", ())),
+                "message": error.get("msg", ""),
+                "code": error.get("type", "value_error"),
+            }
+            for error in exc.errors()
+        ]
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "validation_error",
+                "message": "Validation failed",
+                "details": details,
+            },
+        ) from exc
 
 
 def _base_filters() -> list[ColumnElement[bool]]:
@@ -192,7 +293,7 @@ def _commit_repair_change(
             "Repair request was modified by another user. Please refresh and try again."
         ) from exc
     except OperationalError as exc:
-        # Connection lost, deadlock, lock timeout — caller may retry.
+        # Transient — caller may retry.
         db.rollback()
         logger.error("%s transient DB error: %s", log_context, exc, exc_info=True)
         raise HTTPException(
@@ -200,22 +301,21 @@ def _commit_repair_change(
             detail="Unable to update repair request. Please try again later.",
         ) from exc
     except IntegrityError as exc:
-        # FK / unique / NOT NULL / check-constraint violation — surfaces a
-        # state conflict that retrying will not resolve.
+        # State conflict — not retryable.
         db.rollback()
         logger.warning("%s integrity error: %s", log_context, exc)
         raise _conflict(
             "Repair request could not be updated due to a conflicting state."
         ) from exc
     except DataError as exc:
-        # Value out of range / invalid enum / oversize column — caller's input.
+        # Caller's input → validation_error (422).
         db.rollback()
         logger.warning("%s data error: %s", log_context, exc)
         raise _validation_error(
             "Repair request payload contains invalid values."
         ) from exc
     except SQLAlchemyError as exc:
-        # ProgrammingError / InvalidRequestError / unknown — programmer bug.
+        # Programmer bug — generic 500.
         db.rollback()
         logger.error("%s unexpected DB error: %s", log_context, exc, exc_info=True)
         raise HTTPException(
@@ -249,14 +349,14 @@ def _consume_multipart_part(
     fields: dict[str, str],
     images: list[SubmittedImage],
 ) -> None:
-    if not part or part == b"--":
-        return
-    if part.endswith(b"--"):
-        # Trailing junk after the closing boundary.
+    # Empty preamble or post-closing-boundary segment (`--` followed by an
+    # optional RFC 7578 epilogue). Don't use `endswith(b"--")` here:
+    # legitimate content (e.g. a fault_description ending with "--") would be
+    # silently dropped.
+    if not part or part.startswith(b"--"):
         return
     if b"\r\n\r\n" not in part:
-        logger.warning("Skipping malformed multipart part of length %d", len(part))
-        return
+        raise _validation_error("Malformed multipart part.")
     raw_headers, content = part.split(b"\r\n\r\n", maxsplit=1)
     try:
         decoded_headers = raw_headers.decode("utf-8")
@@ -267,7 +367,6 @@ def _consume_multipart_part(
     name = disposition.get("name")
     if name is None:
         return
-    content = content.removesuffix(b"\r\n")
     if disposition.get("filename") is not None:
         if name == "images":
             images.append(
@@ -359,48 +458,76 @@ def _persist_images(
         )
 
 
+def _enforce_request_size_limit(declared_length: str | None) -> None:
+    """DoS guard: reject oversized bodies before buffering them into memory."""
+    if declared_length is None:
+        return
+    try:
+        content_length = int(declared_length)
+    except ValueError as exc:
+        raise _validation_error("Invalid Content-Length header.") from exc
+    if content_length > _MAX_REQUEST_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Request body exceeds the allowed size.",
+        )
+
+
+def _parse_form_urlencoded(body: bytes) -> dict[str, str]:
+    try:
+        decoded_body = body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _validation_error("Form body is not valid UTF-8.") from exc
+    parsed = parse_qs(decoded_body, keep_blank_values=True)
+    duplicates = [key for key, values in parsed.items() if len(values) > 1]
+    if duplicates:
+        # Every documented field is scalar; "last wins" would silently
+        # discard data. Reject up front so the client sees the bug.
+        raise _validation_error(
+            f"Form fields appear multiple times: {sorted(duplicates)}."
+        )
+    return {key: values[0] if values else "" for key, values in parsed.items()}
+
+
+def _unsupported_media_type(content_type: str) -> HTTPException:
+    # Cap the echoed content-type so a malicious client can't bloat the
+    # response or smuggle CR/LF into log destinations that render as text.
+    safe_content_type = (
+        (content_type[:120].replace("\r", "").replace("\n", ""))
+        if content_type
+        else "<missing>"
+    )
+    return HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"Unsupported content-type: {safe_content_type}",
+    )
+
+
 async def _repair_payload_from_request(
     request: Request,
 ) -> tuple[RepairRequestCreate, list[SubmittedImage]]:
     content_type = request.headers.get("content-type", "")
-
-    # DoS guard: cap declared body size before buffering it into memory.
-    declared_length = request.headers.get("content-length")
-    if declared_length is not None:
-        try:
-            content_length = int(declared_length)
-        except ValueError as exc:
-            raise _validation_error("Invalid Content-Length header.") from exc
-        if content_length > _MAX_REQUEST_BYTES:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Request body exceeds the allowed size.",
-            )
+    _enforce_request_size_limit(request.headers.get("content-length"))
 
     if content_type.startswith("application/json"):
-        raw_payload = await request.json()
-        return RepairRequestCreate.model_validate(raw_payload), []
+        try:
+            raw_payload = await request.json()
+        except json.JSONDecodeError as exc:
+            raise _validation_error("Malformed JSON body.") from exc
+        return _repair_create_from_mapping(raw_payload), []
 
     body = await request.body()
 
     if content_type.startswith("multipart/form-data"):
         fields, images = _parse_multipart_fields(content_type, body)
         _validate_images(images)
-        return RepairRequestCreate.model_validate(fields), images
+        return _repair_create_from_mapping(fields), images
 
     if content_type.startswith("application/x-www-form-urlencoded"):
-        try:
-            decoded_body = body.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise _validation_error("Form body is not valid UTF-8.") from exc
-        parsed = parse_qs(decoded_body, keep_blank_values=True)
-        fields = {key: values[-1] if values else "" for key, values in parsed.items()}
-        return RepairRequestCreate.model_validate(fields), []
+        fields = _parse_form_urlencoded(body)
+        return _repair_create_from_mapping(fields), []
 
-    raise HTTPException(
-        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-        detail=f"Unsupported content-type: {content_type or '<missing>'}",
-    )
+    raise _unsupported_media_type(content_type)
 
 
 @router.get("", summary="List repair requests")
@@ -410,8 +537,8 @@ def list_repair_requests(
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
     status_filter: Annotated[RepairRequestStatus | None, Query(alias="status")] = None,
-    asset_id: str | None = None,
-    requester_id: str | None = None,
+    asset_id: UUID | None = None,
+    requester_id: UUID | None = None,
     sort: str = "-created_at",
 ) -> PaginatedListResponse[RepairRequestRead]:
     try:
@@ -419,21 +546,22 @@ def list_repair_requests(
         if status_filter is not None:
             filters.append(RepairRequest.status == status_filter)
         if asset_id:
-            filters.append(RepairRequest.asset_id == asset_id)
+            filters.append(RepairRequest.asset_id == str(asset_id))
+        requester_id_str = str(requester_id) if requester_id else None
         if current_user.role is UserRole.HOLDER:
-            if requester_id is not None and requester_id != current_user.id:
+            if requester_id_str is not None and requester_id_str != current_user.id:
                 raise _forbidden("Holder users can only list their own repair requests.")
             filters.append(RepairRequest.requester_id == current_user.id)
-        elif requester_id:
-            filters.append(RepairRequest.requester_id == requester_id)
+        elif requester_id_str:
+            filters.append(RepairRequest.requester_id == requester_id_str)
 
         sort_desc = sort.startswith("-")
         sort_field = sort[1:] if sort_desc else sort
         sort_column = _SORT_COLUMNS.get(sort_field)
         if sort_column is None:
+            allowed = ", ".join(sorted(_SORT_COLUMNS))
             raise _validation_error(
-                f"Unsupported sort field {sort_field!r}. "
-                f"Allowed: {sorted(_SORT_COLUMNS)}."
+                f"Unsupported sort field {sort_field!r}. Allowed: {allowed}."
             )
         order_by = sort_column.desc() if sort_desc else sort_column.asc()
 
@@ -448,12 +576,7 @@ def list_repair_requests(
         ).unique().all()
         return PaginatedListResponse(
             data=[RepairRequestRead.model_validate(item) for item in requests],
-            meta=PaginationMeta(
-                total=total,
-                page=page,
-                per_page=per_page,
-                total_pages=math.ceil(total / per_page) if total else 0,
-            ),
+            meta=PaginationMeta(total=total, page=page, per_page=per_page),
         )
     except HTTPException:
         raise
@@ -465,9 +588,13 @@ def list_repair_requests(
         ) from exc
 
 
-@router.get("/{repair_request_id}", summary="Get repair request")
+@router.get(
+    "/{repair_request_id}",
+    summary="Get repair request",
+    responses=error_responses(status.HTTP_404_NOT_FOUND),
+)
 def get_repair_request(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[RepairRequestRead]:
@@ -494,9 +621,13 @@ def get_repair_request(
         ) from exc
 
 
-@router.post("/{repair_request_id}/approve", summary="Approve repair request")
+@router.post(
+    "/{repair_request_id}/approve",
+    summary="Approve repair request",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def approve_repair_request(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     payload: RepairRequestApprove,
     db: DbSession,
     manager: ManagerUser,
@@ -528,9 +659,13 @@ def approve_repair_request(
         raise
 
 
-@router.post("/{repair_request_id}/reject", summary="Reject repair request")
+@router.post(
+    "/{repair_request_id}/reject",
+    summary="Reject repair request",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def reject_repair_request(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     payload: RepairRequestReject,
     db: DbSession,
     manager: ManagerUser,
@@ -563,9 +698,17 @@ def reject_repair_request(
         raise
 
 
-@router.patch("/{repair_request_id}/repair-details", summary="Fill repair details")
+@router.patch(
+    "/{repair_request_id}/repair-details",
+    summary="Fill repair details",
+    responses=error_responses(
+        status.HTTP_404_NOT_FOUND,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+    ),
+)
 def update_repair_details(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     payload: RepairRequestDetailsUpdate,
     db: DbSession,
     _manager: ManagerUser,
@@ -610,9 +753,13 @@ def update_repair_details(
         raise
 
 
-@router.post("/{repair_request_id}/complete", summary="Complete repair request")
+@router.post(
+    "/{repair_request_id}/complete",
+    summary="Complete repair request",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def complete_repair_request(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     payload: RepairRequestComplete,
     db: DbSession,
     _manager: ManagerUser,
@@ -649,7 +796,13 @@ def complete_repair_request(
         raise
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Submit repair request")
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit repair request",
+    responses=_ERROR_RESPONSES,
+    openapi_extra=_REPAIR_SUBMIT_OPENAPI_EXTRA,
+)
 async def submit_repair_request(
     request: Request,
     db: DbSession,
@@ -738,5 +891,14 @@ async def submit_repair_request(
             detail="Unable to submit repair request. Please try again later.",
         ) from exc
     finally:
-        if not committed:
-            storage.cleanup(saved_keys)
+        if not committed and saved_keys:
+            try:
+                storage.cleanup(saved_keys)
+            except Exception:
+                # cleanup runs from a `finally` block; never let it mask the
+                # exception we're already propagating. Orphaned keys are logged
+                # so they can be reconciled out-of-band.
+                logger.exception(
+                    "Image cleanup failed; orphaned storage keys: %s",
+                    saved_keys,
+                )

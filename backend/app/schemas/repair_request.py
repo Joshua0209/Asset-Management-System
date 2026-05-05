@@ -7,7 +7,7 @@ from typing import Annotated
 from pydantic import Field, computed_field, model_validator
 
 from app.models.repair_request import RepairRequestStatus
-from app.schemas.common import APIModel
+from app.schemas.common import APIModel, UUIDString
 
 # Single source of truth for length / digit constraints shared with the
 # `repair_requests` table in app/models/repair_request.py. Bumping
@@ -47,7 +47,7 @@ class RepairUserRead(APIModel):
 
 
 class RepairRequestCreate(APIModel):
-    asset_id: str = Field(min_length=1)
+    asset_id: UUIDString
     fault_description: str = Field(min_length=1, max_length=1000)
     version: int | None = Field(default=None, ge=1)
 

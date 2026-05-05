@@ -12,6 +12,7 @@ from app.api.deps import CurrentUser
 from app.db.session import get_db
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest
+from app.schemas.common import UUIDPath, error_responses
 from app.services.image_storage import (
     ImageStorageDep,
     ImageStorageError,
@@ -22,11 +23,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
+ImageIdPath = UUIDPath
+
+# 500 covers ImageStorageIntegrityError (corrupted DB row → permanent error).
+_ERROR_RESPONSES = error_responses(
+    status.HTTP_401_UNAUTHORIZED,
+    status.HTTP_404_NOT_FOUND,
+    status.HTTP_422_UNPROCESSABLE_ENTITY,
+    status.HTTP_500_INTERNAL_SERVER_ERROR,
+    status.HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 
-@router.get("/{image_id}", summary="Retrieve repair image")
+@router.get(
+    "/{image_id}",
+    summary="Retrieve repair image",
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Binary repair image.",
+            "headers": {
+                "Cache-Control": {
+                    "schema": {"type": "string"},
+                    "example": "private, max-age=3600",
+                }
+            },
+            "content": {
+                "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
+                "image/png": {"schema": {"type": "string", "format": "binary"}},
+            },
+        },
+        **_ERROR_RESPONSES,
+    },
+)
 def get_image(
-    image_id: str,
+    image_id: ImageIdPath,
     db: DbSession,
     # Auth required, identity unused.
     current_user: CurrentUser,  # noqa: ARG001
