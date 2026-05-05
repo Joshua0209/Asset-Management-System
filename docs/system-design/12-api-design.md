@@ -815,7 +815,7 @@ POST /api/v1/repair-requests
 - Images written via `ImageStorage`; on any DB failure after files were written, the endpoint's `finally` block cleans up the saved storage keys to avoid orphans
 - Audit log entry written *(deferred to Week 4 audit log scope)*
 
-**Errors:** `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `409 conflict` (asset version mismatch), `413` (request body exceeds the multipart budget), `415` (unsupported `Content-Type`), `422` (validation, including image signature mismatch)
+**Errors:** `404` (asset not found), `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `409 conflict` (asset version mismatch), `413` (request body exceeds the multipart budget), `415` (unsupported `Content-Type`), `422` (validation, including image signature mismatch)
 
 ---
 
