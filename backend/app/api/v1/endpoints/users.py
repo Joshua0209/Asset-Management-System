@@ -1,5 +1,4 @@
 import logging
-import math
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -10,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import ManagerUser
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.common import PaginatedListResponse, PaginationMeta, error_responses
+from app.schemas.common import PaginatedListResponse, PaginationMeta, error_responses, like_pattern
 from app.schemas.user import UserRead
 
 logger = logging.getLogger(__name__)
@@ -43,8 +42,13 @@ def list_users(
         if department is not None:
             filters.append(User.department == department)
         if q:
-            pattern = f"%{q}%"
-            filters.append(or_(User.name.ilike(pattern), User.email.ilike(pattern)))
+            pattern = like_pattern(q)
+            filters.append(
+                or_(
+                    User.name.ilike(pattern, escape="\\"),
+                    User.email.ilike(pattern, escape="\\"),
+                )
+            )
 
         total = db.scalar(select(func.count()).select_from(User).where(*filters)) or 0
         users = db.scalars(
@@ -56,12 +60,7 @@ def list_users(
         ).all()
         return PaginatedListResponse(
             data=[UserRead.model_validate(user) for user in users],
-            meta=PaginationMeta(
-                total=total,
-                page=page,
-                per_page=per_page,
-                total_pages=math.ceil(total / per_page) if total else 0,
-            ),
+            meta=PaginationMeta(total=total, page=page, per_page=per_page),
         )
     except SQLAlchemyError as exc:
         logger.error("Failed to list users: %s", exc, exc_info=True)

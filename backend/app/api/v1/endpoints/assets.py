@@ -1,10 +1,9 @@
 import logging
-import math
 from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
@@ -24,11 +23,12 @@ from app.schemas.asset import (
     AssetUpdate,
 )
 from app.schemas.common import (
-    UUID_PATTERN,
     DataResponse,
     PaginatedListResponse,
     PaginationMeta,
+    UUIDPath,
     error_responses,
+    like_pattern,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,10 +42,7 @@ router = APIRouter(
 )
 
 DbSession = Annotated[Session, Depends(get_db)]
-AssetIdPath = Annotated[
-    str,
-    Path(pattern=UUID_PATTERN, json_schema_extra={"format": "uuid"}),
-]
+AssetIdPath = UUIDPath
 
 _SORT_COLUMNS = {
     "created_at": Asset.created_at,
@@ -151,12 +148,12 @@ def _build_asset_filters(
 ) -> list[ColumnElement[bool]]:
     filters = _base_filters()
     if q:
-        pattern = f"%{q}%"
+        pattern = like_pattern(q)
         filters.append(
             or_(
-                Asset.asset_code.ilike(pattern),
-                Asset.name.ilike(pattern),
-                Asset.model.ilike(pattern),
+                Asset.asset_code.ilike(pattern, escape="\\"),
+                Asset.name.ilike(pattern, escape="\\"),
+                Asset.model.ilike(pattern, escape="\\"),
             )
         )
     if status_filter is not None:
@@ -177,9 +174,9 @@ def _asset_order(sort: str) -> ColumnElement[object]:
     sort_field = sort[1:] if sort_desc else sort
     sort_column = _SORT_COLUMNS.get(sort_field)
     if sort_column is None:
+        allowed = ", ".join(sorted(_SORT_COLUMNS))
         raise _validation_error(
-            f"Unsupported sort field {sort_field!r}. "
-            f"Allowed: {sorted(_SORT_COLUMNS)}."
+            f"Unsupported sort field {sort_field!r}. Allowed: {allowed}."
         )
     return sort_column.desc() if sort_desc else sort_column.asc()
 
@@ -203,12 +200,7 @@ def _list_asset_response(
     ).all()
     return PaginatedListResponse(
         data=[AssetRead.model_validate(asset) for asset in assets],
-        meta=PaginationMeta(
-            total=total,
-            page=page,
-            per_page=per_page,
-            total_pages=math.ceil(total / per_page) if total else 0,
-        ),
+        meta=PaginationMeta(total=total, page=page, per_page=per_page),
     )
 
 

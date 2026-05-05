@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 from typing import Annotated, Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import Path
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 T = TypeVar("T")
 
@@ -13,7 +15,13 @@ UUID_PATTERN = (
     r"[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{12}$"
 )
+
+# `str` (not `uuid.UUID`) because IDs are stored as CHAR(36) in MySQL and
+# SQLAlchemy returns them as strings; round-tripping through UUID would force
+# coercion at every layer with no real safety gain. The regex enforces shape
+# at the JSON boundary; `json_schema_extra` makes OpenAPI emit `format: uuid`.
 UUIDString = Annotated[str, Field(pattern=UUID_PATTERN, json_schema_extra={"format": "uuid"})]
+UUIDPath = Annotated[str, Path(pattern=UUID_PATTERN, json_schema_extra={"format": "uuid"})]
 
 
 class APIModel(BaseModel):
@@ -48,7 +56,14 @@ class PaginationMeta(APIModel):
     total: int = Field(ge=0)
     page: int = Field(ge=1)
     per_page: int = Field(ge=1)
-    total_pages: int = Field(ge=0)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_pages(self) -> int:
+        # Derived rather than stored so endpoints can't drift from
+        # `ceil(total / per_page)`. Empty pages collapse to 0 so the wire
+        # contract matches the previous explicit-zero behavior.
+        return math.ceil(self.total / self.per_page) if self.total else 0
 
 
 class PaginatedListResponse(APIModel, Generic[T]):
@@ -79,3 +94,14 @@ def error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
         }
         for status_code in status_codes
     }
+
+
+def like_pattern(query: str) -> str:
+    """Escape SQL LIKE wildcards in user-supplied search terms.
+
+    `%` and `_` are LIKE metacharacters; passing a raw user query like ``%``
+    would otherwise match every row. Pair this with ``column.ilike(pattern,
+    escape="\\\\")`` so the backslash escapes are honored by the database.
+    """
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
