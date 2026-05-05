@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { assetsApi, ApiError } from '../api';
 import type { AssetRecord } from '../api/assets';
 import { STATUS_COLORS } from '../components/assets/constants';
+import { formatDateValue, formatAmountValue } from '../utils/format';
 
 const AssetDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,30 +26,6 @@ const AssetDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<number | null>(null);
-
-  const moneyFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: 'TWD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }),
-    [],
-  );
-
-  const formatDateValue = (value: string | null): string => {
-    if (!value) {
-      return t('assetList.detail.notAvailable');
-    }
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
-  };
-
-  const formatAmountValue = (value: string | number): string => {
-    const parsed = Number.parseFloat(String(value));
-    return Number.isNaN(parsed) ? String(value) : moneyFormatter.format(parsed);
-  };
 
   useEffect(() => {
     if (!id) return;
@@ -158,10 +135,10 @@ const AssetDetail: React.FC = () => {
             {asset.supplier}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.activationDate')}>
-            {formatDateValue(asset.activation_date)}
+            {formatDateValue(asset.activation_date, t)}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.warrantyExpiry')}>
-            {formatDateValue(asset.warranty_expiry)}
+            {formatDateValue(asset.warranty_expiry, t)}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.columns.department')}>
             {asset.department}
@@ -173,7 +150,7 @@ const AssetDetail: React.FC = () => {
             {formatAmountValue(asset.purchase_amount)}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.columns.purchaseDate')}>
-            {formatDateValue(asset.purchase_date)}
+            {formatDateValue(asset.purchase_date, t)}
           </Descriptions.Item>
         </Descriptions>
       </Card>

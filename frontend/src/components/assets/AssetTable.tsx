@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Button, Table, Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { AssetRecord, AssetStatus } from '../../api/assets';
 import { STATUS_COLORS, PAGE_SIZE_OPTIONS } from './constants';
+import { formatDateValue, formatAmountValue } from '../../utils/format';
 
 interface AssetTableProps {
   assets: AssetRecord[];
@@ -28,30 +29,6 @@ const AssetTable: React.FC<AssetTableProps> = ({
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-
-  const moneyFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: 'TWD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }),
-    [],
-  );
-
-  const formatDateValue = (value: string | null): string => {
-    if (!value) {
-      return t('assetList.detail.notAvailable');
-    }
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
-  };
-
-  const formatAmountValue = (value: string | number): string => {
-    const parsed = Number.parseFloat(String(value));
-    return Number.isNaN(parsed) ? String(value) : moneyFormatter.format(parsed);
-  };
 
   const defaultColumns: TableColumnsType<AssetRecord> = [
     {
@@ -108,7 +85,7 @@ const AssetTable: React.FC<AssetTableProps> = ({
       dataIndex: 'purchase_date',
       key: 'purchase_date',
       width: 150,
-      render: (value: string) => formatDateValue(value),
+      render: (value: string) => formatDateValue(value, t),
     },
     {
       title: t('assetList.columns.actions'),
