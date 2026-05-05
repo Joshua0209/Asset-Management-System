@@ -5,6 +5,15 @@ export type AssetStatus =
   | "under_repair"
   | "disposed";
 
+export type AssetCategory =
+  | "phone"
+  | "computer"
+  | "tablet"
+  | "monitor"
+  | "printer"
+  | "network_equipment"
+  | "other";
+
 export interface AssetPerson {
   id: string;
   name: string;
@@ -46,7 +55,63 @@ export interface PaginatedAssetResponse {
   meta: PaginationMeta;
 }
 
+export interface AssetDataResponse {
+  data: AssetRecord;
+}
+
 export interface ListAssetsParams {
   page?: number;
   perPage?: number;
+  q?: string;
+  status?: AssetStatus;
+  category?: string;
+  department?: string;
+  location?: string;
+  responsiblePersonId?: string;
+  sort?: string;
+}
+
+export interface AssetCreatePayload {
+  name: string;
+  model: string;
+  specs?: string | null;
+  category: AssetCategory;
+  supplier: string;
+  purchase_date: string;
+  purchase_amount: string | number;
+  location?: string | null;
+  department?: string | null;
+  activation_date?: string | null;
+  warranty_expiry?: string | null;
+}
+
+export interface AssetUpdatePayload {
+  version: number;
+  name?: string;
+  model?: string;
+  specs?: string | null;
+  category?: AssetCategory;
+  supplier?: string;
+  purchase_date?: string;
+  purchase_amount?: string | number;
+  location?: string | null;
+  department?: string | null;
+  activation_date?: string | null;
+  warranty_expiry?: string | null;
+}
+
+export interface AssetAssignPayload {
+  responsible_person_id: string;
+  version: number;
+  assignment_date?: string;
+}
+
+export interface AssetUnassignPayload {
+  reason: string;
+  version: number;
+}
+
+export interface AssetDisposePayload {
+  disposal_reason: string;
+  version: number;
 }

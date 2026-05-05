@@ -32,7 +32,7 @@ describe("LanguageSwitcher", () => {
   });
 
   it("switches language when the inactive option is clicked", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await act(async () => {
       render(<LanguageSwitcher />);
     });

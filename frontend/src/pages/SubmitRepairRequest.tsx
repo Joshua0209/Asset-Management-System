@@ -4,9 +4,17 @@ import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { RcFile, UploadFile } from 'antd/es/upload/interface';
+import { API_BASE } from '../api';
 
 const { Title } = Typography;
 const { TextArea } = Input;
+
+interface ErrorEnvelope {
+  error?: {
+    code?: string;
+    message?: string;
+  };
+}
 
 const SubmitRepairRequest: React.FC = () => {
   const { t } = useTranslation();
@@ -14,6 +22,33 @@ const SubmitRepairRequest: React.FC = () => {
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  const getErrorMessageByCode = (code?: string, fallbackMessage?: string) => {
+    switch (code) {
+      case 'unauthorized':
+        return t('errors.unauthorized');
+      case 'forbidden':
+        return t('errors.forbidden');
+      case 'not_found':
+        return t('errors.notFound');
+      case 'conflict':
+        return t('errors.conflict');
+      case 'duplicate_request':
+        return t('errors.duplicateRequest');
+      case 'invalid_transition':
+        return t('errors.invalidTransition');
+      case 'validation_error':
+        return t('errors.validationError');
+      case 'payload_too_large':
+        return t('errors.payloadTooLarge');
+      case 'unsupported_media_type':
+        return t('errors.unsupportedMediaType');
+      case 'rate_limit_exceeded':
+        return t('errors.rateLimitExceeded');
+      default:
+        return fallbackMessage || t('common.repairRequest.errorMessage');
+    }
+  };
 
   const onFinish = async (values: { asset_id: string; fault_description: string }) => {
     setSubmitting(true);
@@ -28,7 +63,7 @@ const SubmitRepairRequest: React.FC = () => {
     });
 
     try {
-      const response = await fetch('/api/v1/repair-requests', {
+      const response = await fetch(`${API_BASE}/repair-requests`, {
         method: 'POST',
         headers: {
           // Note: Content-Type is handled automatically by fetch for FormData
@@ -41,8 +76,15 @@ const SubmitRepairRequest: React.FC = () => {
         message.success(t('common.repairRequest.successMessage'));
         navigate('/reviews'); // Or wherever it makes sense to go after
       } else {
-        const errorData = await response.json();
-        message.error(errorData.error?.message || t('common.repairRequest.errorMessage'));
+        let errorData: ErrorEnvelope | null = null;
+        try {
+          errorData = (await response.json()) as ErrorEnvelope;
+        } catch {
+          // Non-JSON responses (e.g., proxy misroutes) still surface a friendly fallback.
+        }
+        message.error(
+          getErrorMessageByCode(errorData?.error?.code, errorData?.error?.message),
+        );
       }
     } catch (error) {
       console.error('Submission error:', error);

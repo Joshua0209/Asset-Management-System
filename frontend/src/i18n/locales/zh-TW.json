@@ -61,6 +61,16 @@
     "required": "此欄位為必填",
     "emailInvalid": "請輸入有效的電子郵件",
     "maxLength": "最多 1000 個字元",
+    "max120Chars": "最多 120 個字元",
+    "max100Chars": "最多 100 個字元",
+    "max500Chars": "最多 500 個字元",
+    "purchaseAmountPositive": "採購金額必須大於 0",
+    "purchaseAmountFormat": "採購金額需為正數，最多 15 位數且小數最多 2 位",
+    "repairCostPositive": "維修金額必須大於 0",
+    "repairCostFormat": "維修金額需為正數，最多 15 位數且小數最多 2 位",
+    "purchaseDateNotFuture": "採購日期不可為未來日期",
+    "warrantyAfterPurchase": "保固到期日必須晚於採購日期",
+    "warrantyAfterActivation": "保固到期日必須晚於啟用日期",
     "passwordMinLength": "密碼長度至少需 8 個字元",
     "passwordPattern": "密碼必須包含至少一個字母和一個數字",
     "passwordMismatch": "密碼不一致"
@@ -72,7 +82,11 @@
     "backHome": "返回首頁",
     "notFound": "找不到資源",
     "conflict": "資料已被他人修改，請重新整理",
+    "duplicateRequest": "此資產已有進行中的維修申請。",
+    "invalidTransition": "目前狀態不允許執行此操作。",
     "validationError": "輸入資料有誤",
+    "payloadTooLarge": "上傳檔案過大。",
+    "unsupportedMediaType": "不支援的請求格式。",
     "rateLimitExceeded": "請求過於頻繁，請稍後再試",
     "serverError": "伺服器發生錯誤，請稍後再試"
   },
@@ -100,7 +114,11 @@
       "actions": "操作"
     },
     "actions": {
-      "detail": "詳情"
+      "detail": "詳情",
+      "edit": "編輯",
+      "assign": "指派",
+      "unassign": "收回",
+      "dispose": "報廢"
     },
     "detail": {
       "title": "資產詳情 - {{assetCode}}",
@@ -124,7 +142,89 @@
     "pagination": {
       "total": "共 {{count}} 筆"
     },
+    "form": {
+      "name": "名稱",
+      "model": "型號",
+      "specs": "規格",
+      "category": "類別",
+      "supplier": "供應商",
+      "purchaseDate": "採購日期",
+      "purchaseAmount": "採購金額",
+      "location": "地點",
+      "department": "部門",
+      "activationDate": "啟用日期",
+      "warrantyExpiry": "保固到期日",
+      "holder": "持有者",
+      "assignmentDate": "指派日期",
+      "unassignReason": "收回原因",
+      "disposalReason": "報廢原因"
+    },
+    "manager": {
+      "createButton": "新增資產",
+      "createTitle": "新增資產",
+      "editTitle": "編輯資產 - {{assetCode}}",
+      "assignTitle": "指派資產 - {{assetCode}}",
+      "unassignTitle": "收回資產 - {{assetCode}}",
+      "disposeTitle": "報廢資產 - {{assetCode}}",
+      "createSuccess": "資產新增成功",
+      "editSuccess": "資產更新成功",
+      "assignSuccess": "資產指派成功",
+      "unassignSuccess": "資產收回成功",
+      "disposeSuccess": "資產報廢成功",
+      "actionFailedTitle": "操作失敗",
+      "holdersLoadErrorTitle": "載入持有者清單失敗"
+    },
     "serverError": "伺服器發生錯誤，請稍後再試",
     "loginFailed": "電子郵件或密碼錯誤"
+  },
+  "reviews": {
+    "title": "維修審核",
+    "description": "審核、處理並完成維修申請。",
+    "loadError": "載入維修申請失敗，請稍後再試。",
+    "empty": "目前沒有維修申請。",
+    "actionFailedTitle": "操作失敗",
+    "approveTitle": "核准維修申請",
+    "rejectTitle": "駁回維修申請",
+    "detailsTitle": "更新維修細節",
+    "completeTitle": "完成維修",
+    "approveSuccess": "已核准維修申請",
+    "rejectSuccess": "已駁回維修申請",
+    "detailsSuccess": "維修細節已更新",
+    "completeSuccess": "維修申請已完成",
+    "columns": {
+      "assetCode": "資產編號",
+      "assetName": "資產名稱",
+      "requester": "申請人",
+      "status": "狀態",
+      "createdAt": "建立時間",
+      "actions": "操作"
+    },
+    "actions": {
+      "approve": "核准",
+      "reject": "駁回",
+      "updateDetails": "更新細節",
+      "complete": "完成"
+    },
+    "status": {
+      "pending_review": "待審核",
+      "under_repair": "維修中",
+      "completed": "已完成",
+      "rejected": "已駁回"
+    },
+    "filter": {
+      "statusPlaceholder": "依狀態篩選"
+    },
+    "pagination": {
+      "total": "共 {{count}} 筆申請"
+    },
+    "form": {
+      "repairDate": "維修日期",
+      "faultContent": "故障內容",
+      "repairPlan": "維修方案",
+      "repairCost": "維修費用",
+      "repairVendor": "維修廠商",
+      "plannedDate": "預計日期",
+      "rejectionReason": "駁回原因"
+    }
   }
 }

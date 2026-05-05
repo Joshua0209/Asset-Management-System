@@ -76,7 +76,7 @@ describe("Login page", () => {
 
   it("submits credentials and navigates to '/' on success", async () => {
     mockLogin.mockResolvedValueOnce(validSession());
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "user@example.com");
@@ -96,7 +96,7 @@ describe("Login page", () => {
     mockLogin.mockRejectedValueOnce(
       new ApiError(401, "unauthorized", "Invalid email or password"),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "user@example.com");
@@ -110,7 +110,7 @@ describe("Login page", () => {
 
   it("falls back to a generic message for non-ApiError failures", async () => {
     mockLogin.mockRejectedValueOnce(new Error("network down"));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderLogin();
 
     await user.type(screen.getByLabelText(/email/i), "user@example.com");
@@ -138,7 +138,7 @@ describe("Register page", () => {
       role: "holder",
     });
     mockLogin.mockResolvedValueOnce(validSession());
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderRegister();
 
     await user.type(screen.getByLabelText(/name/i), "New User");
@@ -158,7 +158,7 @@ describe("Register page", () => {
     mockRegister.mockRejectedValueOnce(
       new ApiError(409, "conflict", "Email already registered"),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderRegister();
 
     await user.type(screen.getByLabelText(/name/i), "Dup");
