@@ -99,7 +99,7 @@ describe("Reviews", () => {
   });
 
   it("applies status filter and reloads list", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
 
     await act(async () => {
       render(<Reviews />);
@@ -129,7 +129,7 @@ describe("Reviews", () => {
   });
 
   it("approves a pending request with repair plan payload", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockListRepairRequests
       .mockResolvedValueOnce(buildResponse("pending_review"))
       .mockResolvedValueOnce(buildResponse("under_repair"));
@@ -165,7 +165,7 @@ describe("Reviews", () => {
   });
 
   it("rejects a pending request with reason", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockListRepairRequests
       .mockResolvedValueOnce(buildResponse("pending_review"))
       .mockResolvedValueOnce(buildResponse("pending_review"));
@@ -195,7 +195,7 @@ describe("Reviews", () => {
   });
 
   it("updates repair details and completes under-repair request", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockListRepairRequests
       .mockResolvedValueOnce(buildResponse("under_repair"))
       .mockResolvedValueOnce(buildResponse("under_repair"))
