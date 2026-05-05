@@ -208,9 +208,9 @@ POST /api/v1/auth/register
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `email` | string | yes | Valid email, globally unique (a soft-deleted user still occupies the address) |
-| `password` | string | yes | Min 8 chars, at least 1 letter + 1 digit |
+| `password` | string | yes | 8–128 chars, at least 1 letter + 1 digit |
 | `name` | string | yes | 1–100 chars |
-| `department` | string | yes | Non-empty |
+| `department` | string | yes | 1–100 chars |
 
 **Response:** `201 Created`
 
@@ -222,7 +222,9 @@ POST /api/v1/auth/register
     "name": "Alice Chen",
     "department": "IT",
     "role": "holder",
-    "created_at": "2026-04-15T10:30:00Z"
+    "version": 1,
+    "created_at": "2026-04-15T10:30:00Z",
+    "updated_at": "2026-04-15T10:30:00Z"
   }
 }
 ```
@@ -287,7 +289,9 @@ GET /api/v1/auth/me
     "name": "Alice Chen",
     "department": "IT",
     "role": "holder",
-    "created_at": "2026-04-15T10:30:00Z"
+    "version": 1,
+    "created_at": "2026-04-15T10:30:00Z",
+    "updated_at": "2026-04-15T10:30:00Z"
   }
 }
 ```
@@ -333,9 +337,9 @@ This endpoint is how managers promote/add other managers (since [1.1 Register](#
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `email` | string | yes | Valid email, globally unique (a soft-deleted user still occupies the address) |
-| `password` | string | yes | Min 8 chars, at least 1 letter + 1 digit |
+| `password` | string | yes | 8–128 chars, at least 1 letter + 1 digit |
 | `name` | string | yes | 1–100 chars |
-| `department` | string | yes | Non-empty |
+| `department` | string | yes | 1–100 chars |
 | `role` | string | yes | `"holder"` or `"manager"` |
 
 **Response:** `201 Created` with the same `UserRead` shape as [1.1 Register](#11-register-public-self-registration--holder-only).
@@ -476,17 +480,19 @@ POST /api/v1/assets
 
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
-| `name` | string | yes | 1–200 chars |
-| `model` | string | yes | 1–100 chars |
+| `name` | string | yes | 1–120 chars |
+| `model` | string | yes | 1–120 chars |
 | `specs` | string | no | Max 500 chars |
 | `category` | string | yes | One of: `phone`, `computer`, `tablet`, `monitor`, `printer`, `network_equipment`, `other` |
-| `supplier` | string | yes | 1–200 chars |
+| `supplier` | string | yes | 1–120 chars |
 | `purchase_date` | string (date) | yes | ISO 8601 date, not in future |
-| `purchase_amount` | string (decimal) | yes | Positive number, max 2 decimal places |
-| `location` | string | no | Max 200 chars |
+| `purchase_amount` | string (decimal) | yes | Positive number, max 15 digits, max 2 decimal places |
+| `location` | string | no | Max 120 chars |
 | `department` | string | no | Max 100 chars |
 | `activation_date` | string (date) | no | ISO 8601 date |
 | `warranty_expiry` | string (date) | no | ISO 8601 date, must be after `purchase_date` |
+
+> **Schema note:** the string-length caps mirror the underlying `assets` table column widths (`VARCHAR(120)` for `name` / `model` / `supplier` / `location`; `VARCHAR(100)` for `department`). Bumping any of these requires an Alembic migration on the matching column.
 
 **Response:** `201 Created` with `Location: /api/v1/assets/:id`
 
@@ -503,7 +509,7 @@ POST /api/v1/assets
 ```
 
 **Side effects:**
-- `asset_code` auto-generated
+- `asset_code` auto-generated (format `AST-YYYY-NNNNN`, see [`backend/app/api/v1/endpoints/assets.py`](../../backend/app/api/v1/endpoints/assets.py))
 - `status` set to `in_stock`
 - `responsible_person_id` is `null`
 - Audit log entry written to `asset_action_histories`
@@ -643,7 +649,7 @@ POST /api/v1/assets/:id/unassign
 }
 ```
 
-**Errors:** `409 invalid_transition` (active repair exists or wrong state)
+**Errors:** `409 invalid_transition` (active repair exists or wrong state), `409 conflict` (version mismatch)
 
 ---
 
@@ -757,13 +763,14 @@ POST /api/v1/repair-requests
 
 **Access:** Holder
 
-**Request:** `multipart/form-data`
+**Request:** `multipart/form-data`, `application/json`, or `application/x-www-form-urlencoded` (the endpoint dispatches on `Content-Type`; only `multipart/form-data` accepts files).
 
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `asset_id` | uuid | yes | Must be an asset assigned to the current user |
 | `fault_description` | string | yes | 1–1000 chars |
-| `images` | file[] | no | Max 5 files, each ≤ 5 MB, JPEG/PNG only |
+| `version` | int | no | Optional optimistic-lock token for the **asset** (not the repair request). When present, must match the asset's current `version`; a mismatch returns `409 conflict`. Omit this on first submit. |
+| `images` | file[] | no | Max 5 files, each ≤ 5 MB, JPEG/PNG only. Magic-byte signature is verified against the declared `Content-Type` (PNG: `\x89PNG…`, JPEG: starts `\xff\xd8`, ends `\xff\xd9`); a mismatch returns `422`. |
 
 **Preconditions (FSM T4):**
 - Asset status is `in_use`
@@ -803,9 +810,10 @@ POST /api/v1/repair-requests
 **Side effects:**
 - Asset status changes to `pending_repair`
 - Asset version incremented
+- Images written via `ImageStorage`; on any DB failure after files were written, the endpoint's `finally` block cleans up the saved storage keys to avoid orphans
 - Audit log entry written
 
-**Errors:** `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `422` (validation)
+**Errors:** `409 duplicate_request` (active request exists), `409 invalid_transition` (asset not in `in_use`), `409 conflict` (asset version mismatch), `413` (request body exceeds the multipart budget), `415` (unsupported `Content-Type`), `422` (validation, including image signature mismatch)
 
 ---
 
@@ -1041,7 +1049,9 @@ PATCH /api/v1/repair-requests/:id/repair-details
 | `repair_vendor` | string | no | Max 200 chars |
 | `version` | int | yes | Current repair request version |
 
-**Preconditions:** Repair request status is `under_repair`.
+**Preconditions:** Repair request status is `under_repair`. The associated asset must also be in status `under_repair`.
+
+**At-least-one rule:** The body **must** carry at least one repair-detail field in addition to `version`. A body of just `{"version": N}` is rejected with `422` — otherwise no columns would change, the row version would not advance, and the client's optimistic lock would silently stay current.
 
 **Response:** `200 OK` with updated repair request.
 
@@ -1154,7 +1164,10 @@ GET /api/v1/users
       "email": "alice@example.com",
       "name": "Alice Chen",
       "department": "Engineering",
-      "role": "holder"
+      "role": "holder",
+      "version": 1,
+      "created_at": "2026-04-15T10:30:00Z",
+      "updated_at": "2026-04-15T10:30:00Z"
     }
   ],
   "meta": { "total": 45, "page": 1, "per_page": 20, "total_pages": 3 }

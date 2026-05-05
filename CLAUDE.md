@@ -37,6 +37,17 @@ Core modules: asset basic-info management, and the repair request workflow (appl
 - **Frontend**: React 18 + Vite + TypeScript strict + React Router v6. i18n is `react-i18next` with a browser language detector; locale files live in `frontend/src/i18n/locales/`. Any new user-visible string must have zh-TW + en entries.
 - **UI library: Ant Design v6** (`antd` + `@ant-design/icons`). Dark/light mode via `ConfigProvider`. TSMC visual direction (palette, typography, spacing) is defined in `docs/designs/DESIGN.md` — follow those constraints when building components on top of Ant Design defaults.
 
+## Local dev environment (docker compose)
+
+`docker-compose.yml` runs the full dev stack — `mysql` + `backend` + `frontend` — and is the recommended local workflow (README "Option A"). Conventions worth knowing before touching it:
+
+- **Both app images are dev-only.** Backend uses `pip install -e '.[dev]'` then `uvicorn --reload`; frontend uses `npm ci --ignore-scripts` then `vite --host`. There is no `Dockerfile.prod` yet — production ECS images per `docs/system-design/05-phase2-architecture.md` will get separate multi-stage Dockerfiles when Phase 2 deployment lands. Don't preemptively add prod stages to the dev images; keep them lean and reload-friendly.
+- **Bind mount + editable install** is what makes hot-reload work. The image installs the package so the `.pth` lives in site-packages, then compose mounts `./backend` over `/app` at runtime. Source edits flow through; dependency edits (`pyproject.toml`, `package.json`) need `docker compose build <service>`.
+- **Frontend `node_modules`** is preserved by an anonymous volume on `/app/node_modules`. If you ever change the bind-mount layout, keep that volume — without it the host bind mount will mask the image's installed deps and the container will fail to start.
+- **Backend command runs migrations only — never the seed.** `scripts/seed_demo_data.py` is destructive (wipes all four tables before re-seeding) and gated behind `AMS_SEED_CONFIRM=1`, so it must stay a one-shot: `docker compose run --rm -e AMS_SEED_CONFIRM=1 backend python scripts/seed_demo_data.py`. The "idempotent bootstrap manager" note under "Auth conventions" describes the *upsert inside the seed*, not the seed itself.
+- **Frontend's `prepare` script** is a `git config core.hooksPath` shim that fails inside the container (no git repo). The Dockerfile uses `npm ci --ignore-scripts` to skip it. If you add a real `prepare` step that the container needs, you'll have to find another way.
+- **`/app/uploads`** is a named volume (`backend_uploads`) so repair-image uploads survive `docker compose down`. They are wiped by `docker compose down -v`.
+
 ## CI + tooling gotchas
 
 - GitHub Actions are **pinned to commit SHAs** with a `# vX` comment. If you add an action, fetch the real SHA via `gh api repos/<owner>/<repo>/git/refs/tags/<tag>` — don't invent one. A previous bug used a non-existent SHA and blocked the reviewer-assign workflow.

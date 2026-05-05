@@ -88,8 +88,11 @@ def _not_found() -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
 
 
-def _conflict(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=message)
+def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"code": code, "message": message},
+    )
 
 
 def _validation_error(message: str) -> HTTPException:
@@ -459,9 +462,11 @@ def assign_asset(
             )
 
         if asset.status is not AssetStatus.IN_STOCK:
-            raise _conflict("Asset must be in_stock to assign.")
+            raise _conflict("Asset must be in_stock to assign.", code="invalid_transition")
         if asset.responsible_person_id is not None:
-            raise _conflict("Asset already has a responsible person.")
+            raise _conflict(
+                "Asset already has a responsible person.", code="invalid_transition"
+            )
         if asset.version != payload.version:
             raise _conflict(
                 _STALE_VERSION_MESSAGE
@@ -501,11 +506,14 @@ def unassign_asset(
         asset = _load_asset_for_transition(db, asset_id)
 
         if asset.status is not AssetStatus.IN_USE:
-            raise _conflict("Asset must be in_use to unassign.")
+            raise _conflict("Asset must be in_use to unassign.", code="invalid_transition")
         # Belt-and-suspenders: per FSM T5, an active repair request blocks unassign even
         # if the asset's status somehow remained in_use through a prior bug.
         if _has_active_repair_request(db, asset.id):
-            raise _conflict("Cannot unassign asset with an active repair request.")
+            raise _conflict(
+                "Cannot unassign asset with an active repair request.",
+                code="invalid_transition",
+            )
         if asset.version != payload.version:
             raise _conflict(
                 _STALE_VERSION_MESSAGE
@@ -554,11 +562,17 @@ def dispose_asset(
         asset = _load_asset_for_transition(db, asset_id)
 
         if asset.status is not AssetStatus.IN_STOCK:
-            raise _conflict("Asset must be in_stock to dispose.")
+            raise _conflict("Asset must be in_stock to dispose.", code="invalid_transition")
         if asset.responsible_person_id is not None:
-            raise _conflict("Cannot dispose asset that is still assigned to a holder.")
+            raise _conflict(
+                "Cannot dispose asset that is still assigned to a holder.",
+                code="invalid_transition",
+            )
         if _has_active_repair_request(db, asset.id):
-            raise _conflict("Cannot dispose asset with an active repair request.")
+            raise _conflict(
+                "Cannot dispose asset with an active repair request.",
+                code="invalid_transition",
+            )
         if asset.version != payload.version:
             raise _conflict(
                 _STALE_VERSION_MESSAGE

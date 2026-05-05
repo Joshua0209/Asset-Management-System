@@ -42,9 +42,21 @@ _STATUS_CODE_MAP = {
 
 @app.exception_handler(HTTPException)
 async def http_exception_to_envelope(request: Request, exc: HTTPException) -> JSONResponse:
-    """Rewrap FastAPI HTTPException into the project's error envelope."""
-    code = _STATUS_CODE_MAP.get(exc.status_code, "error")
-    message = exc.detail if isinstance(exc.detail, str) else code
+    """Rewrap FastAPI HTTPException into the project's error envelope.
+
+    Endpoints can pass a structured `detail={"code": ..., "message": ...}` to
+    pick a granular `error.code` within a single status (e.g. distinguishing
+    `duplicate_request` / `invalid_transition` / `conflict` for 409 per
+    `docs/system-design/12-api-design.md`). Otherwise the status-code map
+    selects the code and `detail` becomes the message.
+    """
+    detail = exc.detail
+    if isinstance(detail, dict) and "code" in detail and "message" in detail:
+        code = str(detail["code"])
+        message = str(detail["message"])
+    else:
+        code = _STATUS_CODE_MAP.get(exc.status_code, "error")
+        message = detail if isinstance(detail, str) else code
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": {"code": code, "message": message}},
