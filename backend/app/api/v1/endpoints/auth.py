@@ -32,6 +32,7 @@ router = APIRouter()
 DbSession = Annotated[Session, Depends(get_db)]
 
 _EMAIL_ALREADY_REGISTERED = "Email is already registered"
+_USER_CREATE_UNAVAILABLE = "Unable to create user. Please try again later."
 
 
 def _is_email_uniqueness_violation(exc: IntegrityError) -> bool:
@@ -90,7 +91,7 @@ def register(payload: RegisterRequest, db: DbSession) -> DataResponse[UserRead]:
             )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to create user. Please try again later.",
+                detail=_USER_CREATE_UNAVAILABLE,
             ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -202,7 +203,7 @@ def admin_create_user(
             )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to create user. Please try again later.",
+                detail=_USER_CREATE_UNAVAILABLE,
             ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -213,7 +214,7 @@ def admin_create_user(
         logger.error("Failed to create user via admin endpoint: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to create user. Please try again later.",
+            detail=_USER_CREATE_UNAVAILABLE,
         ) from exc
 
     db.refresh(user)

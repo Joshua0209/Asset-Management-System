@@ -458,23 +458,56 @@ def _persist_images(
         )
 
 
+def _enforce_request_size_limit(declared_length: str | None) -> None:
+    """DoS guard: reject oversized bodies before buffering them into memory."""
+    if declared_length is None:
+        return
+    try:
+        content_length = int(declared_length)
+    except ValueError as exc:
+        raise _validation_error("Invalid Content-Length header.") from exc
+    if content_length > _MAX_REQUEST_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Request body exceeds the allowed size.",
+        )
+
+
+def _parse_form_urlencoded(body: bytes) -> dict[str, str]:
+    try:
+        decoded_body = body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _validation_error("Form body is not valid UTF-8.") from exc
+    parsed = parse_qs(decoded_body, keep_blank_values=True)
+    duplicates = [key for key, values in parsed.items() if len(values) > 1]
+    if duplicates:
+        # Every documented field is scalar; "last wins" would silently
+        # discard data. Reject up front so the client sees the bug.
+        raise _validation_error(
+            f"Form fields appear multiple times: {sorted(duplicates)}."
+        )
+    return {key: values[0] if values else "" for key, values in parsed.items()}
+
+
+def _unsupported_media_type(content_type: str) -> HTTPException:
+    # Cap the echoed content-type so a malicious client can't bloat the
+    # response or smuggle CR/LF into log destinations that render as text.
+    safe_content_type = (
+        (content_type[:120].replace("\r", "").replace("\n", ""))
+        if content_type
+        else "<missing>"
+    )
+    return HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail=f"Unsupported content-type: {safe_content_type}",
+    )
+
+
 async def _repair_payload_from_request(
     request: Request,
 ) -> tuple[RepairRequestCreate, list[SubmittedImage]]:
     content_type = request.headers.get("content-type", "")
-
-    # DoS guard: cap declared body size before buffering it into memory.
-    declared_length = request.headers.get("content-length")
-    if declared_length is not None:
-        try:
-            content_length = int(declared_length)
-        except ValueError as exc:
-            raise _validation_error("Invalid Content-Length header.") from exc
-        if content_length > _MAX_REQUEST_BYTES:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Request body exceeds the allowed size.",
-            )
+    _enforce_request_size_limit(request.headers.get("content-length"))
 
     if content_type.startswith("application/json"):
         try:
@@ -491,32 +524,10 @@ async def _repair_payload_from_request(
         return _repair_create_from_mapping(fields), images
 
     if content_type.startswith("application/x-www-form-urlencoded"):
-        try:
-            decoded_body = body.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise _validation_error("Form body is not valid UTF-8.") from exc
-        parsed = parse_qs(decoded_body, keep_blank_values=True)
-        duplicates = [key for key, values in parsed.items() if len(values) > 1]
-        if duplicates:
-            # Every documented field is scalar; "last wins" would silently
-            # discard data. Reject up front so the client sees the bug.
-            raise _validation_error(
-                f"Form fields appear multiple times: {sorted(duplicates)}."
-            )
-        fields = {key: values[0] if values else "" for key, values in parsed.items()}
+        fields = _parse_form_urlencoded(body)
         return _repair_create_from_mapping(fields), []
 
-    # Cap the echoed content-type so a malicious client can't bloat the
-    # response or smuggle CR/LF into log destinations that render as text.
-    safe_content_type = (
-        (content_type[:120].replace("\r", "").replace("\n", ""))
-        if content_type
-        else "<missing>"
-    )
-    raise HTTPException(
-        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-        detail=f"Unsupported content-type: {safe_content_type}",
-    )
+    raise _unsupported_media_type(content_type)
 
 
 @router.get("", summary="List repair requests")
