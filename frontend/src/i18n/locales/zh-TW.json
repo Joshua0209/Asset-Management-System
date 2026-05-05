@@ -66,6 +66,8 @@
     "max500Chars": "最多 500 個字元",
     "purchaseAmountPositive": "採購金額必須大於 0",
     "purchaseAmountFormat": "採購金額需為正數，最多 15 位數且小數最多 2 位",
+    "repairCostPositive": "維修金額必須大於 0",
+    "repairCostFormat": "維修金額需為正數，最多 15 位數且小數最多 2 位",
     "purchaseDateNotFuture": "採購日期不可為未來日期",
     "warrantyAfterPurchase": "保固到期日必須晚於採購日期",
     "warrantyAfterActivation": "保固到期日必須晚於啟用日期",

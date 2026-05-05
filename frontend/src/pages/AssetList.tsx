@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, assetsApi, usersApi } from '../api';
 import { getApiErrorMessage } from '../utils/apiErrors';
+import { createAmountValidator } from '../utils/validators';
 import type {
   AssetCategory,
   AssetCreatePayload,
@@ -119,26 +120,7 @@ const AssetList: React.FC = () => {
   const [assignForm] = Form.useForm<AssignFormValues>();
   const [disposeForm] = Form.useForm<DisposeFormValues>();
 
-  const validatePurchaseAmount = async (_: unknown, value?: string) => {
-    if (!value || value.trim() === '') {
-      throw new Error(t('validation.required'));
-    }
-
-    const normalized = value.trim();
-    if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
-      throw new Error(t('validation.purchaseAmountFormat'));
-    }
-
-    const numeric = Number.parseFloat(normalized);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      throw new Error(t('validation.purchaseAmountPositive'));
-    }
-
-    const digitCount = normalized.replace('.', '').replace(/^0+/, '').length;
-    if (digitCount > 15) {
-      throw new Error(t('validation.purchaseAmountFormat'));
-    }
-  };
+  const validatePurchaseAmount = createAmountValidator(t, { required: true });
 
   const validateWarrantyExpiry = async (_: unknown, value?: string) => {
     if (!value) {

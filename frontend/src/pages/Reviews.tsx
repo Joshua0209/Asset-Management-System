@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 
 import { ApiError, repairRequestsApi } from '../api';
 import { getApiErrorMessage } from '../utils/apiErrors';
+import { createAmountValidator } from '../utils/validators';
 import type {
   RepairRequestRecord,
   RepairRequestStatus,
@@ -79,6 +80,16 @@ const Reviews: React.FC = () => {
   const [rejectForm] = Form.useForm<RejectFormValues>();
   const [detailsForm] = Form.useForm<RepairDetailsFormValues>();
   const [completeForm] = Form.useForm<CompleteFormValues>();
+
+  const validateRepairCostRequired = createAmountValidator(t, {
+    required: true,
+    formatKey: 'validation.repairCostFormat',
+    positiveKey: 'validation.repairCostPositive',
+  });
+  const validateRepairCostOptional = createAmountValidator(t, {
+    formatKey: 'validation.repairCostFormat',
+    positiveKey: 'validation.repairCostPositive',
+  });
 
   const formatApiError = (apiError: ApiError): string => getApiErrorMessage(apiError, t);
 
@@ -413,7 +424,7 @@ const Reviews: React.FC = () => {
           <Form.Item
             name="repair_cost"
             label={t('reviews.form.repairCost')}
-            rules={[{ required: true, message: t('validation.required') }]}
+            rules={[{ validator: validateRepairCostRequired }]}
           >
             <Input type="number" min={0} step="0.01" />
           </Form.Item>
@@ -468,7 +479,11 @@ const Reviews: React.FC = () => {
           <Form.Item name="repair_plan" label={t('reviews.form.repairPlan')}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="repair_cost" label={t('reviews.form.repairCost')}>
+          <Form.Item
+            name="repair_cost"
+            label={t('reviews.form.repairCost')}
+            rules={[{ validator: validateRepairCostOptional }]}
+          >
             <Input type="number" min={0} step="0.01" />
           </Form.Item>
           <Form.Item name="repair_vendor" label={t('reviews.form.repairVendor')}>
@@ -512,7 +527,7 @@ const Reviews: React.FC = () => {
           <Form.Item
             name="repair_cost"
             label={t('reviews.form.repairCost')}
-            rules={[{ required: true, message: t('validation.required') }]}
+            rules={[{ validator: validateRepairCostRequired }]}
           >
             <Input type="number" min={0} step="0.01" />
           </Form.Item>
