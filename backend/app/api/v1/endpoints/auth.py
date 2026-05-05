@@ -23,11 +23,32 @@ from app.schemas.common import DataResponse, error_responses
 from app.schemas.user import UserRead
 
 logger = logging.getLogger(__name__)
+# Routes here have heterogeneous auth requirements (`/register` is public,
+# `/me` is read-only authed, `/users` is manager-only), so the router does
+# not declare a shared `responses=` block — each endpoint enumerates its
+# real errors individually instead of inheriting a misleading default.
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
 
 _EMAIL_ALREADY_REGISTERED = "Email is already registered"
+
+
+def _is_email_uniqueness_violation(exc: IntegrityError) -> bool:
+    """Best-effort check that an IntegrityError is the users.email unique constraint.
+
+    Without this guard we would mask any unique constraint violation as
+    "email already registered", which is misleading if a future schema change
+    adds another unique column.
+    """
+    message = str(getattr(exc, "orig", None) or exc).lower()
+    return "email" in message
+
+# Real bcrypt hash used to equalize response time when an unknown email logs
+# in. A bcrypt-shaped string like "$2b$12$" + "x"*53 raises ``ValueError`` at
+# the C layer in ~0ms, so it would not equalize anything — bcrypt.checkpw
+# must do real work for the timing protection to hold.
+_DUMMY_PASSWORD_HASH = hash_password("placeholder-password-for-timing-equalization")  # noqa: S106
 
 
 @router.post(
@@ -63,6 +84,14 @@ def register(payload: RegisterRequest, db: DbSession) -> DataResponse[UserRead]:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
+        if not _is_email_uniqueness_violation(exc):
+            logger.error(
+                "Unexpected IntegrityError on user create: %s", exc, exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to create user. Please try again later.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=_EMAIL_ALREADY_REGISTERED,
@@ -97,10 +126,10 @@ def login(payload: LoginRequest, db: DbSession) -> DataResponse[LoginResponse]:
     user = db.scalar(
         select(User).where(User.email == payload.email, User.deleted_at.is_(None))
     )
-    # Verify a bcrypt string even when the user doesn't exist, so response
+    # Burn an equivalent bcrypt cost when the user doesn't exist, so response
     # timing does not reveal which emails are registered.
     if user is None:
-        verify_password(payload.password, "$2b$12$" + "x" * 53)
+        verify_password(payload.password, _DUMMY_PASSWORD_HASH)
         raise _INVALID_CREDENTIALS
 
     if not verify_password(payload.password, user.password_hash):
@@ -167,6 +196,14 @@ def admin_create_user(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
+        if not _is_email_uniqueness_violation(exc):
+            logger.error(
+                "Unexpected IntegrityError on user create: %s", exc, exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to create user. Please try again later.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=_EMAIL_ALREADY_REGISTERED,
