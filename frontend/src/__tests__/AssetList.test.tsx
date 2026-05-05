@@ -69,7 +69,7 @@ async function renderAsManagerWith(
 ) {
   authAs(managerUser);
   responses.forEach((r) => mockListAssets.mockResolvedValueOnce(r));
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   await act(async () => {
     render(<AssetList />);
   });
@@ -207,7 +207,7 @@ describe("AssetList", () => {
       .mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 10))
       .mockResolvedValueOnce(buildResponse("AST-2026-00006", "Field Laptop", 10));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await act(async () => {
       render(<AssetList />);
     });
@@ -246,7 +246,7 @@ describe("AssetList", () => {
     authAs(managerUser);
     mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await act(async () => {
       render(<AssetList />);
     });
