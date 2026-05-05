@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import enum
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Integer
@@ -8,6 +10,16 @@ from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def enum_values(obj: type[enum.Enum]) -> Sequence[str]:
+    """SQLAlchemy ``values_callable`` that maps by ``.value`` instead of ``.name``.
+
+    Alembic migrations create ``ENUM(...)`` columns from the lowercase Python enum
+    values; without this callable SQLAlchemy persists/looks-up by the uppercase
+    enum *name* and raises ``LookupError`` on read.
+    """
+    return [e.value for e in obj]
 
 
 class TimestampVersionMixin:

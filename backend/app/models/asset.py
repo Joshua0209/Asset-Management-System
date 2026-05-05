@@ -9,7 +9,7 @@ from sqlalchemy import Date, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.mixins import TimestampVersionMixin
+from app.models.mixins import TimestampVersionMixin, enum_values
 
 
 class AssetStatus(enum.StrEnum):
@@ -37,7 +37,7 @@ class Asset(TimestampVersionMixin, Base):
     activation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     warranty_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[AssetStatus] = mapped_column(
-        Enum(AssetStatus, name="asset_status", values_callable=lambda obj: [e.value for e in obj]),
+        Enum(AssetStatus, name="asset_status", values_callable=enum_values),
         default=AssetStatus.IN_STOCK,
     )
     responsible_person_id: Mapped[str | None] = mapped_column(
