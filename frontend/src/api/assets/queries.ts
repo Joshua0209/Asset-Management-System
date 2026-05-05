@@ -121,10 +121,7 @@ function assertWarrantyOrder(
   }
 }
 
-function validateCreatePayload(payload: AssetCreatePayload): void {
-  assertRequiredString(payload.name, "name", "name");
-  assertRequiredString(payload.model, "model", "model");
-  assertRequiredString(payload.supplier, "supplier", "supplier");
+function assertCommonAssetFields(payload: AssetCreatePayload | AssetUpdatePayload): void {
   assertMaxLength(payload.name, 120, "name", "name");
   assertMaxLength(payload.model, 120, "model", "model");
   assertMaxLength(payload.specs, 500, "specs", "specs");
@@ -134,6 +131,13 @@ function validateCreatePayload(payload: AssetCreatePayload): void {
   assertPurchaseDateNotFuture(payload.purchase_date);
   assertPurchaseAmount(payload.purchase_amount);
   assertWarrantyOrder(payload.warranty_expiry, payload.purchase_date, payload.activation_date);
+}
+
+function validateCreatePayload(payload: AssetCreatePayload): void {
+  assertRequiredString(payload.name, "name", "name");
+  assertRequiredString(payload.model, "model", "model");
+  assertRequiredString(payload.supplier, "supplier", "supplier");
+  assertCommonAssetFields(payload);
 }
 
 function validateUpdatePayload(payload: AssetUpdatePayload): void {
@@ -146,15 +150,7 @@ function validateUpdatePayload(payload: AssetUpdatePayload): void {
   if (payload.supplier !== undefined) {
     assertRequiredString(payload.supplier, "supplier", "supplier");
   }
-  assertMaxLength(payload.name, 120, "name", "name");
-  assertMaxLength(payload.model, 120, "model", "model");
-  assertMaxLength(payload.specs, 500, "specs", "specs");
-  assertMaxLength(payload.supplier, 120, "supplier", "supplier");
-  assertMaxLength(payload.location, 120, "location", "location");
-  assertMaxLength(payload.department, 100, "department", "department");
-  assertPurchaseDateNotFuture(payload.purchase_date);
-  assertPurchaseAmount(payload.purchase_amount);
-  assertWarrantyOrder(payload.warranty_expiry, payload.purchase_date, payload.activation_date);
+  assertCommonAssetFields(payload);
 }
 
 function buildListParams(params?: ListAssetsParams) {

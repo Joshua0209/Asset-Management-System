@@ -54,6 +54,16 @@ const holderUser = {
   role: "holder" as const,
 };
 
+function authAs(user: typeof managerUser | typeof holderUser) {
+  mockUseAuth.mockReturnValue({
+    user,
+    token: "token",
+    isAuthenticated: true,
+    login: vi.fn(),
+    logout: vi.fn(),
+  });
+}
+
 function buildResponse(
   assetCode: string,
   assetName: string,
@@ -125,13 +135,7 @@ describe("AssetList", () => {
   });
 
   it("loads all assets for manager without role switch controls", async () => {
-    mockUseAuth.mockReturnValue({
-      user: managerUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(managerUser);
     mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 10));
 
     await act(async () => {
@@ -151,13 +155,7 @@ describe("AssetList", () => {
   });
 
   it("changes table page when pagination is clicked", async () => {
-    mockUseAuth.mockReturnValue({
-      user: managerUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(managerUser);
     mockListAssets
       .mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 10))
       .mockResolvedValueOnce(buildResponse("AST-2026-00006", "Field Laptop", 10));
@@ -182,13 +180,7 @@ describe("AssetList", () => {
   });
 
   it("loads only current holder assets for holder role", async () => {
-    mockUseAuth.mockReturnValue({
-      user: holderUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(holderUser);
     mockListMyAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
 
     await act(async () => {
@@ -204,13 +196,7 @@ describe("AssetList", () => {
   });
 
   it("opens detail modal and shows extended asset fields", async () => {
-    mockUseAuth.mockReturnValue({
-      user: managerUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(managerUser);
     mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
 
     const user = userEvent.setup();
@@ -233,13 +219,7 @@ describe("AssetList", () => {
   });
 
   it("edits an asset and submits update via API", async () => {
-    mockUseAuth.mockReturnValue({
-      user: managerUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(managerUser);
     const initial = buildResponse("AST-2026-00001", "Business Laptop 13", 1, "in_use");
     const afterSave = buildResponse("AST-2026-00001", "Updated Laptop", 1, "in_use");
     mockListAssets.mockResolvedValueOnce(initial).mockResolvedValueOnce(afterSave);
@@ -274,13 +254,7 @@ describe("AssetList", () => {
   });
 
   it("unassigns an in-use asset through manager action", async () => {
-    mockUseAuth.mockReturnValue({
-      user: managerUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(managerUser);
     const initial = buildResponse("AST-2026-00001", "Business Laptop 13", 1, "in_use");
     const afterAction = buildResponse("AST-2026-00001", "Business Laptop 13", 1, "in_stock");
     mockListAssets.mockResolvedValueOnce(initial).mockResolvedValueOnce(afterAction);
@@ -311,13 +285,7 @@ describe("AssetList", () => {
   });
 
   it("disposes an in-stock asset through manager action", async () => {
-    mockUseAuth.mockReturnValue({
-      user: managerUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(managerUser);
     const initial = buildResponse("AST-2026-00099", "Spare Tablet", 1, "in_stock");
     const afterAction = buildResponse("AST-2026-00099", "Spare Tablet", 1, "disposed");
     mockListAssets.mockResolvedValueOnce(initial).mockResolvedValueOnce(afterAction);
@@ -347,13 +315,7 @@ describe("AssetList", () => {
   });
 
   it("blocks create when purchase amount is negative", async () => {
-    mockUseAuth.mockReturnValue({
-      user: managerUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(managerUser);
     mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
 
     const user = userEvent.setup();
@@ -385,13 +347,7 @@ describe("AssetList", () => {
   });
 
   it("blocks create when warranty expiry is before activation date", async () => {
-    mockUseAuth.mockReturnValue({
-      user: managerUser,
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    authAs(managerUser);
     mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
 
     const user = userEvent.setup();

@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, assetsApi, usersApi } from '../api';
+import { getApiErrorMessage } from '../utils/apiErrors';
 import type {
   AssetCategory,
   AssetCreatePayload,
@@ -120,76 +121,47 @@ const AssetList: React.FC = () => {
 
   const validatePurchaseAmount = async (_: unknown, value?: string) => {
     if (!value || value.trim() === '') {
-      return Promise.reject(new Error(t('validation.required')));
+      throw new Error(t('validation.required'));
     }
 
     const normalized = value.trim();
     if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
-      return Promise.reject(new Error(t('validation.purchaseAmountFormat')));
+      throw new Error(t('validation.purchaseAmountFormat'));
     }
 
     const numeric = Number.parseFloat(normalized);
     if (!Number.isFinite(numeric) || numeric <= 0) {
-      return Promise.reject(new Error(t('validation.purchaseAmountPositive')));
+      throw new Error(t('validation.purchaseAmountPositive'));
     }
 
     const digitCount = normalized.replace('.', '').replace(/^0+/, '').length;
     if (digitCount > 15) {
-      return Promise.reject(new Error(t('validation.purchaseAmountFormat')));
+      throw new Error(t('validation.purchaseAmountFormat'));
     }
-
-    return Promise.resolve();
   };
 
   const validateWarrantyExpiry = async (_: unknown, value?: string) => {
     if (!value) {
-      return Promise.resolve();
+      return;
     }
 
     const warrantyDate = parseDateOnly(value);
     if (!warrantyDate) {
-      return Promise.resolve();
+      return;
     }
 
     const purchaseDate = parseDateOnly(assetForm.getFieldValue('purchase_date'));
     if (purchaseDate && warrantyDate.getTime() <= purchaseDate.getTime()) {
-      return Promise.reject(new Error(t('validation.warrantyAfterPurchase')));
+      throw new Error(t('validation.warrantyAfterPurchase'));
     }
 
     const activationDate = parseDateOnly(assetForm.getFieldValue('activation_date'));
     if (activationDate && warrantyDate.getTime() <= activationDate.getTime()) {
-      return Promise.reject(new Error(t('validation.warrantyAfterActivation')));
-    }
-
-    return Promise.resolve();
-  };
-
-  const getApiErrorMessage = (apiError: ApiError): string => {
-    switch (apiError.code) {
-      case 'unauthorized':
-        return t('errors.unauthorized');
-      case 'forbidden':
-        return t('errors.forbidden');
-      case 'not_found':
-        return t('errors.notFound');
-      case 'conflict':
-        return t('errors.conflict');
-      case 'duplicate_request':
-        return t('errors.duplicateRequest');
-      case 'invalid_transition':
-        return t('errors.invalidTransition');
-      case 'validation_error':
-        return t('errors.validationError');
-      case 'payload_too_large':
-        return t('errors.payloadTooLarge');
-      case 'unsupported_media_type':
-        return t('errors.unsupportedMediaType');
-      case 'rate_limit_exceeded':
-        return t('errors.rateLimitExceeded');
-      default:
-        return apiError.message || t('errors.serverError');
+      throw new Error(t('validation.warrantyAfterActivation'));
     }
   };
+
+  const formatApiError = (apiError: ApiError): string => getApiErrorMessage(apiError, t);
 
   const isManager = user?.role === 'manager';
 
@@ -249,7 +221,7 @@ const AssetList: React.FC = () => {
         setAssets([]);
         setTotal(0);
         if (e instanceof ApiError) {
-          setError(getApiErrorMessage(e));
+          setError(formatApiError(e));
         } else {
           setError(t('assetList.serverError'));
         }
@@ -285,7 +257,7 @@ const AssetList: React.FC = () => {
           if (e instanceof ApiError) {
             api.error({
               message: t('assetList.manager.holdersLoadErrorTitle'),
-              description: getApiErrorMessage(e),
+              description: formatApiError(e),
             });
           }
         }
@@ -396,7 +368,7 @@ const AssetList: React.FC = () => {
       if (e instanceof ApiError) {
         api.error({
           message: t('assetList.manager.actionFailedTitle'),
-          description: getApiErrorMessage(e),
+          description: formatApiError(e),
         });
       }
     } finally {
@@ -435,7 +407,7 @@ const AssetList: React.FC = () => {
       if (e instanceof ApiError) {
         api.error({
           message: t('assetList.manager.actionFailedTitle'),
-          description: getApiErrorMessage(e),
+          description: formatApiError(e),
         });
       }
     } finally {
@@ -463,7 +435,7 @@ const AssetList: React.FC = () => {
       if (e instanceof ApiError) {
         api.error({
           message: t('assetList.manager.actionFailedTitle'),
-          description: getApiErrorMessage(e),
+          description: formatApiError(e),
         });
       }
     } finally {
@@ -747,12 +719,11 @@ const AssetList: React.FC = () => {
                   {
                     validator: async (_rule, value?: string) => {
                       if (!value) {
-                        return Promise.resolve();
+                        return;
                       }
                       if (isFutureDate(value)) {
-                        return Promise.reject(new Error(t('validation.purchaseDateNotFuture')));
+                        throw new Error(t('validation.purchaseDateNotFuture'));
                       }
-                      return Promise.resolve();
                     },
                   },
                 ]}

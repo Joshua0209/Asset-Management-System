@@ -132,7 +132,7 @@ describe("mocks/mockBackend", () => {
     expect(holderId).toBeTruthy();
 
     const assigned = backend.assignAsset(created.id, {
-      responsible_person_id: holderId!,
+      responsible_person_id: holderId,
       assignment_date: "2026-04-03",
       version: created.version,
     });
@@ -163,16 +163,16 @@ describe("mocks/mockBackend", () => {
     expect(stockAsset).toBeTruthy();
 
     expect(() =>
-      backend.assignAsset(stockAsset!.id, {
+      backend.assignAsset(stockAsset.id, {
         responsible_person_id: "mock-manager",
-        version: stockAsset!.version,
+        version: stockAsset.version,
       }),
     ).toThrow();
 
     expect(() =>
-      backend.unassignAsset(stockAsset!.id, {
+      backend.unassignAsset(stockAsset.id, {
         reason: "invalid",
-        version: stockAsset!.version,
+        version: stockAsset.version,
       }),
     ).toThrow();
 
@@ -180,9 +180,9 @@ describe("mocks/mockBackend", () => {
     expect(inUseAsset).toBeTruthy();
 
     expect(() =>
-      backend.disposeAsset(inUseAsset!.id, {
+      backend.disposeAsset(inUseAsset.id, {
         disposal_reason: "invalid",
-        version: inUseAsset!.version,
+        version: inUseAsset.version,
       }),
     ).toThrow();
   });
@@ -212,7 +212,7 @@ describe("mocks/mockBackend", () => {
     const managerList = backend.listRepairRequests({ sort: "status" });
     expect(managerList.data.length).toBeGreaterThan(0);
 
-    const requesterId = managerList.data[0]!.requester_id;
+    const requesterId = managerList.data[0].requester_id;
     seedSession({
       id: requesterId,
       email: "holder@example.com",
@@ -237,8 +237,8 @@ describe("mocks/mockBackend", () => {
       .data[0];
     expect(pending).toBeTruthy();
 
-    const approved = backend.approveRepairRequest(pending!.id, {
-      version: pending!.version,
+    const approved = backend.approveRepairRequest(pending.id, {
+      version: pending.version,
       repair_plan: "replace panel",
       repair_vendor: "Vendor",
       repair_cost: "2000",
@@ -282,8 +282,8 @@ describe("mocks/mockBackend", () => {
       .data[0];
     expect(pending).toBeTruthy();
 
-    const rejected = backend.rejectRepairRequest(pending!.id, {
-      version: pending!.version,
+    const rejected = backend.rejectRepairRequest(pending.id, {
+      version: pending.version,
       rejection_reason: "not reproducible",
     });
     expect(rejected.status).toBe("rejected");
@@ -300,8 +300,8 @@ describe("mocks/mockBackend", () => {
     expect(completed).toBeTruthy();
 
     expect(() =>
-      backend.updateRepairRequestDetails(completed!.id, {
-        version: completed!.version,
+      backend.updateRepairRequestDetails(completed.id, {
+        version: completed.version,
       }),
     ).toThrow();
   });

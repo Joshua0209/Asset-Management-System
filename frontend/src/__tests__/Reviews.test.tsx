@@ -150,7 +150,7 @@ describe("Reviews", () => {
       await user.type(screen.getByLabelText("Repair Cost"), "2200");
       await user.type(screen.getByLabelText("Planned Date"), "2026-04-25");
       const approveButtons = screen.getAllByRole("button", { name: "Approve" });
-      await user.click(approveButtons[approveButtons.length - 1]!);
+      await user.click(approveButtons[approveButtons.length - 1]);
     });
 
     await waitFor(() => {
@@ -183,7 +183,7 @@ describe("Reviews", () => {
     await act(async () => {
       await user.type(screen.getByLabelText("Rejection Reason"), "Not reproducible");
       const rejectButtons = screen.getAllByRole("button", { name: "Reject" });
-      await user.click(rejectButtons[rejectButtons.length - 1]!);
+      await user.click(rejectButtons[rejectButtons.length - 1]);
     });
 
     await waitFor(() => {
@@ -242,7 +242,7 @@ describe("Reviews", () => {
       await user.type(screen.getByLabelText("Repair Cost"), "1800");
       await user.type(screen.getByLabelText("Repair Vendor"), "Vendor C");
       const completeButtons = screen.getAllByRole("button", { name: "Complete" });
-      await user.click(completeButtons[completeButtons.length - 1]!);
+      await user.click(completeButtons[completeButtons.length - 1]);
     });
 
     await waitFor(() => {
