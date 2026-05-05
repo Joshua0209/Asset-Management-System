@@ -26,6 +26,15 @@ class ImageNotFoundError(ImageStorageError):
     """Raised when a stored image is missing from the backend."""
 
 
+class ImageStorageIntegrityError(ImageStorageError):
+    """Raised when a stored image's storage key or stored bytes are invalid.
+
+    Distinct from a transient backend failure: the DB row itself is bad
+    (e.g. path-traversal storage key, unsupported file extension), so a
+    retry will not help.
+    """
+
+
 class ImageStorage(Protocol):
     """Backend-agnostic image persistence.
 
@@ -94,7 +103,9 @@ class LocalImageStorage:
             raise ImageStorageError(f"Unable to read {storage_key!r}") from exc
         content_type = _SUFFIX_TO_CONTENT_TYPE.get(target.suffix.lower())
         if content_type is None:
-            raise ImageStorageError(f"Unsupported stored image suffix {target.suffix!r}")
+            raise ImageStorageIntegrityError(
+                f"Unsupported stored image suffix {target.suffix!r}"
+            )
         return content, content_type
 
     def cleanup(self, storage_keys: list[str]) -> None:
@@ -110,7 +121,9 @@ class LocalImageStorage:
         candidate = (self._base_dir / storage_key).resolve()
         base = self._base_dir.resolve()
         if base != candidate and base not in candidate.parents:
-            raise ImageStorageError(f"Storage key escapes base directory: {storage_key!r}")
+            raise ImageStorageIntegrityError(
+                f"Storage key escapes base directory: {storage_key!r}"
+            )
         return candidate
 
 
@@ -124,6 +137,14 @@ ImageStorageDep = Annotated[ImageStorage, Depends(get_image_storage)]
 def image_storage_error_to_http(exc: ImageStorageError) -> HTTPException:
     if isinstance(exc, ImageNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found.")
+    if isinstance(exc, ImageStorageIntegrityError):
+        # Permanent data error — retrying won't help; surface 500 so it gets
+        # operator attention instead of pretending it's a transient backend.
+        logger.error("Image storage integrity error: %s", exc)
+        return HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Image storage integrity error.",
+        )
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Unable to retrieve image. Please try again later.",

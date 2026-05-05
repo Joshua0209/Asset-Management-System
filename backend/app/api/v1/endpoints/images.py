@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from app.api.deps import CurrentUser
 from app.db.session import get_db
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest
-from app.schemas.common import UUID_PATTERN, ErrorResponse
+from app.schemas.common import UUIDPath, error_responses
 from app.services.image_storage import (
     ImageStorageDep,
     ImageStorageError,
@@ -23,17 +23,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
-ImageIdPath = Annotated[
-    str,
-    Path(pattern=UUID_PATTERN, json_schema_extra={"format": "uuid"}),
-]
+ImageIdPath = UUIDPath
 
-_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
-    status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
-    status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
-    status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": ErrorResponse},
-    status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
-}
+# 500 covers ImageStorageIntegrityError (corrupted DB row → permanent error).
+_ERROR_RESPONSES = error_responses(
+    status.HTTP_401_UNAUTHORIZED,
+    status.HTTP_404_NOT_FOUND,
+    status.HTTP_422_UNPROCESSABLE_ENTITY,
+    status.HTTP_500_INTERNAL_SERVER_ERROR,
+    status.HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 
 @router.get(
