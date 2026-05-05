@@ -1205,6 +1205,25 @@ class TestSubmitRepairRequest:
         assert response.status_code == 201
         assert response.json()["data"]["asset"]["id"] == asset.id
 
+    def test_json_validation_error_uses_project_error_envelope(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            json={"asset_id": "not-a-uuid"},
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+        fields = {detail["field"] for detail in response.json()["error"]["details"]}
+        assert {"asset_id", "fault_description"}.issubset(fields)
+
     def test_submits_repair_request_with_image(
         self,
         client: TestClient,
