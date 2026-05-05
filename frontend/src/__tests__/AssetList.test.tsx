@@ -34,6 +34,7 @@ const apiModule = await import("../api");
 const mockUseAuth = vi.mocked(authModule.useAuth);
 const mockListAssets = vi.mocked(apiModule.assetsApi.listAssets);
 const mockListMyAssets = vi.mocked(apiModule.assetsApi.listMyAssets);
+const mockCreateAsset = vi.mocked(apiModule.assetsApi.createAsset);
 const mockUpdateAsset = vi.mocked(apiModule.assetsApi.updateAsset);
 const mockUnassignAsset = vi.mocked(apiModule.assetsApi.unassignAsset);
 const mockDisposeAsset = vi.mocked(apiModule.assetsApi.disposeAsset);
@@ -101,9 +102,11 @@ describe("AssetList", () => {
     mockListAssets.mockReset();
     mockListMyAssets.mockReset();
     mockUpdateAsset.mockReset();
+    mockCreateAsset.mockReset();
     mockUnassignAsset.mockReset();
     mockDisposeAsset.mockReset();
     mockListUsers.mockReset();
+    mockCreateAsset.mockResolvedValue({} as never);
     mockUpdateAsset.mockResolvedValue(undefined as never);
     mockUnassignAsset.mockResolvedValue(undefined as never);
     mockDisposeAsset.mockResolvedValue(undefined as never);
@@ -341,5 +344,83 @@ describe("AssetList", () => {
         version: 1,
       });
     });
+  });
+
+  it("blocks create when purchase amount is negative", async () => {
+    mockUseAuth.mockReturnValue({
+      user: managerUser,
+      token: "token",
+      isAuthenticated: true,
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+    mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
+
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<AssetList />);
+    });
+
+    await waitFor(() => expect(screen.getByText("Business Laptop 13")).toBeInTheDocument());
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Register Asset" }));
+    });
+
+    await act(async () => {
+      await user.type(screen.getByLabelText("Name"), "Invalid Asset");
+      await user.type(screen.getByLabelText("Model"), "X-100");
+      await user.click(screen.getByLabelText("Category"));
+      await user.click(screen.getByText("computer"));
+      await user.type(screen.getByLabelText("Supplier"), "Acme");
+      await user.type(screen.getByLabelText("Purchase Date"), "2026-01-10");
+      await user.type(screen.getByLabelText("Purchase Amount"), "-1");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Purchase amount must be a positive number with up to 2 decimal places and 15 digits")).toBeInTheDocument();
+    });
+    expect(mockCreateAsset).not.toHaveBeenCalled();
+  });
+
+  it("blocks create when warranty expiry is before activation date", async () => {
+    mockUseAuth.mockReturnValue({
+      user: managerUser,
+      token: "token",
+      isAuthenticated: true,
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+    mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
+
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<AssetList />);
+    });
+
+    await waitFor(() => expect(screen.getByText("Business Laptop 13")).toBeInTheDocument());
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Register Asset" }));
+    });
+
+    await act(async () => {
+      await user.type(screen.getByLabelText("Name"), "Warranty Invalid Asset");
+      await user.type(screen.getByLabelText("Model"), "WX-1");
+      await user.click(screen.getByLabelText("Category"));
+      await user.click(screen.getByText("computer"));
+      await user.type(screen.getByLabelText("Supplier"), "Acme");
+      await user.type(screen.getByLabelText("Purchase Date"), "2026-01-10");
+      await user.type(screen.getByLabelText("Purchase Amount"), "1000.00");
+      await user.type(screen.getByLabelText("Activation Date"), "2026-05-10");
+      await user.type(screen.getByLabelText("Warranty Expiry"), "2026-05-01");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Warranty expiry must be after activation date")).toBeInTheDocument();
+    });
+    expect(mockCreateAsset).not.toHaveBeenCalled();
   });
 });

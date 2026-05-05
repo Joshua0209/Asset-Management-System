@@ -4,6 +4,24 @@ import { DUMMY_HOLDERS } from "../mocks/assets";
 import { saveSession } from "../auth/storage";
 
 vi.mock("../api/base-client", () => ({
+  ApiError: class ApiError extends Error {
+    status: number;
+    code: string;
+    details: Array<{ field: string; message: string; code: string }>;
+
+    constructor(
+      status: number,
+      code: string,
+      message: string,
+      details: Array<{ field: string; message: string; code: string }> = [],
+    ) {
+      super(message);
+      this.name = "ApiError";
+      this.status = status;
+      this.code = code;
+      this.details = details;
+    }
+  },
   request: vi.fn(),
 }));
 
@@ -118,6 +136,46 @@ describe("api/assets/queries", () => {
         url: "/assets/mine",
         params: { page: 1, per_page: 5 },
       });
+    });
+
+    it("createAsset rejects negative purchase_amount before hitting API", async () => {
+      await expect(
+        mod.createAsset({
+          name: "Laptop",
+          model: "X1",
+          category: "computer",
+          supplier: "Supplier A",
+          purchase_date: "2026-01-01",
+          purchase_amount: "-5",
+        }),
+      ).rejects.toMatchObject({
+        name: "ApiError",
+        status: 422,
+        code: "validation_error",
+      });
+
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it("createAsset rejects warranty_expiry earlier than activation_date before hitting API", async () => {
+      await expect(
+        mod.createAsset({
+          name: "Laptop",
+          model: "X1",
+          category: "computer",
+          supplier: "Supplier A",
+          purchase_date: "2026-01-01",
+          purchase_amount: "1000",
+          activation_date: "2026-05-10",
+          warranty_expiry: "2026-05-01",
+        }),
+      ).rejects.toMatchObject({
+        name: "ApiError",
+        status: 422,
+        code: "validation_error",
+      });
+
+      expect(mockRequest).not.toHaveBeenCalled();
     });
   });
 });

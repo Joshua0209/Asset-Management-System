@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import SubmitRepairRequest from '../pages/SubmitRepairRequest';
 import { ConfigProvider } from 'antd';
+import { API_BASE } from '../api';
 
 // Mock i18next
 vi.mock('react-i18next', () => ({
@@ -107,7 +108,7 @@ describe('SubmitRepairRequest', () => {
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/v1/repair-requests', expect.objectContaining({
+      expect(mockFetch).toHaveBeenCalledWith(`${API_BASE}/repair-requests`, expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
           'Authorization': 'Bearer test-token',

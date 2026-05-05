@@ -79,6 +79,33 @@ const Reviews: React.FC = () => {
   const [detailsForm] = Form.useForm<RepairDetailsFormValues>();
   const [completeForm] = Form.useForm<CompleteFormValues>();
 
+  const getApiErrorMessage = (apiError: ApiError): string => {
+    switch (apiError.code) {
+      case 'unauthorized':
+        return t('errors.unauthorized');
+      case 'forbidden':
+        return t('errors.forbidden');
+      case 'not_found':
+        return t('errors.notFound');
+      case 'conflict':
+        return t('errors.conflict');
+      case 'duplicate_request':
+        return t('errors.duplicateRequest');
+      case 'invalid_transition':
+        return t('errors.invalidTransition');
+      case 'validation_error':
+        return t('errors.validationError');
+      case 'payload_too_large':
+        return t('errors.payloadTooLarge');
+      case 'unsupported_media_type':
+        return t('errors.unsupportedMediaType');
+      case 'rate_limit_exceeded':
+        return t('errors.rateLimitExceeded');
+      default:
+        return apiError.message || t('errors.serverError');
+    }
+  };
+
   const loadRequests = async () => {
     setLoading(true);
     setError(null);
@@ -95,7 +122,7 @@ const Reviews: React.FC = () => {
       setRequests([]);
       setTotal(0);
       if (e instanceof ApiError) {
-        setError(e.message);
+        setError(getApiErrorMessage(e));
       } else {
         setError(t('reviews.loadError'));
       }
@@ -165,7 +192,10 @@ const Reviews: React.FC = () => {
       api.success({ message: t('reviews.approveSuccess') });
     } catch (e) {
       if (e instanceof ApiError) {
-        api.error({ message: t('reviews.actionFailedTitle'), description: e.message });
+        api.error({
+          message: t('reviews.actionFailedTitle'),
+          description: getApiErrorMessage(e),
+        });
       }
     } finally {
       setIsSubmitting(false);
@@ -189,7 +219,10 @@ const Reviews: React.FC = () => {
       api.success({ message: t('reviews.rejectSuccess') });
     } catch (e) {
       if (e instanceof ApiError) {
-        api.error({ message: t('reviews.actionFailedTitle'), description: e.message });
+        api.error({
+          message: t('reviews.actionFailedTitle'),
+          description: getApiErrorMessage(e),
+        });
       }
     } finally {
       setIsSubmitting(false);
@@ -217,7 +250,10 @@ const Reviews: React.FC = () => {
       api.success({ message: t('reviews.detailsSuccess') });
     } catch (e) {
       if (e instanceof ApiError) {
-        api.error({ message: t('reviews.actionFailedTitle'), description: e.message });
+        api.error({
+          message: t('reviews.actionFailedTitle'),
+          description: getApiErrorMessage(e),
+        });
       }
     } finally {
       setIsSubmitting(false);
@@ -245,7 +281,10 @@ const Reviews: React.FC = () => {
       api.success({ message: t('reviews.completeSuccess') });
     } catch (e) {
       if (e instanceof ApiError) {
-        api.error({ message: t('reviews.actionFailedTitle'), description: e.message });
+        api.error({
+          message: t('reviews.actionFailedTitle'),
+          description: getApiErrorMessage(e),
+        });
       }
     } finally {
       setIsSubmitting(false);

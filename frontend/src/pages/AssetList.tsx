@@ -71,6 +71,30 @@ interface DisposeFormValues {
   disposal_reason: string;
 }
 
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateOnly(value?: string | null): Date | null {
+  if (!value || !DATE_ONLY_PATTERN.test(value)) {
+    return null;
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
+function isFutureDate(value: string): boolean {
+  const parsed = parseDateOnly(value);
+  if (!parsed) {
+    return false;
+  }
+
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  return parsed.getTime() > todayUtc.getTime();
+}
+
 const AssetList: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -93,6 +117,79 @@ const AssetList: React.FC = () => {
   const [assetForm] = Form.useForm<AssetFormValues>();
   const [assignForm] = Form.useForm<AssignFormValues>();
   const [disposeForm] = Form.useForm<DisposeFormValues>();
+
+  const validatePurchaseAmount = async (_: unknown, value?: string) => {
+    if (!value || value.trim() === '') {
+      return Promise.reject(new Error(t('validation.required')));
+    }
+
+    const normalized = value.trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+      return Promise.reject(new Error(t('validation.purchaseAmountFormat')));
+    }
+
+    const numeric = Number.parseFloat(normalized);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return Promise.reject(new Error(t('validation.purchaseAmountPositive')));
+    }
+
+    const digitCount = normalized.replace('.', '').replace(/^0+/, '').length;
+    if (digitCount > 15) {
+      return Promise.reject(new Error(t('validation.purchaseAmountFormat')));
+    }
+
+    return Promise.resolve();
+  };
+
+  const validateWarrantyExpiry = async (_: unknown, value?: string) => {
+    if (!value) {
+      return Promise.resolve();
+    }
+
+    const warrantyDate = parseDateOnly(value);
+    if (!warrantyDate) {
+      return Promise.resolve();
+    }
+
+    const purchaseDate = parseDateOnly(assetForm.getFieldValue('purchase_date'));
+    if (purchaseDate && warrantyDate.getTime() <= purchaseDate.getTime()) {
+      return Promise.reject(new Error(t('validation.warrantyAfterPurchase')));
+    }
+
+    const activationDate = parseDateOnly(assetForm.getFieldValue('activation_date'));
+    if (activationDate && warrantyDate.getTime() <= activationDate.getTime()) {
+      return Promise.reject(new Error(t('validation.warrantyAfterActivation')));
+    }
+
+    return Promise.resolve();
+  };
+
+  const getApiErrorMessage = (apiError: ApiError): string => {
+    switch (apiError.code) {
+      case 'unauthorized':
+        return t('errors.unauthorized');
+      case 'forbidden':
+        return t('errors.forbidden');
+      case 'not_found':
+        return t('errors.notFound');
+      case 'conflict':
+        return t('errors.conflict');
+      case 'duplicate_request':
+        return t('errors.duplicateRequest');
+      case 'invalid_transition':
+        return t('errors.invalidTransition');
+      case 'validation_error':
+        return t('errors.validationError');
+      case 'payload_too_large':
+        return t('errors.payloadTooLarge');
+      case 'unsupported_media_type':
+        return t('errors.unsupportedMediaType');
+      case 'rate_limit_exceeded':
+        return t('errors.rateLimitExceeded');
+      default:
+        return apiError.message || t('errors.serverError');
+    }
+  };
 
   const isManager = user?.role === 'manager';
 
@@ -152,7 +249,7 @@ const AssetList: React.FC = () => {
         setAssets([]);
         setTotal(0);
         if (e instanceof ApiError) {
-          setError(e.message);
+          setError(getApiErrorMessage(e));
         } else {
           setError(t('assetList.serverError'));
         }
@@ -188,7 +285,7 @@ const AssetList: React.FC = () => {
           if (e instanceof ApiError) {
             api.error({
               message: t('assetList.manager.holdersLoadErrorTitle'),
-              description: e.message,
+              description: getApiErrorMessage(e),
             });
           }
         }
@@ -299,7 +396,7 @@ const AssetList: React.FC = () => {
       if (e instanceof ApiError) {
         api.error({
           message: t('assetList.manager.actionFailedTitle'),
-          description: e.message,
+          description: getApiErrorMessage(e),
         });
       }
     } finally {
@@ -338,7 +435,7 @@ const AssetList: React.FC = () => {
       if (e instanceof ApiError) {
         api.error({
           message: t('assetList.manager.actionFailedTitle'),
-          description: e.message,
+          description: getApiErrorMessage(e),
         });
       }
     } finally {
@@ -366,7 +463,7 @@ const AssetList: React.FC = () => {
       if (e instanceof ApiError) {
         api.error({
           message: t('assetList.manager.actionFailedTitle'),
-          description: e.message,
+          description: getApiErrorMessage(e),
         });
       }
     } finally {
@@ -591,7 +688,10 @@ const AssetList: React.FC = () => {
               <Form.Item
                 name="name"
                 label={t('assetList.form.name')}
-                rules={[{ required: true, message: t('validation.required') }]}
+                rules={[
+                  { required: true, message: t('validation.required') },
+                  { max: 120, message: t('validation.max120Chars') },
+                ]}
               >
                 <Input />
               </Form.Item>
@@ -599,12 +699,19 @@ const AssetList: React.FC = () => {
               <Form.Item
                 name="model"
                 label={t('assetList.form.model')}
-                rules={[{ required: true, message: t('validation.required') }]}
+                rules={[
+                  { required: true, message: t('validation.required') },
+                  { max: 120, message: t('validation.max120Chars') },
+                ]}
               >
                 <Input />
               </Form.Item>
 
-              <Form.Item name="specs" label={t('assetList.form.specs')}>
+              <Form.Item
+                name="specs"
+                label={t('assetList.form.specs')}
+                rules={[{ max: 500, message: t('validation.max500Chars') }]}
+              >
                 <Input.TextArea rows={2} />
               </Form.Item>
 
@@ -624,7 +731,10 @@ const AssetList: React.FC = () => {
               <Form.Item
                 name="supplier"
                 label={t('assetList.form.supplier')}
-                rules={[{ required: true, message: t('validation.required') }]}
+                rules={[
+                  { required: true, message: t('validation.required') },
+                  { max: 120, message: t('validation.max120Chars') },
+                ]}
               >
                 <Input />
               </Form.Item>
@@ -632,7 +742,20 @@ const AssetList: React.FC = () => {
               <Form.Item
                 name="purchase_date"
                 label={t('assetList.form.purchaseDate')}
-                rules={[{ required: true, message: t('validation.required') }]}
+                rules={[
+                  { required: true, message: t('validation.required') },
+                  {
+                    validator: async (_rule, value?: string) => {
+                      if (!value) {
+                        return Promise.resolve();
+                      }
+                      if (isFutureDate(value)) {
+                        return Promise.reject(new Error(t('validation.purchaseDateNotFuture')));
+                      }
+                      return Promise.resolve();
+                    },
+                  },
+                ]}
               >
                 <Input type="date" />
               </Form.Item>
@@ -640,16 +763,24 @@ const AssetList: React.FC = () => {
               <Form.Item
                 name="purchase_amount"
                 label={t('assetList.form.purchaseAmount')}
-                rules={[{ required: true, message: t('validation.required') }]}
+                rules={[{ validator: validatePurchaseAmount }]}
               >
                 <Input type="number" min={0} step="0.01" />
               </Form.Item>
 
-              <Form.Item name="location" label={t('assetList.form.location')}>
+              <Form.Item
+                name="location"
+                label={t('assetList.form.location')}
+                rules={[{ max: 120, message: t('validation.max120Chars') }]}
+              >
                 <Input />
               </Form.Item>
 
-              <Form.Item name="department" label={t('assetList.form.department')}>
+              <Form.Item
+                name="department"
+                label={t('assetList.form.department')}
+                rules={[{ max: 100, message: t('validation.max100Chars') }]}
+              >
                 <Input />
               </Form.Item>
 
@@ -657,7 +788,12 @@ const AssetList: React.FC = () => {
                 <Input type="date" />
               </Form.Item>
 
-              <Form.Item name="warranty_expiry" label={t('assetList.form.warrantyExpiry')}>
+              <Form.Item
+                name="warranty_expiry"
+                label={t('assetList.form.warrantyExpiry')}
+                dependencies={['purchase_date', 'activation_date']}
+                rules={[{ validator: validateWarrantyExpiry }]}
+              >
                 <Input type="date" />
               </Form.Item>
             </Form>
