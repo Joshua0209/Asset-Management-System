@@ -127,7 +127,7 @@ All responses use a consistent envelope:
 
 | HTTP Status | `error.code` | When |
 |-------------|-------------|------|
-| 400 | `bad_request` | Malformed JSON, missing required field |
+| 400 | `bad_request` | Bad request that is not a schema-validation failure |
 | 401 | `unauthorized` | Missing or expired token |
 | 403 | `forbidden` | Valid token but insufficient role |
 | 404 | `not_found` | Resource does not exist (or soft-deleted) |
@@ -136,7 +136,7 @@ All responses use a consistent envelope:
 | 409 | `invalid_transition` | FSM transition not allowed from current state |
 | 413 | `payload_too_large` | Request body exceeds the allowed upload size |
 | 415 | `unsupported_media_type` | Content-Type is not one of the supported formats |
-| 422 | `validation_error` | Semantically invalid input |
+| 422 | `validation_error` | Malformed JSON, missing required field, or semantically invalid input |
 | 429 | `rate_limit_exceeded` | Too many requests |
 | 500 | `internal_server_error` | Unexpected server condition (e.g., corrupted asset code sequence) |
 | 503 | `service_unavailable` | Transient backend failure (e.g., database error) |
@@ -229,7 +229,7 @@ POST /api/v1/auth/register
 }
 ```
 
-**Errors:** `400` (malformed), `422` (validation), `409` (email taken)
+**Errors:** `422` (malformed JSON or validation), `409` (email taken)
 
 ---
 

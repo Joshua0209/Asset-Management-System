@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.main import app
 
 _ERROR_RESPONSE_REF = "#/components/schemas/ErrorResponse"
+_API_DESIGN_DOC = Path(__file__).resolve().parents[2] / "docs/system-design/12-api-design.md"
 _UUID_PARAM_ENDPOINTS = [
     ("get", "/api/v1/assets/{asset_id}", "asset_id"),
     ("patch", "/api/v1/assets/{asset_id}", "asset_id"),
@@ -176,6 +179,18 @@ class TestOpenAPIContract:
                     assert _json_schema_ref(operation, "422") == _ERROR_RESPONSE_REF, (
                         f"{method.upper()} {path}"
                     )
+
+    def test_register_does_not_document_runtime_absent_bad_request(self) -> None:
+        operation = _schema()["paths"]["/api/v1/auth/register"]["post"]
+
+        assert "400" not in operation["responses"]
+
+    def test_api_design_assigns_malformed_json_to_validation_errors(self) -> None:
+        contract = _API_DESIGN_DOC.read_text()
+
+        assert "| 400 | `bad_request` | Malformed JSON" not in contract
+        assert "| 422 | `validation_error` | Malformed JSON" in contract
+        assert "**Errors:** `422` (malformed JSON or validation), `409` (email taken)" in contract
 
     def test_uuid_contract_is_reflected_in_path_and_body_schemas(self) -> None:
         schema = _schema()

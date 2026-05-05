@@ -35,7 +35,6 @@ _EMAIL_ALREADY_REGISTERED = "Email is already registered"
     status_code=status.HTTP_201_CREATED,
     summary="Register new user (public, holder-only)",
     responses=error_responses(
-        status.HTTP_400_BAD_REQUEST,
         status.HTTP_409_CONFLICT,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
         status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -57,7 +57,7 @@ class PaginatedListResponse(APIModel, Generic[T]):
 
 
 _ERROR_RESPONSE_DESCRIPTIONS = {
-    400: "Malformed JSON or bad request.",
+    400: "Bad request.",
     401: "Missing or invalid bearer token.",
     403: "Authenticated but not authorized for this operation.",
     404: "Resource was not found or has been soft-deleted.",
