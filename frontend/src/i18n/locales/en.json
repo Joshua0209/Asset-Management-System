@@ -6,11 +6,13 @@
       "submit": "Submit",
       "confirm": "Confirm",
       "delete": "Delete",
-      "edit": "Edit"
+      "edit": "Edit",
+      "back": "Back"
     },
     "nav": {
       "dashboard": "Dashboard",
       "assets": "Assets",
+      "myAssets": "My Assets",
       "repairs": "Repair Requests",
       "reviews": "Reviews",
       "users": "Users",
@@ -175,6 +177,10 @@
       "holdersLoadErrorTitle": "Failed to load holders"
     },
     "serverError": "Failed to load assets. Please try again later.",
+    "error": {
+      "notFound": "Asset not found",
+      "forbidden": "You do not have permission to view this asset"
+    },
     "loginFailed": "Incorrect email or password"
   },
   "reviews": {

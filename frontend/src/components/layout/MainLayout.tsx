@@ -45,7 +45,13 @@ const NAV_ITEMS: readonly NavItem[] = [
     key: "/assets",
     icon: <AppstoreOutlined />,
     labelKey: "common.nav.assets",
-    roles: ["manager", "holder"],
+    roles: ["manager"],
+  },
+  {
+    key: "/my-assets",
+    icon: <AppstoreOutlined />,
+    labelKey: "common.nav.myAssets",
+    roles: ["holder"],
   },
   {
     key: "/reviews",
