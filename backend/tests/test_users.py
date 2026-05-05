@@ -36,6 +36,58 @@ class TestListUsers:
         assert response.status_code == 200
         emails = {u["email"] for u in response.json()["data"]}
         assert "alice@example.com" in emails
+        assert response.json()["meta"] == {
+            "total": 2,
+            "page": 1,
+            "per_page": 20,
+            "total_pages": 1,
+        }
+
+    def test_filters_by_role_department_and_search_with_pagination(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(
+            role=UserRole.MANAGER,
+            email="mgr@example.com",
+            name="Manager",
+            department="IT",
+        )
+        make_user(
+            role=UserRole.HOLDER,
+            email="alice@example.com",
+            name="Alice Chen",
+            department="IT",
+        )
+        make_user(
+            role=UserRole.HOLDER,
+            email="alina@example.com",
+            name="Alina Wang",
+            department="IT",
+        )
+        make_user(
+            role=UserRole.HOLDER,
+            email="bob@example.com",
+            name="Bob Lin",
+            department="Finance",
+        )
+
+        response = client.get(
+            "/api/v1/users?role=holder&department=IT&q=ali&page=1&per_page=1",
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [user["email"] for user in body["data"]] == ["alice@example.com"]
+        assert body["meta"] == {
+            "total": 2,
+            "page": 1,
+            "per_page": 1,
+            "total_pages": 2,
+        }
 
     def test_excludes_soft_deleted_users(
         self,
