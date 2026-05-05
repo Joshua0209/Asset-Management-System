@@ -230,7 +230,7 @@ const AssetList: React.FC = () => {
     let cancelled = false;
     const loadHolders = async () => {
       try {
-        const response = await usersApi.listUsers({ page: 1, perPage: 200, role: 'holder' });
+        const response = await usersApi.listUsers({ page: 1, perPage: 100, role: 'holder' });
         if (!cancelled) {
           setHolders(response.data);
         }
