@@ -42,7 +42,9 @@ class TestOpenAPIContract:
 
         parameters = {param["name"]: param for param in operation["parameters"]}
         assert {"page", "per_page", "role", "department", "q"}.issubset(parameters)
-        assert parameters["role"]["schema"]["$ref"] == "#/components/schemas/UserRole"
+        assert {"$ref": "#/components/schemas/UserRole"} in parameters["role"]["schema"][
+            "anyOf"
+        ]
         assert operation["responses"]["200"]["content"]["application/json"]["schema"][
             "$ref"
         ] == "#/components/schemas/PaginatedListResponse_UserRead_"

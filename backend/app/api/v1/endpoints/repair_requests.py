@@ -4,7 +4,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -25,7 +25,7 @@ from app.models.asset import Asset, AssetStatus
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import UserRole
-from app.schemas.common import DataResponse, PaginatedListResponse, PaginationMeta
+from app.schemas.common import DataResponse, ErrorResponse, PaginatedListResponse, PaginationMeta
 from app.schemas.repair_request import (
     RepairRequestApprove,
     RepairRequestComplete,
@@ -72,6 +72,63 @@ _REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset({
     "repair_cost",
     "repair_vendor",
 })
+
+_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+    status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+    status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+    status.HTTP_409_CONFLICT: {
+        "model": ErrorResponse,
+        "description": "Conflict, duplicate active request, or invalid FSM transition.",
+    },
+    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: {"model": ErrorResponse},
+    status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"model": ErrorResponse},
+    status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": ErrorResponse},
+    status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+}
+
+_REPAIR_SUBMIT_OPENAPI_EXTRA: dict[str, Any] = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/json": {
+                "schema": {"$ref": "#/components/schemas/RepairRequestCreate"}
+            },
+            "application/x-www-form-urlencoded": {
+                "schema": {"$ref": "#/components/schemas/RepairRequestCreate"}
+            },
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "required": ["asset_id", "fault_description"],
+                    "properties": {
+                        "asset_id": {"type": "string", "format": "uuid"},
+                        "fault_description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1000,
+                        },
+                        "version": {"type": "integer"},
+                        "images": {
+                            "type": "array",
+                            "maxItems": _MAX_IMAGE_COUNT,
+                            "items": {"type": "string", "format": "binary"},
+                            "description": (
+                                "Optional JPEG/PNG repair images; max "
+                                f"{_MAX_IMAGE_COUNT} files, {_MAX_IMAGE_MEGABYTES} MB each."
+                            ),
+                        },
+                    },
+                },
+                "encoding": {
+                    "images": {
+                        "contentType": ",".join(sorted(_ALLOWED_IMAGE_TYPES)),
+                    }
+                },
+            },
+        },
+    }
+}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -649,7 +706,13 @@ def complete_repair_request(
         raise
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Submit repair request")
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit repair request",
+    responses=_ERROR_RESPONSES,
+    openapi_extra=_REPAIR_SUBMIT_OPENAPI_EXTRA,
+)
 async def submit_repair_request(
     request: Request,
     db: DbSession,

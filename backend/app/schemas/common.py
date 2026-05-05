@@ -19,6 +19,22 @@ class ListResponse(APIModel, Generic[T]):
     data: list[T]
 
 
+class ErrorDetail(APIModel):
+    field: str
+    message: str
+    code: str
+
+
+class ErrorEnvelope(APIModel):
+    code: str
+    message: str
+    details: list[ErrorDetail] | None = None
+
+
+class ErrorResponse(APIModel):
+    error: ErrorEnvelope
+
+
 class PaginationMeta(APIModel):
     total: int = Field(ge=0)
     page: int = Field(ge=1)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from app.api.deps import CurrentUser
 from app.db.session import get_db
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest
+from app.schemas.common import ErrorResponse
 from app.services.image_storage import (
     ImageStorageDep,
     ImageStorageError,
@@ -23,8 +24,35 @@ router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
 
+_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+    status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+    status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": ErrorResponse},
+    status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+}
 
-@router.get("/{image_id}", summary="Retrieve repair image")
+
+@router.get(
+    "/{image_id}",
+    summary="Retrieve repair image",
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Binary repair image.",
+            "headers": {
+                "Cache-Control": {
+                    "schema": {"type": "string"},
+                    "example": "private, max-age=3600",
+                }
+            },
+            "content": {
+                "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
+                "image/png": {"schema": {"type": "string", "format": "binary"}},
+            },
+        },
+        **_ERROR_RESPONSES,
+    },
+)
 def get_image(
     image_id: str,
     db: DbSession,
