@@ -9,7 +9,7 @@ from sqlalchemy import Date, DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.mixins import TimestampVersionMixin
+from app.models.mixins import TimestampVersionMixin, enum_values
 
 
 class RepairRequestStatus(enum.StrEnum):
@@ -43,7 +43,11 @@ class RepairRequest(TimestampVersionMixin, Base):
         nullable=True,
     )
     status: Mapped[RepairRequestStatus] = mapped_column(
-        Enum(RepairRequestStatus, name="repair_request_status"),
+        Enum(
+            RepairRequestStatus,
+            name="repair_request_status",
+            values_callable=enum_values,
+        ),
         default=RepairRequestStatus.PENDING_REVIEW,
     )
     fault_description: Mapped[str] = mapped_column(Text)

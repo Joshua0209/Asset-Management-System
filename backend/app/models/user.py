@@ -7,7 +7,7 @@ from sqlalchemy import Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.mixins import TimestampVersionMixin
+from app.models.mixins import TimestampVersionMixin, enum_values
 
 
 class UserRole(enum.StrEnum):
@@ -22,7 +22,9 @@ class User(TimestampVersionMixin, Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(100))
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, name="user_role"))
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="user_role", values_callable=enum_values)
+    )
     department: Mapped[str] = mapped_column(String(100))
 
     assets = relationship("Asset", back_populates="responsible_person")
