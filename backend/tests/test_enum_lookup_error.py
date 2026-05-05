@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.user import User, UserRole
 
 
-def test_login_enum_lookup_error(db_session: Session) -> None:
+def test_user_role_loads_when_db_stores_lowercase_value(db_session: Session) -> None:
+    """Regression: Alembic creates ``users.role`` with lowercase enum values
+    (``'manager'`` / ``'holder'``). Without ``values_callable`` on the SQLAlchemy
+    column, hydrating that row raises ``LookupError`` because SQLAlchemy maps
+    DB strings to enum *names* (``'MANAGER'``) by default.
     """
-    Simulates the issue where the database contains the lowercase enum value ("manager"),
-    but the SQLAlchemy model expects the enum name ("MANAGER").
-    """
-    # 1. Insert a user using raw SQL to bypass SQLAlchemy's Enum parsing on insert.
-    # We insert the lowercase value "manager", matching what the Alembic migration would set.
+    user_id = str(uuid.uuid4())
+    # Raw INSERT bypasses the ORM's Enum coercion, reproducing the on-disk
+    # state created by alembic/versions/20260417_0001_init_core_tables.py.
     db_session.execute(
         text(
             """
@@ -20,22 +24,14 @@ def test_login_enum_lookup_error(db_session: Session) -> None:
                 id, email, password_hash, name, role, department, created_at, updated_at, version
             )
             VALUES (
-                'test-id-123', 'admin@example.com', 'hash', 'Admin', 'manager', 'IT',
+                :id, 'admin@example.com', 'hash', 'Admin', 'manager', 'IT',
                 '2023-01-01 00:00:00', '2023-01-01 00:00:00', 1
             )
             """
-        )
+        ),
+        {"id": user_id},
     )
     db_session.commit()
-
-    # 2. Query the user using SQLAlchemy.
-    # If the bug is present, this will raise a LookupError when SQLAlchemy tries to
-    # map "manager" (from DB) to UserRole, because it defaults to looking for "MANAGER".
-
-    # We expect a LookupError until the bug is fixed.
-    # To do TDD properly, we first run this test without pytest.raises to see it fail,
-    # then fix it so the final test should pass.
-    # Reading the user SHOULD return UserRole.MANAGER.
 
     user = db_session.query(User).filter_by(email="admin@example.com").first()
     assert user is not None
