@@ -3,9 +3,11 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
@@ -122,3 +124,40 @@ def test_repair_request_status_loads_when_db_stores_lowercase_value(db_session: 
     request = db_session.query(RepairRequest).filter_by(id=request_id).first()
     assert request is not None
     assert request.status == RepairRequestStatus.UNDER_REPAIR
+
+
+def test_login_succeeds_when_db_stores_lowercase_role(
+    client: TestClient, db_session: Session
+) -> None:
+    """End-to-end regression for the original symptom: a manager whose role
+    column was written by the Alembic migration (lowercase) must be able to
+    log in. Pre-fix this 500'd with ``LookupError`` while building the User row.
+    """
+    user_id = str(uuid.uuid4())
+    password_hash = hash_password("Password123")
+    db_session.execute(
+        text(
+            """
+            INSERT INTO users (
+                id, email, password_hash, name, role, department, created_at, updated_at, version
+            )
+            VALUES (
+                :id, 'boss@example.com', :pw, 'Boss', 'manager', 'IT',
+                '2024-01-01 00:00:00', '2024-01-01 00:00:00', 1
+            )
+            """
+        ),
+        {"id": user_id, "pw": password_hash},
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "boss@example.com", "password": "Password123"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    assert body["user"]["role"] == "manager"
+    assert body["user"]["id"] == user_id
+    assert body["token"]
