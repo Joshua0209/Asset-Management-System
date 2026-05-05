@@ -232,5 +232,47 @@
       "plannedDate": "Planned Date",
       "rejectionReason": "Rejection Reason"
     }
+  },
+  "repairRequestList": {
+    "title": "My Repair Requests",
+    "submitNew": "Submit New Request",
+    "columns": {
+      "id": "Request ID",
+      "asset": "Asset",
+      "status": "Status",
+      "createdAt": "Submitted At",
+      "actions": "Actions"
+    },
+    "status": {
+      "pending_review": "Pending Review",
+      "under_repair": "Under Repair",
+      "completed": "Completed",
+      "rejected": "Rejected"
+    }
+  },
+  "repairRequestDetail": {
+    "title": "Repair Request Details",
+    "statusTimeline": "Status Timeline",
+    "sections": {
+      "basic": "Basic Info",
+      "asset": "Asset Info",
+      "fault": "Fault Description",
+      "images": "Images",
+      "result": "Repair Result"
+    },
+    "fields": {
+      "status": "Current Status",
+      "createdAt": "Submitted At",
+      "completedAt": "Completed At",
+      "assetName": "Asset Name",
+      "assetCode": "Asset Code",
+      "faultDescription": "Fault Description",
+      "rejectionReason": "Rejection Reason",
+      "repairDate": "Repair Date",
+      "repairVendor": "Vendor",
+      "repairCost": "Repair Cost",
+      "repairPlan": "Repair Plan",
+      "faultContent": "Fault Content"
+    }
   }
 }

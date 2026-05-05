@@ -60,7 +60,7 @@ const NAV_ITEMS: readonly NavItem[] = [
     roles: ["manager"],
   },
   {
-    key: "/repairs/new",
+    key: "/repairs",
     icon: <ToolOutlined />,
     labelKey: "common.nav.repairs",
     roles: ["holder"],

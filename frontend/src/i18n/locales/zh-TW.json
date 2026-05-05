@@ -232,5 +232,47 @@
       "plannedDate": "預計日期",
       "rejectionReason": "駁回原因"
     }
+  },
+  "repairRequestList": {
+    "title": "我的維修申請",
+    "submitNew": "送出新申請",
+    "columns": {
+      "id": "申請編號",
+      "asset": "資產名稱",
+      "status": "狀態",
+      "createdAt": "申請時間",
+      "actions": "操作"
+    },
+    "status": {
+      "pending_review": "待審核",
+      "under_repair": "維修中",
+      "completed": "已完成",
+      "rejected": "已拒絕"
+    }
+  },
+  "repairRequestDetail": {
+    "title": "維修申請詳情",
+    "statusTimeline": "處理進度",
+    "sections": {
+      "basic": "基本資訊",
+      "asset": "資產資訊",
+      "fault": "故障描述",
+      "images": "故障照片",
+      "result": "維修結果"
+    },
+    "fields": {
+      "status": "目前狀態",
+      "createdAt": "申請時間",
+      "completedAt": "完成時間",
+      "assetName": "資產名稱",
+      "assetCode": "資產編號",
+      "faultDescription": "故障描述",
+      "rejectionReason": "拒絕原因",
+      "repairDate": "維修日期",
+      "repairVendor": "維修廠商",
+      "repairCost": "維修費用",
+      "repairPlan": "維修方案",
+      "faultContent": "故障內容"
+    }
   }
 }
