@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import re
@@ -473,7 +474,10 @@ async def _repair_payload_from_request(
             )
 
     if content_type.startswith("application/json"):
-        raw_payload = await request.json()
+        try:
+            raw_payload = await request.json()
+        except json.JSONDecodeError as exc:
+            raise _validation_error("Malformed JSON body.") from exc
         return _repair_create_from_mapping(raw_payload), []
 
     body = await request.body()

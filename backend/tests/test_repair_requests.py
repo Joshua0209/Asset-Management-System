@@ -1224,6 +1224,28 @@ class TestSubmitRepairRequest:
         fields = {detail["field"] for detail in response.json()["error"]["details"]}
         assert {"asset_id", "fault_description"}.issubset(fields)
 
+    def test_malformed_json_uses_project_error_envelope(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            content="{",
+            headers={
+                **auth_headers(holder),
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["error"]["code"] == "validation_error"
+        assert body["error"]["message"] == "Malformed JSON body."
+
     def test_submits_repair_request_with_image(
         self,
         client: TestClient,
