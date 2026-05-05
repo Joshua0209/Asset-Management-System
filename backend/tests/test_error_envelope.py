@@ -145,3 +145,51 @@ class TestErrorEnvelopeHandler:
         )
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "not_found"
+
+    def test_partial_structured_detail_logs_warning(
+        self,
+        client: TestClient,
+        probe_route: None,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # Defensive fallback (test_malformed_structured_detail_falls_back_to_status_map)
+        # confirms a half-built dict is dropped into the status-map default. This
+        # complementary test asserts the warning makes it to logs so the bug is
+        # observable rather than silently degrading.
+        _set_probe_exc(
+            HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "duplicate_request"},
+            )
+        )
+        with caplog.at_level("WARNING", logger="app.main"):
+            client.get(_PROBE_PATH)
+        assert any(
+            "missing 'code' or 'message'" in record.message for record in caplog.records
+        )
+
+    def test_structured_detail_with_details_array_passthrough(
+        self,
+        client: TestClient,
+        probe_route: None,
+    ) -> None:
+        _set_probe_exc(
+            HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": "validation_error",
+                    "message": "Validation failed",
+                    "details": [
+                        {"field": "asset_id", "message": "missing", "code": "missing"}
+                    ],
+                },
+            )
+        )
+        response = client.get(_PROBE_PATH)
+
+        assert response.status_code == 422
+        body = response.json()["error"]
+        assert body["code"] == "validation_error"
+        assert body["details"] == [
+            {"field": "asset_id", "message": "missing", "code": "missing"}
+        ]

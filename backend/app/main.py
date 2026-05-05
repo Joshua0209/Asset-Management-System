@@ -1,12 +1,17 @@
+import logging
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.schemas.repair_request import RepairRequestCreate
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -53,6 +58,7 @@ async def http_exception_to_envelope(request: Request, exc: HTTPException) -> JS
     selects the code and `detail` becomes the message.
     """
     detail = exc.detail
+    default_code = _STATUS_CODE_MAP.get(exc.status_code, "error")
     if isinstance(detail, dict) and "code" in detail and "message" in detail:
         code = str(detail["code"])
         message = str(detail["message"])
@@ -61,13 +67,47 @@ async def http_exception_to_envelope(request: Request, exc: HTTPException) -> JS
             error_content["details"] = detail["details"]
         content: dict[str, object] = {"error": error_content}
     else:
-        code = _STATUS_CODE_MAP.get(exc.status_code, "error")
-        message = detail if isinstance(detail, str) else code
+        if isinstance(detail, dict):
+            # Half-built structured detail is a developer bug (silent-failure
+            # risk per past review). Log it so it shows up in observability
+            # instead of silently degrading; then fall back to the status-map
+            # default so we never leak the raw dict into `error.message`.
+            logger.warning(
+                "HTTPException detail dict missing 'code' or 'message'; "
+                "falling back to status-map default. detail=%s",
+                detail,
+            )
+        code = default_code
+        message = detail if isinstance(detail, str) else default_code
         content = {"error": {"code": code, "message": message}}
     return JSONResponse(
         status_code=exc.status_code,
         content=content,
         headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(ValidationError)
+async def pydantic_validation_to_envelope(
+    request: Request, exc: ValidationError
+) -> JSONResponse:
+    """Catch Pydantic ``ValidationError`` that escapes route boundaries.
+
+    FastAPI's :class:`RequestValidationError` covers request-binding failures.
+    Anything else (e.g. ``Schema.model_validate(...)`` raising on internal
+    data drift) lands here. These indicate programmer / data bugs, not user
+    input — log and surface a generic 500 in the project's error envelope so
+    we never leak unstructured FastAPI defaults.
+    """
+    logger.error("Internal pydantic ValidationError: %s", exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": "internal_server_error",
+                "message": "Internal validation error.",
+            }
+        },
     )
 
 
