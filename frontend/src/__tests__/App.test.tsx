@@ -61,10 +61,10 @@ describe("App routing & auth guards", () => {
     expect(screen.getByRole("heading", { name: /dashboard/i })).toBeInTheDocument();
   });
 
-  it("redirects a holder landing to /assets", async () => {
+  it("redirects a holder landing to /my-assets", async () => {
     seedSession("holder");
     await renderAt("/");
-    await waitFor(() => expect(currentPath()).toBe("/assets"));
+    await waitFor(() => expect(currentPath()).toBe("/my-assets"));
     expect(screen.getByRole("heading", { name: /asset list/i })).toBeInTheDocument();
   });
 
@@ -111,6 +111,6 @@ describe("App routing & auth guards", () => {
   it("redirects an unknown path to the role landing when authenticated", async () => {
     seedSession("holder");
     await renderAt("/login");
-    await waitFor(() => expect(currentPath()).toBe("/assets"));
+    await waitFor(() => expect(currentPath()).toBe("/my-assets"));
   });
 });
