@@ -78,7 +78,7 @@ describe("AssetDetail", () => {
   });
 
   it("renders 404 when asset is not found", async () => {
-    mockGetAsset.mockRejectedValueOnce(new ApiError(404, "Not Found"));
+    mockGetAsset.mockRejectedValueOnce(new ApiError(404, "not_found", "Not Found"));
 
     await act(async () => {
       render(
@@ -96,7 +96,7 @@ describe("AssetDetail", () => {
   });
 
   it("renders 403 when access is forbidden", async () => {
-    mockGetAsset.mockRejectedValueOnce(new ApiError(403, "Forbidden"));
+    mockGetAsset.mockRejectedValueOnce(new ApiError(403, "forbidden", "Forbidden"));
 
     await act(async () => {
       render(
