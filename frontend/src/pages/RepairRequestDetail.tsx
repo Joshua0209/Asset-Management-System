@@ -6,7 +6,6 @@ import {
   Col,
   Descriptions,
   Divider,
-  Image,
   Row,
   Space,
   Spin,
@@ -20,6 +19,7 @@ import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ToolOutl
 
 import { ApiError, repairRequestsApi } from '../api';
 import type { RepairRequestRecord, RepairRequestStatus } from '../api/repair-requests';
+import AuthImage from '../components/AuthImage';
 
 const STATUS_TAG_COLORS: Record<RepairRequestStatus, string> = {
   pending_review: 'processing',
@@ -169,12 +169,12 @@ const RepairRequestDetail: React.FC = () => {
                   <Divider style={{ fontSize: '14px' }}>{t('repairRequestDetail.sections.images')}</Divider>
                   <Space size={[8, 8]} wrap>
                     {request.images.map((img) => (
-                      <Image
+                      <AuthImage
                         key={img.id}
                         width={120}
-                        src={img.url}
+                        imageId={img.id}
                         alt="Fault"
-                        fallback="https://via.placeholder.com/120?text=Image+Error"
+                        fallbackSrc="https://via.placeholder.com/120?text=Image+Error"
                       />
                     ))}
                   </Space>
