@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 from urllib.parse import parse_qs
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
+from pydantic import ValidationError
 from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.exc import (
     DataError,
@@ -25,7 +27,13 @@ from app.models.asset import Asset, AssetStatus
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import UserRole
-from app.schemas.common import DataResponse, ErrorResponse, PaginatedListResponse, PaginationMeta
+from app.schemas.common import (
+    UUID_PATTERN,
+    DataResponse,
+    PaginatedListResponse,
+    PaginationMeta,
+    error_responses,
+)
 from app.schemas.repair_request import (
     RepairRequestApprove,
     RepairRequestComplete,
@@ -37,9 +45,20 @@ from app.schemas.repair_request import (
 from app.services.image_storage import ImageStorageDep, ImageStorageError
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(
+    responses=error_responses(
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+)
 
 DbSession = Annotated[Session, Depends(get_db)]
+RepairRequestIdPath = Annotated[
+    str,
+    Path(pattern=UUID_PATTERN, json_schema_extra={"format": "uuid"}),
+]
 
 _ACTIVE_REPAIR_STATUSES = {
     RepairRequestStatus.PENDING_REVIEW,
@@ -73,19 +92,16 @@ _REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset({
     "repair_vendor",
 })
 
-_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
-    status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
-    status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
-    status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
-    status.HTTP_409_CONFLICT: {
-        "model": ErrorResponse,
-        "description": "Conflict, duplicate active request, or invalid FSM transition.",
-    },
-    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: {"model": ErrorResponse},
-    status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"model": ErrorResponse},
-    status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": ErrorResponse},
-    status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
-}
+_ERROR_RESPONSES = error_responses(
+    status.HTTP_401_UNAUTHORIZED,
+    status.HTTP_403_FORBIDDEN,
+    status.HTTP_404_NOT_FOUND,
+    status.HTTP_409_CONFLICT,
+    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+    status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    status.HTTP_422_UNPROCESSABLE_ENTITY,
+    status.HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 _REPAIR_SUBMIT_OPENAPI_EXTRA: dict[str, Any] = {
     "requestBody": {
@@ -155,6 +171,28 @@ def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
 
 def _validation_error(message: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
+
+
+def _repair_create_from_mapping(raw_payload: object) -> RepairRequestCreate:
+    try:
+        return RepairRequestCreate.model_validate(raw_payload)
+    except ValidationError as exc:
+        details = [
+            {
+                "field": ".".join(str(part) for part in error.get("loc", ())),
+                "message": error.get("msg", ""),
+                "code": error.get("type", "value_error"),
+            }
+            for error in exc.errors()
+        ]
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "validation_error",
+                "message": "Validation failed",
+                "details": details,
+            },
+        ) from exc
 
 
 def _base_filters() -> list[ColumnElement[bool]]:
@@ -436,14 +474,14 @@ async def _repair_payload_from_request(
 
     if content_type.startswith("application/json"):
         raw_payload = await request.json()
-        return RepairRequestCreate.model_validate(raw_payload), []
+        return _repair_create_from_mapping(raw_payload), []
 
     body = await request.body()
 
     if content_type.startswith("multipart/form-data"):
         fields, images = _parse_multipart_fields(content_type, body)
         _validate_images(images)
-        return RepairRequestCreate.model_validate(fields), images
+        return _repair_create_from_mapping(fields), images
 
     if content_type.startswith("application/x-www-form-urlencoded"):
         try:
@@ -452,7 +490,7 @@ async def _repair_payload_from_request(
             raise _validation_error("Form body is not valid UTF-8.") from exc
         parsed = parse_qs(decoded_body, keep_blank_values=True)
         fields = {key: values[-1] if values else "" for key, values in parsed.items()}
-        return RepairRequestCreate.model_validate(fields), []
+        return _repair_create_from_mapping(fields), []
 
     raise HTTPException(
         status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -467,8 +505,8 @@ def list_repair_requests(
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
     status_filter: Annotated[RepairRequestStatus | None, Query(alias="status")] = None,
-    asset_id: str | None = None,
-    requester_id: str | None = None,
+    asset_id: UUID | None = None,
+    requester_id: UUID | None = None,
     sort: str = "-created_at",
 ) -> PaginatedListResponse[RepairRequestRead]:
     try:
@@ -476,13 +514,14 @@ def list_repair_requests(
         if status_filter is not None:
             filters.append(RepairRequest.status == status_filter)
         if asset_id:
-            filters.append(RepairRequest.asset_id == asset_id)
+            filters.append(RepairRequest.asset_id == str(asset_id))
+        requester_id_str = str(requester_id) if requester_id else None
         if current_user.role is UserRole.HOLDER:
-            if requester_id is not None and requester_id != current_user.id:
+            if requester_id_str is not None and requester_id_str != current_user.id:
                 raise _forbidden("Holder users can only list their own repair requests.")
             filters.append(RepairRequest.requester_id == current_user.id)
-        elif requester_id:
-            filters.append(RepairRequest.requester_id == requester_id)
+        elif requester_id_str:
+            filters.append(RepairRequest.requester_id == requester_id_str)
 
         sort_desc = sort.startswith("-")
         sort_field = sort[1:] if sort_desc else sort
@@ -522,9 +561,13 @@ def list_repair_requests(
         ) from exc
 
 
-@router.get("/{repair_request_id}", summary="Get repair request")
+@router.get(
+    "/{repair_request_id}",
+    summary="Get repair request",
+    responses=error_responses(status.HTTP_404_NOT_FOUND),
+)
 def get_repair_request(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     db: DbSession,
     current_user: CurrentUser,
 ) -> DataResponse[RepairRequestRead]:
@@ -551,9 +594,13 @@ def get_repair_request(
         ) from exc
 
 
-@router.post("/{repair_request_id}/approve", summary="Approve repair request")
+@router.post(
+    "/{repair_request_id}/approve",
+    summary="Approve repair request",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def approve_repair_request(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     payload: RepairRequestApprove,
     db: DbSession,
     manager: ManagerUser,
@@ -585,9 +632,13 @@ def approve_repair_request(
         raise
 
 
-@router.post("/{repair_request_id}/reject", summary="Reject repair request")
+@router.post(
+    "/{repair_request_id}/reject",
+    summary="Reject repair request",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def reject_repair_request(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     payload: RepairRequestReject,
     db: DbSession,
     manager: ManagerUser,
@@ -620,9 +671,17 @@ def reject_repair_request(
         raise
 
 
-@router.patch("/{repair_request_id}/repair-details", summary="Fill repair details")
+@router.patch(
+    "/{repair_request_id}/repair-details",
+    summary="Fill repair details",
+    responses=error_responses(
+        status.HTTP_404_NOT_FOUND,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+    ),
+)
 def update_repair_details(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     payload: RepairRequestDetailsUpdate,
     db: DbSession,
     _manager: ManagerUser,
@@ -667,9 +726,13 @@ def update_repair_details(
         raise
 
 
-@router.post("/{repair_request_id}/complete", summary="Complete repair request")
+@router.post(
+    "/{repair_request_id}/complete",
+    summary="Complete repair request",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def complete_repair_request(
-    repair_request_id: str,
+    repair_request_id: RepairRequestIdPath,
     payload: RepairRequestComplete,
     db: DbSession,
     _manager: ManagerUser,

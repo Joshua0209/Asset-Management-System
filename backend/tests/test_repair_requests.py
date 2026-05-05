@@ -366,7 +366,7 @@ class TestGetRepairRequest:
 
         assert response.status_code == 403
 
-    def test_database_error_does_not_log_user_controlled_request_id(
+    def test_malformed_request_id_is_rejected_before_database_logging(
         self,
         client: TestClient,
         make_user: Callable[..., User],
@@ -391,7 +391,7 @@ class TestGetRepairRequest:
                 headers=auth_headers(manager),
             )
 
-        assert response.status_code == 503
+        assert response.status_code == 422
         assert "repair-1" not in caplog.text
         assert "forged-log-entry" not in caplog.text
 

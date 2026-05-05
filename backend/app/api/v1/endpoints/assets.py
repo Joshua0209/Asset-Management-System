@@ -2,8 +2,9 @@ import logging
 import math
 from datetime import date
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
@@ -22,12 +23,29 @@ from app.schemas.asset import (
     AssetUnassignRequest,
     AssetUpdate,
 )
-from app.schemas.common import DataResponse, PaginatedListResponse, PaginationMeta
+from app.schemas.common import (
+    UUID_PATTERN,
+    DataResponse,
+    PaginatedListResponse,
+    PaginationMeta,
+    error_responses,
+)
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(
+    responses=error_responses(
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+)
 
 DbSession = Annotated[Session, Depends(get_db)]
+AssetIdPath = Annotated[
+    str,
+    Path(pattern=UUID_PATTERN, json_schema_extra={"format": "uuid"}),
+]
 
 _SORT_COLUMNS = {
     "created_at": Asset.created_at,
@@ -205,7 +223,7 @@ def list_assets(
     category: str | None = None,
     department: str | None = None,
     location: str | None = None,
-    responsible_person_id: str | None = None,
+    responsible_person_id: UUID | None = None,
     sort: str = "-created_at",
 ) -> PaginatedListResponse[AssetRead]:
     try:
@@ -215,7 +233,7 @@ def list_assets(
             category=category,
             department=department,
             location=location,
-            responsible_person_id=responsible_person_id,
+            responsible_person_id=str(responsible_person_id) if responsible_person_id else None,
         )
         return _list_asset_response(
             db=db,
@@ -234,7 +252,12 @@ def list_assets(
         ) from exc
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Register an asset")
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Register an asset",
+    responses=error_responses(status.HTTP_409_CONFLICT),
+)
 def register_asset(
     payload: AssetCreate,
     db: DbSession,
@@ -326,8 +349,16 @@ def list_my_assets(
         ) from exc
 
 
-@router.get("/{asset_id}", summary="Get an asset")
-def get_asset(asset_id: str, db: DbSession, current_user: CurrentUser) -> DataResponse[AssetRead]:
+@router.get(
+    "/{asset_id}",
+    summary="Get an asset",
+    responses=error_responses(status.HTTP_404_NOT_FOUND),
+)
+def get_asset(
+    asset_id: AssetIdPath,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> DataResponse[AssetRead]:
     try:
         asset = db.scalar(
             select(Asset)
@@ -355,9 +386,13 @@ def get_asset(asset_id: str, db: DbSession, current_user: CurrentUser) -> DataRe
         ) from exc
 
 
-@router.patch("/{asset_id}", summary="Update asset info")
+@router.patch(
+    "/{asset_id}",
+    summary="Update asset info",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def update_asset(
-    asset_id: str,
+    asset_id: AssetIdPath,
     payload: AssetUpdate,
     db: DbSession,
     _manager: ManagerUser,
@@ -439,9 +474,13 @@ def _transition_503(asset_id: str, exc: SQLAlchemyError, action: str) -> HTTPExc
     )
 
 
-@router.post("/{asset_id}/assign", summary="Assign asset to a holder (FSM T2)")
+@router.post(
+    "/{asset_id}/assign",
+    summary="Assign asset to a holder (FSM T2)",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def assign_asset(
-    asset_id: str,
+    asset_id: AssetIdPath,
     payload: AssetAssignRequest,
     db: DbSession,
     _manager: ManagerUser,
@@ -495,9 +534,13 @@ def assign_asset(
         raise _transition_503(asset_id, exc, "assign") from exc
 
 
-@router.post("/{asset_id}/unassign", summary="Unassign / reclaim asset (FSM T5)")
+@router.post(
+    "/{asset_id}/unassign",
+    summary="Unassign / reclaim asset (FSM T5)",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def unassign_asset(
-    asset_id: str,
+    asset_id: AssetIdPath,
     payload: AssetUnassignRequest,
     db: DbSession,
     manager: ManagerUser,
@@ -551,9 +594,13 @@ def unassign_asset(
         raise _transition_503(asset_id, exc, "unassign") from exc
 
 
-@router.post("/{asset_id}/dispose", summary="Scrap asset (FSM T3)")
+@router.post(
+    "/{asset_id}/dispose",
+    summary="Scrap asset (FSM T3)",
+    responses=error_responses(status.HTTP_404_NOT_FOUND, status.HTTP_409_CONFLICT),
+)
 def dispose_asset(
-    asset_id: str,
+    asset_id: AssetIdPath,
     payload: AssetDisposeRequest,
     db: DbSession,
     _manager: ManagerUser,

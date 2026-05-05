@@ -19,7 +19,7 @@ from app.schemas.auth import (
     LoginUser,
     RegisterRequest,
 )
-from app.schemas.common import DataResponse
+from app.schemas.common import DataResponse, error_responses
 from app.schemas.user import UserRead
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,12 @@ _EMAIL_ALREADY_REGISTERED = "Email is already registered"
     "/register",
     status_code=status.HTTP_201_CREATED,
     summary="Register new user (public, holder-only)",
+    responses=error_responses(
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+    ),
 )
 def register(payload: RegisterRequest, db: DbSession) -> DataResponse[UserRead]:
     # Decision A2: role is always holder on public register.
@@ -80,7 +86,14 @@ _INVALID_CREDENTIALS = HTTPException(
 )
 
 
-@router.post("/login", summary="Authenticate and receive an access token")
+@router.post(
+    "/login",
+    summary="Authenticate and receive an access token",
+    responses=error_responses(
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ),
+)
 def login(payload: LoginRequest, db: DbSession) -> DataResponse[LoginResponse]:
     user = db.scalar(
         select(User).where(User.email == payload.email, User.deleted_at.is_(None))
@@ -104,7 +117,11 @@ def login(payload: LoginRequest, db: DbSession) -> DataResponse[LoginResponse]:
     )
 
 
-@router.get("/me", summary="Get the authenticated user's profile")
+@router.get(
+    "/me",
+    summary="Get the authenticated user's profile",
+    responses=error_responses(status.HTTP_401_UNAUTHORIZED),
+)
 def me(current_user: CurrentUser) -> DataResponse[UserRead]:
     return DataResponse(data=UserRead.model_validate(current_user))
 
@@ -113,6 +130,13 @@ def me(current_user: CurrentUser) -> DataResponse[UserRead]:
     "/users",
     status_code=status.HTTP_201_CREATED,
     summary="Create a user of any role (manager-only)",
+    responses=error_responses(
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+    ),
 )
 def admin_create_user(
     payload: AdminCreateUserRequest,

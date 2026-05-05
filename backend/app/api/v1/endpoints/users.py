@@ -10,11 +10,18 @@ from sqlalchemy.orm import Session
 from app.api.deps import ManagerUser
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.common import PaginatedListResponse, PaginationMeta
+from app.schemas.common import PaginatedListResponse, PaginationMeta, error_responses
 from app.schemas.user import UserRead
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(
+    responses=error_responses(
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+)
 
 DbSession = Annotated[Session, Depends(get_db)]
 

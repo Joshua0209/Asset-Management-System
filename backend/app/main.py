@@ -1,10 +1,12 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.schemas.repair_request import RepairRequestCreate
 
 settings = get_settings()
 
@@ -54,12 +56,17 @@ async def http_exception_to_envelope(request: Request, exc: HTTPException) -> JS
     if isinstance(detail, dict) and "code" in detail and "message" in detail:
         code = str(detail["code"])
         message = str(detail["message"])
+        error_content: dict[str, object] = {"code": code, "message": message}
+        if "details" in detail:
+            error_content["details"] = detail["details"]
+        content: dict[str, object] = {"error": error_content}
     else:
         code = _STATUS_CODE_MAP.get(exc.status_code, "error")
         message = detail if isinstance(detail, str) else code
+        content = {"error": {"code": code, "message": message}}
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": {"code": code, "message": message}},
+        content=content,
         headers=getattr(exc, "headers", None),
     )
 
@@ -96,6 +103,25 @@ async def validation_error_to_envelope(
 
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+
+def custom_openapi() -> dict[str, object]:
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+    schemas = openapi_schema.setdefault("components", {}).setdefault("schemas", {})
+    schemas["RepairRequestCreate"] = RepairRequestCreate.model_json_schema(
+        ref_template="#/components/schemas/{model}"
+    )
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 @app.get("/health", tags=["health"])

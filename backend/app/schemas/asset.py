@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import ConfigDict, Field, model_validator
 
 from app.models.asset import AssetStatus
-from app.schemas.common import APIModel
+from app.schemas.common import APIModel, UUIDString
 
 
 def _today_utc() -> date:
@@ -92,7 +92,7 @@ class AssetUpdate(APIModel):
 class AssetAssignRequest(APIModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
-    responsible_person_id: str = Field(min_length=1, max_length=36)
+    responsible_person_id: UUIDString
     version: int = Field(ge=1)
 
 
