@@ -1,0 +1,47 @@
+{
+  "family": "ams-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ams-ecs-task-execution",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ams-backend-task",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "PLACEHOLDER_IMAGE",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "REPAIR_IMAGE_BACKEND", "value": "s3"},
+        {"name": "REPAIR_S3_BUCKET", "value": "ams-repair-images-prod"},
+        {"name": "GUNICORN_WORKERS", "value": "2"}
+      ],
+      "secrets": [
+        {"name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:ams/database-url"},
+        {"name": "JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:ams/jwt-secret"}
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2).status==200 else 1)\""],
+        "interval": 15,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ams-backend",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "backend"
+        }
+      },
+      "stopTimeout": 30
+    }
+  ]
+}
