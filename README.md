@@ -6,104 +6,55 @@ Course project for a cloud computing / software engineering class. The repositor
 - `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
 
-## Status (as of Week 3 implementation branch, 2026-05-02)
+## Status (as of Week 4 — Active, 2026-05-06)
 
-**Weeks 1 & 2 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud), Auth API, Asset CRUD, Repair Request submit/list, Ant Design UI shell, asset list page (mock data), and the i18n framework all shipped. See [docs/roadmap.md](docs/roadmap.md) for the full retrospective.
+**Weeks 1–3 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud), Auth API, Asset CRUD, the full repair-request workflow (submit → review → approve/reject → in-repair → complete), asset FSM transitions (assign / unassign / dispose), image upload + retrieval, manager workflow pages, and holder pages all shipped. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
 
-**Currently working on Week 3 — Core Features Complete (Apr 28 – May 2).** Goal: full repair workflow + all CRUD pages working end-to-end. Week 2 frontend carry-over is closed in the frontend branch: auth pages + routing are merged, and Asset List is API-backed with role-aware behavior.
+**Currently working on Week 4 — Advanced Features & Integration (May 5–9).** Goal: multi-dimensional search, optimistic-locking conflict UI, audit log + asset history endpoint, API hardening (rate limiting, CORS), and i18n coverage across all pages. One M3 carry-over item lands first this week (see below).
 
-### Week 3 implementation phase update (FE-1 branch)
+### Week 3 leftover (carry-over into Week 4)
 
-This branch is implemented in two delivery phases:
+M3 is now 5/5 complete on the BE/FE delivery axis — PR [#27](https://github.com/Joshua0209/Asset-Management-System/pull/27) (image display on repair detail, via the new `AuthImage` component) merged 2026-05-06. One holder-flow UX gap surfaced during the W3 smoke test still needs to land first thing in Week 4:
 
-1. **Phase 1 — API foundation (completed)**
-    - Added API domains for users and repair requests under `frontend/src/api/users/` and `frontend/src/api/repair-requests/`.
-    - Extended assets APIs for manager actions (`create`, `update`, `assign`, `unassign`, `dispose`) under `frontend/src/api/assets/`.
-    - Added a shared mode-aware mock runtime (`frontend/src/mocks/mockBackend.ts`) so behavior is consistent when `VITE_USE_MOCK_AUTH=true`.
-    - Added focused tests for new API modules.
-2. **Phase 2 — Manager workflow pages (completed)**
-    - Implemented manager asset operations directly in `frontend/src/pages/AssetList.tsx` (create/edit/assign/unassign/dispose).
-    - Implemented repair review workflow in `frontend/src/pages/Reviews.tsx` (approve/reject/update details/complete).
-    - Added bilingual i18n keys (en + zh-TW) and updated UI tests.
+| Task | Owner | Target | Notes |
+|------|-------|--------|-------|
+| **Resolve [issue #29](https://github.com/Joshua0209/Asset-Management-System/issues/29)** — asset-code dropdown on repair-submit form | FE-2 | Wed–Thu | `POST /repair-requests` requires asset UUID, but holders only know asset codes. Surfaced via the W3 integration smoke test. Fix: fetch the holder's own assets on page load, render `Select` (display `asset_code — name`, value = UUID); switch the `asset_id` field from text input |
 
-Validation on this branch:
-- `npm run typecheck` passes.
-- `npm test` passes.
-- New and updated tests cover API and manager UI flows.
+### Week 4 — Advanced Features & Integration (May 5–9) — Active
 
-Commit-by-commit summary on this branch:
+Two server-side capabilities from the original W4 plan **already shipped earlier:**
 
-1. `b810534` — **Phase 1 API foundation**
-    - Added users and repair-requests API domains.
-    - Extended assets API with manager actions (create/update/assign/unassign/dispose).
-    - Added shared mock runtime (`frontend/src/mocks/mockBackend.ts`) for mock mode parity.
-    - Added API-focused tests.
-2. `62262d5` — **Phase 2 manager workflows**
-    - Implemented manager asset workflows in `frontend/src/pages/AssetList.tsx`.
-    - Implemented repair review workflows in `frontend/src/pages/Reviews.tsx`.
-    - Added/updated i18n keys and related UI tests.
+- Multi-dim asset search — `GET /assets` already accepts `q` (across `asset_code`/`name`/`model`), `status`, `category`, `department`, `location`, `responsible_person_id`. W4 BE narrows to **composite indexes** per design.md §5.5; the FE filter bar is the remaining bulk.
+- Optimistic locking is enforced on every update path — 4 endpoints in `assets.py` and 5 transitions in `repair_requests.py` check `version` and emit granular 409 codes (PR [#24](https://github.com/Joshua0209/Asset-Management-System/pull/24)). W4 work narrows to a verification pass + the FE conflict-resolution dialog.
 
-### Week 3 carry-over closure (Mon–Tue, FE only)
-
-| Task | Status | Owner | Notes |
-|------|--------|-------|-------|
-| Land PR [#12](https://github.com/Joshua0209/Asset-Management-System/pull/12) — Login / Register pages | ✅ Done | FE-2 → FE-3 reviews | Merged after review; connected to real auth API |
-| Land PR [#13](https://github.com/Joshua0209/Asset-Management-System/pull/13) — Repair request submit form | ✅ Done | FE-2 → FE-3 reviews | Merged after review; holder submit form available at `/repairs/new` |
-| Open + land PR for auth guard + role-based routing | ✅ Done | FE-3 → FE-1 reviews | Merged after review; role-based route protection active |
-| Wire Asset List to real `GET /assets` API | ✅ Done (branch implemented) | FE-1 → FE-3 reviews | `AssetList` now reads real `/assets` (manager) and `/assets/mine` (holder); mock runtime is used only when `VITE_USE_MOCK_AUTH=true` |
-
-- [x] Login / Register pages landed and routed in app shell
-- [x] Repair request submit form landed (holder route: `/repairs/new`)
-- [x] Auth guard + role-based routing landed (`ProtectedRoute` + role landing redirect)
-- [x] Asset list wired to real `GET /assets` and `GET /assets/mine` with mock fallback controlled by `VITE_USE_MOCK_AUTH`
-
-### Week 3 — Wed–Fri (compressed scope)
-
-The team adopts a new FE division for Week 3: **split by audience, not by feature.** FE-1 owns every manager page, FE-2 owns every holder page, FE-3 owns integration & quality (PR review, merge coordination, vitest coverage, i18n keys, cross-cutting UX states).
+Audit log + `GET /assets/:id/history` was explicitly deferred from Week 3's API contract review (PR [#28](https://github.com/Joshua0209/Asset-Management-System/pull/28)) and lands this week.
 
 #### Backend (2 people)
 
-| Track | Status | Owner | Target | Notes |
-|-------|--------|-------|--------|-------|
-| Repair Request APIs (full workflow) | ✅ Done (PR [#16](https://github.com/Joshua0209/Asset-Management-System/pull/16)) | BE-1 | Mon–Wed | FSM `pending_review → under_repair → completed` and `pending_review → rejected`, all server-validated |
-| Image upload + retrieval endpoint | ✅ Done | BE-2 | Wed–Thu | `POST /repair-requests` accepts up to 5 images (≤5 MB, JPEG/PNG); `GET /api/v1/images/:id` streams bytes back. Storage abstracted behind `ImageStorage` Protocol (`LocalImageStorage` impl); S3 swap in Week 5 only touches `app/services/image_storage.py` |
-| Asset assign / unassign / dispose | ✅ Done (PR [#17](https://github.com/Joshua0209/Asset-Management-System/pull/17)) | BE-2 | Thu–Fri | FSM transitions T2 (assign), T5 (unassign), T3 (dispose) |
-| API documentation review | ✅ Done | BE-1/BE-2 | Fri | Verify FastAPI auto-docs match `12-api-design.md` contract |
+| Task | Target | Notes |
+|------|--------|-------|
+| Composite SQL indexes for asset search | Mon–Wed | Search API already shipped; performance-tune per design.md §5.5 |
+| Optimistic locking verification pass | Mon | Already enforced server-side; confirm test coverage and document granular 409 codes for FE consumption |
+| Audit log (event stream) + `GET /assets/:id/history` | Wed–Thu | New `asset_action_histories` model + migration. Endpoint deferred from Week 3 (PR #28). Per design decision Q13 |
+| API hardening: rate limiting, CORS | Thu–Fri | `slowapi` for rate limiting at 100 req/min/user. CORS already wired (`cors_allowed_origins`); audit allowed origins for the AWS rollout |
 
-#### FE-1 — Manager pages
+#### Frontend (3 people)
 
-| Page | Status | Target | Notes |
-|------|--------|--------|-------|
-| Asset create / edit | ⏳ Pending | Wed–Thu | Form validation, category dropdown (2-level flat list), purchase amount + warranty expiry validation matching backend Pydantic schema |
-| Asset assign / unassign | ⏳ Pending | Thu | FSM T2/T5 — manager picks holder from user list, sets assignment date |
-| Asset dispose | ⏳ Pending | Thu | FSM T3 — confirm dialog with reason; status → `disposed` |
-| Repair review / approve / reject | ⏳ Pending | Thu–Fri | Approve → fill repair plan form (vendor, planned cost, planned date). Reject → confirm dialog with reason. Drives `pending_review → under_repair` or `pending_review → rejected` |
-| Repair complete | ⏳ Pending | Fri | Fill repair date, content, actual cost, vendor → mark complete. Drives `under_repair → completed` |
+| Task | Target | Notes |
+|------|--------|-------|
+| Search & filter UI (multi-dimensional) | Mon–Wed | Filter bar with dropdowns + text search. Debounced API calls |
+| Optimistic locking conflict UI | Wed–Thu | Show "this record was modified by someone else" dialog on 409 `version_conflict` |
+| i18n: all pages translated | Thu–Fri | zh-TW primary, en secondary. All user-facing strings externalized |
+| UX polish: loading states, empty states, error toasts | Rolling | Consistent patterns across all pages |
 
-#### FE-2 — Holder pages
+#### Week 4 milestone — `M4 — Feature Complete (Full)`
 
-| Page | Status | Target | Notes |
-|------|--------|--------|-------|
-| Asset detail | ✅ Done | Wed | Read-only view of asset metadata; manager view (FE-1) layers in edit/assign actions |
-| My assets list (holder view) | ✅ Done | Wed | Reuses the shared list table component and reads from `GET /assets/mine` |
-| Repair request list | ✅ Done | Wed–Thu | Status badges, sortable columns, pagination. Reads from `GET /repair-requests` |
-| Repair request detail | ✅ Done | Thu–Fri | Timeline view of workflow stages, status transitions, asset info, and fault description |
-| Image display on repair detail | ✅ Done | Fri | Authenticated thumbnail grid with click-to-enlarge modal (uses `AuthImage` component) |
-
-#### FE-3 — Integration & quality
-
-| Responsibility | Status | Cadence | Notes |
-|----------------|--------|---------|-------|
-| PR review for FE-1 and FE-2 work | ⏳ Pending | Rolling | Same-day SLA on review to keep FE-1/FE-2 unblocked. No FE-1/FE-2 PRs opened yet |
-| Merge coordination | ⏳ Pending | Rolling | Resolve conflicts between FE-1/FE-2 branches (likely on shared layout, routing, i18n keys). Keep `main` green |
-| vitest coverage on new pages | ⏳ Pending | Wed–Fri | Each new page ships with at least one render test + one role-gating test. Maintain ≥ 80% FE coverage |
-| i18n keys (zh-TW + en) | ⏳ Pending | Rolling | Audit `src/i18n/locales/` after each PR merges; no hardcoded user-facing strings |
-| Cross-cutting UX (loading, empty, error) | ⏳ Pending | Thu–Fri | Consistent patterns across manager + holder pages via Ant Design's `Spin`, `Empty`, `notification` |
-| Optional: integration smoke test | ⏳ Pending | Fri | Manual end-to-end run of the 3 critical flows (manager registers asset, holder submits repair, manager completes) before week close |
-
-### Week 3 milestone (`M3 — Feature Complete (Core)`)
-
-Manager registers + assigns assets · holder submits repair with images · manager approves/rejects/completes · status transitions update asset status automatically · images upload and display.
+- [ ] M3 carry-over closed: issue #29 fixed (PR #27 image display merged 2026-05-06)
+- [ ] Multi-dimensional search works with all filter combinations
+- [ ] Optimistic locking: concurrent edit shows conflict to second user
+- [ ] All UI text is i18n-ready (language switcher works)
+- [ ] No broken flows end-to-end
+- [ ] Rate limiting active on all endpoints
 
 > Full weekly plan, risks, resource allocation, and rubric mapping live in [docs/roadmap.md](docs/roadmap.md).
 
