@@ -239,6 +239,13 @@ def _ensure_request_version(repair_request: RepairRequest, version: int) -> None
         )
 
 
+def _ensure_asset_version_match(asset: Asset, expected_version: int | None) -> None:
+    if expected_version is not None and asset.version != expected_version:
+        raise _conflict(
+            "Asset was modified by another user. Please refresh and try again."
+        )
+
+
 def _ensure_asset_status(
     repair_request: RepairRequest,
     expected_status: AssetStatus,
@@ -867,8 +874,7 @@ async def submit_repair_request(
             raise _not_found("Asset not found.")
         if asset.responsible_person_id != current_user.id:
             raise _forbidden("Requester is not assigned to this asset.")
-        if payload.version is not None and asset.version != payload.version:
-            raise _conflict("Asset was modified by another user. Please refresh and try again.")
+        _ensure_asset_version_match(asset, payload.version)
         if asset.status is not AssetStatus.IN_USE:
             raise _conflict(
                 "Repair request is only allowed for assets in use.",
