@@ -600,12 +600,14 @@ class TestAtomicityOnHistoryFailure:
 
     def test_assign_rolls_back_when_history_insert_fails(
         self,
-        client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        from app.db.session import get_db
+        from app.main import app
+
         manager = make_user(role=UserRole.MANAGER)
         holder = make_user(role=UserRole.HOLDER)
         asset = _make_asset(db_session)
@@ -614,22 +616,39 @@ class TestAtomicityOnHistoryFailure:
         def _boom(*args: object, **kwargs: object) -> None:
             raise RuntimeError("simulated audit-log failure")
 
-        # Patch where it's used (the endpoint module), not where it's defined.
+        # Patch where the symbol is *used* (the endpoint module), not where
+        # it is defined.
         monkeypatch.setattr(
             "app.api.v1.endpoints.assets.record_asset_action",
             _boom,
         )
 
-        response = client.post(
-            f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": holder.id, "version": starting_version},
-            headers=auth_headers(manager),
-        )
+        # Build a client that surfaces server errors as 500 instead of
+        # re-raising them into the test — matches the production path where
+        # Starlette converts unhandled exceptions to a 500 response.
+        def _override_get_db() -> object:
+            yield db_session
+
+        app.dependency_overrides[get_db] = _override_get_db
+        try:
+            with TestClient(app, raise_server_exceptions=False) as test_client:
+                response = test_client.post(
+                    f"/api/v1/assets/{asset.id}/assign",
+                    json={
+                        "responsible_person_id": holder.id,
+                        "version": starting_version,
+                    },
+                    headers=auth_headers(manager),
+                )
+        finally:
+            app.dependency_overrides.clear()
         assert response.status_code >= 500
 
         db_session.expire_all()
         refreshed = db_session.get(Asset, asset.id)
         assert refreshed is not None
+        # The whole FSM transition is rolled back — status/holder/version
+        # all match the pre-call state, and no history row was persisted.
         assert refreshed.status is AssetStatus.IN_STOCK
         assert refreshed.responsible_person_id is None
         assert refreshed.version == starting_version

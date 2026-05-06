@@ -19,7 +19,13 @@ from app.core.security import create_access_token, hash_password  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import get_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import asset, repair_image, repair_request, user  # noqa: E402, F401
+from app.models import (  # noqa: E402, F401
+    asset,
+    asset_action_history,
+    repair_image,
+    repair_request,
+    user,
+)
 from app.models.user import User, UserRole  # noqa: E402
 
 # StaticPool: all connections share the same in-memory SQLite instance within a test.

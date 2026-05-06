@@ -50,6 +50,7 @@ Audit log + `GET /assets/:id/history` was explicitly deferred from Week 3's API 
 #### Week 4 milestone — `M4 — Feature Complete (Full)`
 
 - [ ] M3 carry-over closed: issue #29 fixed (PR #27 image display merged 2026-05-06)
+- [x] Audit log (`asset_action_histories`) + `GET /assets/:id/history` shipped — every FSM transition writes a history row in the same transaction, manager-only paginated read endpoint exposes the trail
 - [ ] Multi-dimensional search works with all filter combinations
 - [ ] Optimistic locking: concurrent edit shows conflict to second user
 - [ ] All UI text is i18n-ready (language switcher works)

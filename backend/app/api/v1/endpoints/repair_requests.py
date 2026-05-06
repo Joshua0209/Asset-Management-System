@@ -24,6 +24,7 @@ from sqlalchemy.orm.interfaces import ORMOption
 from app.api.deps import CurrentUser, HolderUser, ManagerUser
 from app.db.session import get_db
 from app.models.asset import Asset, AssetStatus
+from app.models.asset_action_history import AssetAction
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import UserRole
@@ -42,6 +43,7 @@ from app.schemas.repair_request import (
     RepairRequestRead,
     RepairRequestReject,
 )
+from app.services.audit_log import record_asset_action
 from app.services.image_storage import ImageStorageDep, ImageStorageError
 
 logger = logging.getLogger(__name__)
@@ -646,9 +648,19 @@ def approve_repair_request(
             "Associated asset must be pending repair before approval.",
         )
 
+        from_status = asset.status
         repair_request.status = RepairRequestStatus.UNDER_REPAIR
         repair_request.reviewer = manager
         asset.status = AssetStatus.UNDER_REPAIR
+        record_asset_action(
+            db,
+            asset=asset,
+            actor=manager,
+            action=AssetAction.APPROVE_REPAIR,
+            from_status=from_status,
+            to_status=AssetStatus.UNDER_REPAIR,
+            metadata={"repair_request_id": repair_request.id},
+        )
         return _commit_repair_change(db, repair_request, "Repair request approval")
     except HTTPException:
         db.rollback()
@@ -684,10 +696,23 @@ def reject_repair_request(
             "Associated asset must be pending repair before rejection.",
         )
 
+        from_status = asset.status
         repair_request.status = RepairRequestStatus.REJECTED
         repair_request.rejection_reason = payload.rejection_reason
         repair_request.reviewer = manager
         asset.status = AssetStatus.IN_USE
+        record_asset_action(
+            db,
+            asset=asset,
+            actor=manager,
+            action=AssetAction.REJECT_REPAIR,
+            from_status=from_status,
+            to_status=AssetStatus.IN_USE,
+            metadata={
+                "repair_request_id": repair_request.id,
+                "rejection_reason": payload.rejection_reason,
+            },
+        )
         return _commit_repair_change(db, repair_request, "Repair request rejection")
     except HTTPException:
         db.rollback()
@@ -762,7 +787,7 @@ def complete_repair_request(
     repair_request_id: RepairRequestIdPath,
     payload: RepairRequestComplete,
     db: DbSession,
-    _manager: ManagerUser,
+    manager: ManagerUser,
 ) -> DataResponse[RepairRequestRead]:
     try:
         repair_request = _get_repair_request(db, repair_request_id)
@@ -778,6 +803,7 @@ def complete_repair_request(
             "Associated asset must be under repair before completion.",
         )
 
+        from_status = asset.status
         repair_request.repair_date = payload.repair_date
         repair_request.fault_content = payload.fault_content
         repair_request.repair_plan = payload.repair_plan
@@ -786,6 +812,21 @@ def complete_repair_request(
         repair_request.completed_at = datetime.now(UTC)
         repair_request.status = RepairRequestStatus.COMPLETED
         asset.status = AssetStatus.IN_USE
+        record_asset_action(
+            db,
+            asset=asset,
+            actor=manager,
+            action=AssetAction.COMPLETE_REPAIR,
+            from_status=from_status,
+            to_status=AssetStatus.IN_USE,
+            metadata={
+                "repair_request_id": repair_request.id,
+                # Decimal → str so the JSON column encodes deterministically
+                # (and survives MySQL's JSON dialect without precision drift).
+                "repair_cost": str(payload.repair_cost),
+                "repair_vendor": payload.repair_vendor,
+            },
+        )
         return _commit_repair_change(db, repair_request, "Repair request completion")
     except HTTPException:
         db.rollback()
@@ -852,9 +893,24 @@ async def submit_repair_request(
         )
         repair_request.asset = asset
         repair_request.requester = current_user
+        from_status = asset.status
         asset.status = AssetStatus.PENDING_REPAIR
         db.add(repair_request)
         db.flush()
+        # Audit row needs repair_request.id, so it sits between the flush
+        # that assigns the PK and the flush that lays down image rows.
+        record_asset_action(
+            db,
+            asset=asset,
+            actor=current_user,
+            action=AssetAction.SUBMIT_REPAIR,
+            from_status=from_status,
+            to_status=AssetStatus.PENDING_REPAIR,
+            metadata={
+                "repair_request_id": repair_request.id,
+                "fault_description": payload.fault_description,
+            },
+        )
         _persist_images(repair_request, images, storage, saved_keys)
         db.flush()
         response.headers["Location"] = f"/api/v1/repair-requests/{repair_request.id}"

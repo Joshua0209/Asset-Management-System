@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
@@ -137,3 +137,27 @@ class AssetRead(APIModel):
     version: int
     created_at: datetime | None
     updated_at: datetime | None
+
+
+class ActorRef(APIModel):
+    id: str
+    name: str
+
+
+class AssetActionHistoryRead(APIModel):
+    # `from_attributes=True` (inherited via APIModel) populates by attr name,
+    # so the SQLAlchemy attribute `event_metadata` maps to the wire field
+    # `metadata` here. The serialization alias is what the JSON consumer sees.
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: str
+    action: str
+    from_status: str
+    to_status: str
+    actor: ActorRef | None
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias="event_metadata",
+        serialization_alias="metadata",
+    )
+    created_at: datetime

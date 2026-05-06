@@ -12,9 +12,11 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.api.deps import CurrentUser, HolderUser, ManagerUser
 from app.db.session import get_db
 from app.models.asset import Asset, AssetStatus
+from app.models.asset_action_history import AssetAction, AssetActionHistory
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
 from app.schemas.asset import (
+    AssetActionHistoryRead,
     AssetAssignRequest,
     AssetCreate,
     AssetDisposeRequest,
@@ -30,6 +32,7 @@ from app.schemas.common import (
     error_responses,
     like_pattern,
 )
+from app.services.audit_log import record_asset_action
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -378,6 +381,68 @@ def get_asset(
         ) from exc
 
 
+@router.get(
+    "/{asset_id}/history",
+    summary="List asset action history",
+    responses=error_responses(status.HTTP_404_NOT_FOUND),
+)
+def list_asset_history(
+    asset_id: AssetIdPath,
+    db: DbSession,
+    _manager: ManagerUser,
+    page: Annotated[int, Query(ge=1)] = 1,
+    per_page: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> PaginatedListResponse[AssetActionHistoryRead]:
+    try:
+        # Audit trail outlives the asset — confirmed design choice. Verify
+        # the asset row exists, but ignore deleted_at: a soft-deleted asset
+        # still has a history that auditors must be able to read.
+        exists = db.scalar(select(Asset.id).where(Asset.id == asset_id))
+        if exists is None:
+            raise _not_found()
+
+        total = (
+            db.scalar(
+                select(func.count())
+                .select_from(AssetActionHistory)
+                .where(AssetActionHistory.asset_id == asset_id)
+            )
+            or 0
+        )
+        # `joinedload(...and_(User.deleted_at.is_(None)))` collapses a
+        # soft-deleted actor to None on the relationship — this is what
+        # makes the schema render `actor: null` for deleted users.
+        events = db.scalars(
+            select(AssetActionHistory)
+            .options(
+                joinedload(
+                    AssetActionHistory.actor.and_(User.deleted_at.is_(None))
+                )
+            )
+            .where(AssetActionHistory.asset_id == asset_id)
+            .order_by(AssetActionHistory.created_at.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        ).all()
+        return PaginatedListResponse(
+            data=[AssetActionHistoryRead.model_validate(event) for event in events],
+            meta=PaginationMeta(total=total, page=page, per_page=per_page),
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        logger.error(
+            "Failed to list history for asset %s: %s",
+            _safe_log(asset_id),
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to retrieve asset history. Please try again later.",
+        ) from exc
+
+
 @router.patch(
     "/{asset_id}",
     summary="Update asset info",
@@ -475,7 +540,7 @@ def assign_asset(
     asset_id: AssetIdPath,
     payload: AssetAssignRequest,
     db: DbSession,
-    _manager: ManagerUser,
+    manager: ManagerUser,
 ) -> DataResponse[AssetRead]:
     try:
         asset = _load_asset_for_transition(db, asset_id)
@@ -503,9 +568,22 @@ def assign_asset(
                 _STALE_VERSION_MESSAGE
             )
 
+        from_status = asset.status
         asset.status = AssetStatus.IN_USE
         asset.responsible_person_id = target.id
         asset.responsible_person = target
+        record_asset_action(
+            db,
+            asset=asset,
+            actor=manager,
+            action=AssetAction.ASSIGN,
+            from_status=from_status,
+            to_status=AssetStatus.IN_USE,
+            metadata={
+                "responsible_person_id": target.id,
+                "responsible_person_name": target.name,
+            },
+        )
         db.commit()
         db.refresh(asset)
         return DataResponse(data=AssetRead.model_validate(asset))
@@ -554,8 +632,6 @@ def unassign_asset(
                 _STALE_VERSION_MESSAGE
             )
 
-        # Reason is validated by the schema and recorded in the application log; persistent
-        # audit trail lands in Week 4 with the asset_action_histories table.
         logger.info(
             "Asset %s unassigned by %s. reason=%r",
             asset.asset_code,
@@ -563,9 +639,23 @@ def unassign_asset(
             payload.reason,
         )
 
+        previous_responsible_person_id = asset.responsible_person_id
+        from_status = asset.status
         asset.status = AssetStatus.IN_STOCK
         asset.responsible_person_id = None
         asset.responsible_person = None
+        record_asset_action(
+            db,
+            asset=asset,
+            actor=manager,
+            action=AssetAction.UNASSIGN,
+            from_status=from_status,
+            to_status=AssetStatus.IN_STOCK,
+            metadata={
+                "reason": payload.reason,
+                "previous_responsible_person_id": previous_responsible_person_id,
+            },
+        )
         db.commit()
         db.refresh(asset)
         return DataResponse(data=AssetRead.model_validate(asset))
@@ -595,7 +685,7 @@ def dispose_asset(
     asset_id: AssetIdPath,
     payload: AssetDisposeRequest,
     db: DbSession,
-    _manager: ManagerUser,
+    manager: ManagerUser,
 ) -> DataResponse[AssetRead]:
     try:
         asset = _load_asset_for_transition(db, asset_id)
@@ -617,8 +707,18 @@ def dispose_asset(
                 _STALE_VERSION_MESSAGE
             )
 
+        from_status = asset.status
         asset.status = AssetStatus.DISPOSED
         asset.disposal_reason = payload.disposal_reason
+        record_asset_action(
+            db,
+            asset=asset,
+            actor=manager,
+            action=AssetAction.DISPOSE,
+            from_status=from_status,
+            to_status=AssetStatus.DISPOSED,
+            metadata={"disposal_reason": payload.disposal_reason},
+        )
         db.commit()
         db.refresh(asset)
         return DataResponse(data=AssetRead.model_validate(asset))

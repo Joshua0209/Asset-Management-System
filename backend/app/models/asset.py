@@ -50,3 +50,10 @@ class Asset(TimestampVersionMixin, Base):
 
     responsible_person = relationship("User", back_populates="assets")
     repair_requests = relationship("RepairRequest", back_populates="asset")
+    action_histories = relationship(
+        "AssetActionHistory",
+        back_populates="asset",
+        order_by="AssetActionHistory.created_at.desc()",
+        # viewonly: history rows are inserted only via the audit_log service.
+        viewonly=True,
+    )
