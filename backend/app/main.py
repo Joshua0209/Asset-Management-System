@@ -9,10 +9,13 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
+from app.db.session import engine
 from app.schemas.repair_request import RepairRequestCreate
 
 logger = logging.getLogger(__name__)
@@ -314,9 +317,32 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 @app.get("/health", tags=["health"])
 @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi decorators have no type stubs
 def health_check(request: Request) -> dict[str, str]:
-    """Liveness probe.
+    """Liveness probe — process is up. Used by ECS task health and `docker compose`.
 
     Exempt from rate limiting so monitoring (compose healthcheck, ALB, etc.)
     cannot DoS itself when the global default tier shrinks.
     """
     return {"status": "ok"}
+
+
+@app.get("/ready", tags=["health"])
+def readiness_check() -> JSONResponse:
+    """Readiness probe — process can serve traffic (DB reachable).
+
+    ALB target groups should hit this; returning 503 lets the load balancer
+    drain a target whose DB connection has dropped (e.g. RDS Multi-AZ
+    failover in progress) without killing the container itself.
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        logger.warning("Readiness probe failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "checks": {"database": "down"}},
+        )
+    return JSONResponse(
+        status_code=200,
+        content={"status": "ready", "checks": {"database": "up"}},
+    )
