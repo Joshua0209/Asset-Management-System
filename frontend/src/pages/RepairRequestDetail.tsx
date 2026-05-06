@@ -19,7 +19,14 @@ import { Link, useParams } from 'react-router-dom';
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ToolOutlined } from '@ant-design/icons';
 
 import { ApiError, repairRequestsApi } from '../api';
-import type { RepairRequestRecord } from '../api/repair-requests';
+import type { RepairRequestRecord, RepairRequestStatus } from '../api/repair-requests';
+
+const STATUS_TAG_COLORS: Record<RepairRequestStatus, string> = {
+  pending_review: 'processing',
+  under_repair: 'warning',
+  completed: 'success',
+  rejected: 'error',
+};
 
 const RepairRequestDetail: React.FC = () => {
   const { t } = useTranslation();
@@ -126,7 +133,7 @@ const RepairRequestDetail: React.FC = () => {
             <Card title={t('repairRequestDetail.sections.basic')}>
               <Descriptions column={{ xs: 1, sm: 2 }}>
                 <Descriptions.Item label={t('repairRequestDetail.fields.status')}>
-                  <Tag color={request.status === 'completed' ? 'success' : request.status === 'rejected' ? 'error' : request.status === 'under_repair' ? 'warning' : 'processing'}>
+                  <Tag color={STATUS_TAG_COLORS[request.status]}>
                     {t(`repairRequestList.status.${request.status}`)}
                   </Tag>
                 </Descriptions.Item>
