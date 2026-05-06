@@ -36,6 +36,13 @@ class Asset(TimestampVersionMixin, Base):
     department: Mapped[str] = mapped_column(String(100))
     activation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     warranty_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Set on FSM T2 (assign); cleared back to None when reassigned. Tracks the
+    # current hand-off day, supplied by the manager so it matches reality
+    # rather than the API call timestamp.
+    assignment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Set on FSM T5 (unassign); cleared on the next assign so the pair always
+    # reflects the most recent assignment window.
+    unassignment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[AssetStatus] = mapped_column(
         Enum(AssetStatus, name="asset_status", values_callable=enum_values),
         default=AssetStatus.IN_STOCK,

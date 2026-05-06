@@ -3,7 +3,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, cast
 from urllib.parse import parse_qs
 from uuid import UUID
@@ -83,13 +83,52 @@ _MAX_REQUEST_BYTES = _MAX_IMAGE_COUNT * _MAX_IMAGE_BYTES + _MULTIPART_OVERHEAD_B
 # Whitelist of fields that update_repair_details may forward to the ORM via
 # setattr. Guards against silent schema/model drift if the schema gains a
 # field that does not exist on RepairRequest.
-_REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset({
-    "repair_date",
-    "fault_content",
-    "repair_plan",
-    "repair_cost",
-    "repair_vendor",
-})
+_REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset(
+    {
+        "repair_date",
+        "fault_content",
+        "repair_plan",
+        "repair_cost",
+        "repair_vendor",
+    }
+)
+
+# Mirrors `_next_asset_code` in the assets endpoint: same race + retry
+# semantics, same human-readable per-year sequence shape.
+_REPAIR_ID_CREATE_ATTEMPTS = 3
+
+
+def _next_repair_id(db: Session, today: date | None = None) -> str:
+    year = (today or date.today()).year
+    prefix = f"REP-{year}-"
+    latest_code = db.scalar(
+        select(RepairRequest.repair_id)
+        .where(RepairRequest.repair_id.like(f"{prefix}%"))
+        .order_by(RepairRequest.repair_id.desc())
+        .limit(1)
+    )
+    if latest_code is None:
+        return f"{prefix}{1:05d}"
+    try:
+        next_sequence = int(latest_code.rsplit("-", maxsplit=1)[1]) + 1
+    except (IndexError, ValueError) as exc:
+        # Falling back to 00001 would re-collide on every retry; fail loudly.
+        logger.error(
+            "Existing repair_id does not match expected format: prefix=%s latest=%r",
+            prefix,
+            latest_code,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Repair id sequence is corrupted. Contact an administrator.",
+        ) from exc
+    return f"{prefix}{next_sequence:05d}"
+
+
+def _is_repair_id_uniqueness_violation(exc: IntegrityError) -> bool:
+    message = str(getattr(exc, "orig", None) or exc).lower()
+    return "repair_id" in message
+
 
 _ERROR_RESPONSES = error_responses(
     status.HTTP_401_UNAUTHORIZED,
@@ -102,6 +141,7 @@ _ERROR_RESPONSES = error_responses(
     status.HTTP_503_SERVICE_UNAVAILABLE,
 )
 
+
 def _build_repair_submit_openapi_extra() -> dict[str, Any]:
     """Build the multipart schema from `RepairRequestCreate` so it never drifts.
 
@@ -111,9 +151,7 @@ def _build_repair_submit_openapi_extra() -> dict[str, Any]:
     must stay in lockstep with the Pydantic model — so we read them out of
     `model_json_schema()` rather than hard-coding them a second time.
     """
-    base_schema = RepairRequestCreate.model_json_schema(
-        ref_template="#/components/schemas/{model}"
-    )
+    base_schema = RepairRequestCreate.model_json_schema(ref_template="#/components/schemas/{model}")
     multipart_properties = dict(base_schema.get("properties", {}))
     multipart_properties["images"] = {
         "type": "array",
@@ -269,9 +307,7 @@ def _ensure_asset_status(
             repair_request.id,
             asset.id,
         )
-        raise _conflict(
-            "Associated asset has been deleted; repair request cannot proceed."
-        )
+        raise _conflict("Associated asset has been deleted; repair request cannot proceed.")
     if asset.status is not expected_status:
         raise _conflict(message, code="invalid_transition")
     return cast(Asset, asset)
@@ -419,9 +455,7 @@ def _validate_images(images: list[SubmittedImage]) -> None:
         raise _validation_error(f"At most {_MAX_IMAGE_COUNT} images may be uploaded.")
     for image in images:
         if image.content_type not in _ALLOWED_IMAGE_TYPES:
-            raise _validation_error(
-                f"Image {image.filename!r} must be JPEG or PNG."
-            )
+            raise _validation_error(f"Image {image.filename!r} must be JPEG or PNG.")
         if not _content_matches_declared_type(image.content, image.content_type):
             raise _validation_error(
                 f"Image {image.filename!r} content does not match its declared type."
@@ -495,9 +529,7 @@ def _parse_form_urlencoded(body: bytes) -> dict[str, str]:
     if duplicates:
         # Every documented field is scalar; "last wins" would silently
         # discard data. Reject up front so the client sees the bug.
-        raise _validation_error(
-            f"Form fields appear multiple times: {sorted(duplicates)}."
-        )
+        raise _validation_error(f"Form fields appear multiple times: {sorted(duplicates)}.")
     return {key: values[0] if values else "" for key, values in parsed.items()}
 
 
@@ -505,9 +537,7 @@ def _unsupported_media_type(content_type: str) -> HTTPException:
     # Cap the echoed content-type so a malicious client can't bloat the
     # response or smuggle CR/LF into log destinations that render as text.
     safe_content_type = (
-        (content_type[:120].replace("\r", "").replace("\n", ""))
-        if content_type
-        else "<missing>"
+        (content_type[:120].replace("\r", "").replace("\n", "")) if content_type else "<missing>"
     )
     return HTTPException(
         status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -572,20 +602,22 @@ def list_repair_requests(
         sort_column = _SORT_COLUMNS.get(sort_field)
         if sort_column is None:
             allowed = ", ".join(sorted(_SORT_COLUMNS))
-            raise _validation_error(
-                f"Unsupported sort field {sort_field!r}. Allowed: {allowed}."
-            )
+            raise _validation_error(f"Unsupported sort field {sort_field!r}. Allowed: {allowed}.")
         order_by = sort_column.desc() if sort_desc else sort_column.asc()
 
         total = db.scalar(select(func.count()).select_from(RepairRequest).where(*filters)) or 0
-        requests = db.scalars(
-            select(RepairRequest)
-            .options(*_repair_options())
-            .where(*filters)
-            .order_by(order_by)
-            .offset((page - 1) * per_page)
-            .limit(per_page)
-        ).unique().all()
+        requests = (
+            db.scalars(
+                select(RepairRequest)
+                .options(*_repair_options())
+                .where(*filters)
+                .order_by(order_by)
+                .offset((page - 1) * per_page)
+                .limit(per_page)
+            )
+            .unique()
+            .all()
+        )
         return PaginatedListResponse(
             data=[RepairRequestRead.model_validate(item) for item in requests],
             meta=PaginationMeta(total=total, page=page, per_page=per_page),
@@ -612,10 +644,7 @@ def get_repair_request(
 ) -> DataResponse[RepairRequestRead]:
     try:
         repair_request = _get_repair_request(db, repair_request_id)
-        if (
-            current_user.role is UserRole.HOLDER
-            and repair_request.requester_id != current_user.id
-        ):
+        if current_user.role is UserRole.HOLDER and repair_request.requester_id != current_user.id:
             raise _forbidden("You do not have access to this repair request.")
         return DataResponse(data=RepairRequestRead.model_validate(repair_request))
     except HTTPException:
@@ -898,6 +927,7 @@ async def submit_repair_request(
 
         repair_request = RepairRequest(
             asset_id=asset.id,
+            repair_id=_next_repair_id(db),
             requester_id=current_user.id,
             status=RepairRequestStatus.PENDING_REVIEW,
             fault_description=payload.fault_description,
@@ -943,6 +973,13 @@ async def submit_repair_request(
     except IntegrityError as exc:
         db.rollback()
         logger.warning("Repair request submit constraint error: %s", exc)
+        if _is_repair_id_uniqueness_violation(exc):
+            # repair_id is server-generated; a collision means a concurrent
+            # submission within the same year. Surface a retry-friendly code.
+            raise _conflict(
+                "Repair id collision; please retry submitting the request.",
+                code="repair_id_conflict",
+            ) from exc
         raise _conflict(
             "Repair request could not be submitted due to a conflicting state."
         ) from exc

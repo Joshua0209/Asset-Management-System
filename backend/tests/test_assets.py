@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -17,6 +18,8 @@ from app.models.user import User, UserRole
 from app.schemas.asset import AssetCreate
 
 _PURCHASE_DATE = date(2026, 1, 1)
+_ASSIGNMENT_DATE_ISO = "2026-04-15"
+_UNASSIGNMENT_DATE_ISO = "2026-04-20"
 
 
 def _make_asset(
@@ -53,6 +56,13 @@ def _make_asset(
     return asset
 
 
+_REPAIR_ID_COUNTER = itertools.count(1)
+
+
+def _unique_repair_id() -> str:
+    return f"REP-2026-{next(_REPAIR_ID_COUNTER):05d}"
+
+
 def _make_repair_request(
     session: Session,
     *,
@@ -64,6 +74,7 @@ def _make_repair_request(
 ) -> RepairRequest:
     repair_request = RepairRequest(
         asset_id=asset.id,
+        repair_id=_unique_repair_id(),
         requester_id=requester.id,
         status=status,
         fault_description=fault_description,
@@ -241,9 +252,7 @@ class TestListAssets:
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
-        response = client.get(
-            "/api/v1/assets?sort=password_hash", headers=auth_headers(manager)
-        )
+        response = client.get("/api/v1/assets?sort=password_hash", headers=auth_headers(manager))
         assert response.status_code == 422
 
     def test_manager_cannot_use_holder_only_mine_endpoint(
@@ -678,7 +687,11 @@ class TestAssignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": holder.id, "version": current_version},
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": current_version,
+            },
             headers=auth_headers(manager),
         )
 
@@ -702,7 +715,11 @@ class TestAssignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(holder),
         )
         assert response.status_code == 403
@@ -717,7 +734,11 @@ class TestAssignAsset:
         asset = _make_asset(db_session)
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
         )
         assert response.status_code == 401
 
@@ -744,7 +765,11 @@ class TestAssignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 409
@@ -759,7 +784,11 @@ class TestAssignAsset:
         target = make_user(role=UserRole.HOLDER)
         response = client.post(
             "/api/v1/assets/00000000-0000-0000-0000-000000000000/assign",
-            json={"responsible_person_id": target.id, "version": 1},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": 1,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 404
@@ -777,7 +806,11 @@ class TestAssignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 404
@@ -815,7 +848,11 @@ class TestAssignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": another_manager.id, "version": asset.version},
+            json={
+                "responsible_person_id": another_manager.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 422
@@ -833,7 +870,11 @@ class TestAssignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 422
@@ -857,7 +898,11 @@ class TestAssignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 409
@@ -875,7 +920,11 @@ class TestAssignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version + 1},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version + 1,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 409
@@ -894,7 +943,11 @@ class TestAssignAsset:
         with patch.object(db_session, "commit", side_effect=SQLAlchemyError("DB error")):
             response = client.post(
                 f"/api/v1/assets/{asset.id}/assign",
-                json={"responsible_person_id": target.id, "version": asset.version},
+                json={
+                    "responsible_person_id": target.id,
+                    "assignment_date": _ASSIGNMENT_DATE_ISO,
+                    "version": asset.version,
+                },
                 headers=auth_headers(manager),
             )
         assert response.status_code == 503
@@ -921,7 +974,11 @@ class TestUnassignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "Employee transfer", "version": current_version},
+            json={
+                "reason": "Employee transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": current_version,
+            },
             headers=auth_headers(manager),
         )
 
@@ -947,7 +1004,11 @@ class TestUnassignAsset:
         )
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(holder),
         )
         assert response.status_code == 403
@@ -974,7 +1035,11 @@ class TestUnassignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 409
@@ -988,7 +1053,7 @@ class TestUnassignAsset:
         manager = make_user(role=UserRole.MANAGER)
         response = client.post(
             "/api/v1/assets/00000000-0000-0000-0000-000000000000/unassign",
-            json={"reason": "transfer", "version": 1},
+            json={"reason": "transfer", "unassignment_date": _UNASSIGNMENT_DATE_ISO, "version": 1},
             headers=auth_headers(manager),
         )
         assert response.status_code == 404
@@ -1008,7 +1073,11 @@ class TestUnassignAsset:
         )
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 404
@@ -1029,7 +1098,11 @@ class TestUnassignAsset:
         )
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "", "version": asset.version},
+            json={
+                "reason": "",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 422
@@ -1050,7 +1123,11 @@ class TestUnassignAsset:
         )
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "x" * 501, "version": asset.version},
+            json={
+                "reason": "x" * 501,
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 422
@@ -1071,7 +1148,11 @@ class TestUnassignAsset:
         )
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version + 1},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version + 1,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 409
@@ -1106,7 +1187,11 @@ class TestUnassignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 409
@@ -1139,7 +1224,11 @@ class TestUnassignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 200
@@ -1168,7 +1257,11 @@ class TestUnassignAsset:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 200
@@ -1190,7 +1283,11 @@ class TestUnassignAsset:
         with patch.object(db_session, "commit", side_effect=SQLAlchemyError("DB error")):
             response = client.post(
                 f"/api/v1/assets/{asset.id}/unassign",
-                json={"reason": "transfer", "version": asset.version},
+                json={
+                    "reason": "transfer",
+                    "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                    "version": asset.version,
+                },
                 headers=auth_headers(manager),
             )
         assert response.status_code == 503
@@ -1494,7 +1591,11 @@ class TestAssetTransition409ErrorCodes:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
 
@@ -1520,7 +1621,11 @@ class TestAssetTransition409ErrorCodes:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
 
@@ -1540,7 +1645,11 @@ class TestAssetTransition409ErrorCodes:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": target.id, "version": asset.version + 1},
+            json={
+                "responsible_person_id": target.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version + 1,
+            },
             headers=auth_headers(manager),
         )
 
@@ -1559,7 +1668,11 @@ class TestAssetTransition409ErrorCodes:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
 
@@ -1589,7 +1702,11 @@ class TestAssetTransition409ErrorCodes:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
             headers=auth_headers(manager),
         )
 
@@ -1615,7 +1732,11 @@ class TestAssetTransition409ErrorCodes:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "transfer", "version": asset.version + 1},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version + 1,
+            },
             headers=auth_headers(manager),
         )
 
@@ -1728,3 +1849,174 @@ class TestAssetTransition409ErrorCodes:
 
         assert response.status_code == 409
         assert response.json()["error"]["code"] == "conflict"
+
+
+class TestAssignmentDateFields:
+    """Issue #31: assign/unassign now persist explicit dates supplied by the manager."""
+
+    def test_assign_persists_assignment_date_and_clears_unassignment_date(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        # Simulate the asset having a stale unassignment_date from a prior cycle
+        # so we can assert the assign endpoint resets the pair.
+        asset.unassignment_date = date(2026, 3, 1)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        body = response.json()["data"]
+        assert body["assignment_date"] == _ASSIGNMENT_DATE_ISO
+        assert body["unassignment_date"] is None
+
+    def test_assign_rejects_future_assignment_date(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+        future = (datetime.now(UTC).date()).replace(year=datetime.now(UTC).year + 1)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": future.isoformat(),
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_assign_requires_assignment_date(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            # Deliberately omits assignment_date.
+            json={"responsible_person_id": holder.id, "version": asset.version},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_unassign_persists_unassignment_date_and_preserves_assignment_date(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        asset.assignment_date = date(2026, 4, 1)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Employee transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        body = response.json()["data"]
+        assert body["unassignment_date"] == _UNASSIGNMENT_DATE_ISO
+        # Spec: assignment_date is preserved on unassign so the pair captures
+        # the most recent assignment window.
+        assert body["assignment_date"] == "2026-04-01"
+
+    def test_unassign_rejects_future_unassignment_date(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        future = datetime.now(UTC).date().replace(year=datetime.now(UTC).year + 1)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "transfer",
+                "unassignment_date": future.isoformat(),
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_unassign_rejects_unassignment_date_before_assignment_date(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+        asset.assignment_date = date(2026, 4, 20)
+        db_session.commit()
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "transfer",
+                # One day earlier than assignment_date.
+                "unassignment_date": "2026-04-19",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "invalid_unassignment_date"

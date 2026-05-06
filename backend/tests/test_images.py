@@ -37,6 +37,7 @@ def _seed_repair_request(session: Session, holder: User) -> RepairRequest:
     session.flush()
     rr = RepairRequest(
         asset_id=asset.id,
+        repair_id="REP-2026-90001",
         requester_id=holder.id,
         status=RepairRequestStatus.PENDING_REVIEW,
         fault_description="Image fixture",
@@ -71,9 +72,7 @@ def _attach_image(
 
 
 @pytest.fixture
-def upload_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Generator[Path, None, None]:
+def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[Path, None, None]:
     """Point the storage backend at a per-test temp dir.
 
     Overrides ``REPAIR_UPLOAD_DIR`` and clears the cached settings so the

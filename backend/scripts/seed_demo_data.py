@@ -133,6 +133,7 @@ def build_assets(holders: list[User]) -> list[Asset]:
                 warranty_expiry=purchase_date + timedelta(days=365 * 2),
                 status=status,
                 responsible_person_id=holder.id if holder else None,
+                assignment_date=(purchase_date + timedelta(days=10) if holder else None),
             )
         )
     return assets
@@ -162,6 +163,7 @@ def build_repair_requests(
         status = status_cycle[index % len(status_cycle)]
         repair_request = RepairRequest(
             asset_id=asset.id,
+            repair_id=f"REP-{date.today().year}-{index + 1:05d}",
             requester_id=holder.id,
             reviewer_id=manager.id if status != RepairRequestStatus.PENDING_REVIEW else None,
             status=status,

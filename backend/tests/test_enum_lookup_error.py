@@ -108,11 +108,11 @@ def test_repair_request_status_loads_when_db_stores_lowercase_value(db_session: 
         text(
             """
             INSERT INTO repair_requests (
-                id, asset_id, requester_id, status, fault_description,
+                id, repair_id, asset_id, requester_id, status, fault_description,
                 created_at, updated_at, version
             )
             VALUES (
-                :id, :asset_id, :requester_id, 'under_repair', 'screen broken',
+                :id, 'REP-2024-00001', :asset_id, :requester_id, 'under_repair', 'screen broken',
                 '2024-01-01 00:00:00', '2024-01-01 00:00:00', 1
             )
             """
