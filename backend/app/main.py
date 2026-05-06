@@ -6,9 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.rate_limit import limiter
 from app.schemas.repair_request import RepairRequestCreate
 
 logger = logging.getLogger(__name__)
@@ -23,12 +26,17 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
+# request time and emits the X-RateLimit-* headers.
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.cors_allowed_methods,
+    allow_headers=settings.cors_allowed_headers,
 )
 
 # Map HTTP status → machine-readable error code per docs/system-design/12-api-design.md
@@ -135,6 +143,48 @@ async def unhandled_exception_to_envelope(
             }
         },
     )
+
+
+def register_rate_limit_handler(target_app: FastAPI) -> None:
+    """Attach a RateLimitExceeded → project error envelope handler.
+
+    Extracted so test apps can register the same handler without re-importing
+    the whole production app. slowapi's default handler returns
+    ``{"error": "Rate limit exceeded"}`` which would break the FE's contract
+    that every error follows ``{"error": {"code": ..., "message": ...}}``.
+
+    Important: slowapi's SlowAPIMiddleware looks up this handler via
+    ``app.exception_handlers[RateLimitExceeded]`` *synchronously* (see
+    ``slowapi.middleware.sync_check_limits``). If the registered handler is a
+    coroutine the middleware silently falls back to slowapi's default body,
+    so this MUST stay a plain ``def``.
+    """
+
+    @target_app.exception_handler(RateLimitExceeded)
+    def _rate_limit_to_envelope(
+        request: Request, exc: RateLimitExceeded
+    ) -> JSONResponse:
+        # `exc.detail` is e.g. "3 per 1 minute" — surface it as the message
+        # so clients can show the configured limit without leaking internals.
+        message = f"Rate limit exceeded: {exc.detail}"
+        # slowapi will inject X-RateLimit-* and Retry-After by way of
+        # `_inject_headers` on the response we return; we still add a
+        # conservative Retry-After fallback in case headers_enabled is off.
+        headers = dict(getattr(exc, "headers", None) or {})
+        headers.setdefault("Retry-After", "60")
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": message,
+                }
+            },
+            headers=headers,
+        )
+
+
+register_rate_limit_handler(app)
 
 
 @app.exception_handler(RequestValidationError)
