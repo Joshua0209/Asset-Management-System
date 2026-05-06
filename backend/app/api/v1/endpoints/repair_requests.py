@@ -27,7 +27,7 @@ from app.models.asset import Asset, AssetStatus
 from app.models.asset_action_history import AssetAction
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest, RepairRequestStatus
-from app.models.user import UserRole
+from app.models.user import User, UserRole
 from app.schemas.common import (
     DataResponse,
     PaginatedListResponse,
@@ -878,6 +878,41 @@ def complete_repair_request(
         raise
 
 
+def _load_asset_for_submit(
+    db: Session, payload: RepairRequestCreate, current_user: User
+) -> Asset:
+    asset = db.scalar(
+        select(Asset).where(Asset.id == payload.asset_id, Asset.deleted_at.is_(None))
+    )
+    if asset is None:
+        raise _not_found("Asset not found.")
+    if asset.responsible_person_id != current_user.id:
+        raise _forbidden("Requester is not assigned to this asset.")
+    if payload.version is not None and asset.version != payload.version:
+        raise _conflict("Asset was modified by another user. Please refresh and try again.")
+    if asset.status is not AssetStatus.IN_USE:
+        raise _conflict(
+            "Repair request is only allowed for assets in use.",
+            code="invalid_transition",
+        )
+
+    active_count = db.scalar(
+        select(func.count())
+        .select_from(RepairRequest)
+        .where(
+            RepairRequest.asset_id == asset.id,
+            RepairRequest.deleted_at.is_(None),
+            RepairRequest.status.in_(_ACTIVE_REPAIR_STATUSES),
+        )
+    )
+    if active_count:
+        raise _conflict(
+            "Repair request already exists for this asset.",
+            code="duplicate_request",
+        )
+    return asset
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
@@ -896,34 +931,7 @@ async def submit_repair_request(
     committed = False
     try:
         payload, images = await _repair_payload_from_request(request)
-        asset = db.scalar(
-            select(Asset).where(Asset.id == payload.asset_id, Asset.deleted_at.is_(None))
-        )
-        if asset is None:
-            raise _not_found("Asset not found.")
-        if asset.responsible_person_id != current_user.id:
-            raise _forbidden("Requester is not assigned to this asset.")
-        _ensure_asset_version_match(asset, payload.version)
-        if asset.status is not AssetStatus.IN_USE:
-            raise _conflict(
-                "Repair request is only allowed for assets in use.",
-                code="invalid_transition",
-            )
-
-        active_count = db.scalar(
-            select(func.count())
-            .select_from(RepairRequest)
-            .where(
-                RepairRequest.asset_id == asset.id,
-                RepairRequest.deleted_at.is_(None),
-                RepairRequest.status.in_(_ACTIVE_REPAIR_STATUSES),
-            )
-        )
-        if active_count:
-            raise _conflict(
-                "Repair request already exists for this asset.",
-                code="duplicate_request",
-            )
+        asset = _load_asset_for_submit(db, payload, current_user)
 
         repair_request = RepairRequest(
             asset_id=asset.id,
