@@ -26,6 +26,20 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+if not settings.rate_limit_enabled:
+    # Loud-on-misconfig: a deploy with RATE_LIMIT_ENABLED=false is
+    # almost certainly a leaked test fixture, not an intentional
+    # production switch. Logged as WARNING (not just INFO) so it
+    # surfaces in CloudWatch's default Lambda Insights / ECS log
+    # filters. CLAUDE.md "no silent failures" — startup is the loudest
+    # place we can put this.
+    logger.warning(
+        "Rate limiting is DISABLED (RATE_LIMIT_ENABLED=false). "
+        "This must only be set in tests; production deploys MUST "
+        "leave it true to avoid credential-stuffing exposure on "
+        "/auth/login + /auth/register."
+    )
+
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
 # request time and emits the X-RateLimit-* headers.
 app.state.limiter = limiter

@@ -3,7 +3,18 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Generator
 
-# Must be set before any app module is imported, since session.py calls get_settings() at load time.
+# ---------------------------------------------------------------------------
+# IMPORT-ORDER INVARIANT — DO NOT IMPORT ANY ``app.*`` MODULE ABOVE THIS LINE.
+#
+# `app/core/config.py::get_settings` is `@lru_cache`-decorated and
+# `app/db/session.py` calls it at module load time. Once any `app.*` module
+# is imported, those env-var values are baked into the cache and later
+# `os.environ.setdefault(...)` calls become silent no-ops (the cache already
+# has the unset defaults). The block below MUST run before the app imports
+# at the bottom of this file. If you add a new import, put it AFTER the
+# `os.environ.setdefault` block, or invalidate `get_settings.cache_clear()`
+# explicitly.
+# ---------------------------------------------------------------------------
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-do-not-use-in-production")
 os.environ.setdefault("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "720")
@@ -19,6 +30,9 @@ os.environ.setdefault("RATE_LIMIT_ANONYMOUS", "3/minute")
 os.environ.setdefault("RATE_LIMIT_AUTHENTICATED", "5/minute")
 os.environ.setdefault("RATE_LIMIT_IMAGES", "10/minute")
 
+# ---------------------------------------------------------------------------
+# Safe to import app.* below this line — env is now configured.
+# ---------------------------------------------------------------------------
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
