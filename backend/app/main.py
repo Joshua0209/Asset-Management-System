@@ -181,9 +181,11 @@ def register_rate_limit_handler(target_app: FastAPI) -> None:
         # `exc.detail` is e.g. "3 per 1 minute" — surface it as the message
         # so clients can show the configured limit without leaking internals.
         message = f"Rate limit exceeded: {exc.detail}"
-        # slowapi will inject X-RateLimit-* and Retry-After by way of
-        # `_inject_headers` on the response we return; we still add a
-        # conservative Retry-After fallback in case headers_enabled is off.
+        # SlowAPIMiddleware injects X-RateLimit-* on the response on its way
+        # back through the stack when `headers_enabled=True`. We seed
+        # Retry-After defensively here so a misconfigured limiter
+        # (`headers_enabled=False`) still gives clients a usable backoff
+        # signal — slowapi will overwrite it when it does fire.
         headers = dict(getattr(exc, "headers", None) or {})
         headers.setdefault("Retry-After", "60")
         return JSONResponse(

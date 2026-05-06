@@ -57,7 +57,7 @@ The backend's CORS configuration is environment-driven (`backend/app/core/config
 | `CORS_ALLOWED_METHODS` | `["GET","POST","PATCH","OPTIONS"]` | same | same |
 | `CORS_ALLOWED_HEADERS` | `["Authorization","Content-Type"]` | same | same |
 
-**Audit findings** (W4):
+**Audit findings:**
 - Backend has zero `@router.delete` routes — soft-deletes go through `PATCH`. `DELETE` is intentionally absent from the default allow-methods.
 - Neither backend nor frontend reference `If-Match`. The header is intentionally absent from the default allow-headers; if optimistic-locking ETags are added later, broaden the env var, do not loosen the code.
 
