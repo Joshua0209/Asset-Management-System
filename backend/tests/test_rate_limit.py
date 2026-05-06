@@ -294,3 +294,68 @@ def test_auth_login_uses_anonymous_tier(enabled_limiter: TestClient) -> None:
             assert response.json()["error"]["code"] == "rate_limit_exceeded"
             break
     assert seen_429, "expected POST /auth/login to enter 429 after exhaustion"
+
+
+def test_rate_limit_handler_is_not_a_coroutine() -> None:
+    """Regression guard for the async-handler trap.
+
+    `register_rate_limit_handler` MUST stay a plain ``def``. slowapi's
+    SlowAPIMiddleware looks up the handler via
+    ``app.exception_handlers[RateLimitExceeded]`` *synchronously* — if a
+    coroutine is registered the middleware silently falls back to slowapi's
+    default plaintext body, breaking the FE's error-envelope contract.
+
+    This test pins the contract directly on the registered handler so a
+    future ``async def`` flip is caught at unit-test speed (no 429-burn
+    integration loop required).
+    """
+    import inspect
+
+    from slowapi.errors import RateLimitExceeded
+
+    test_app = FastAPI()
+    register_rate_limit_handler(test_app)
+
+    handler = test_app.exception_handlers[RateLimitExceeded]
+    assert not inspect.iscoroutinefunction(handler), (
+        "register_rate_limit_handler must register a synchronous `def` "
+        "handler — slowapi.middleware.sync_check_limits cannot await a "
+        "coroutine and silently falls back to its plaintext default."
+    )
+
+
+def test_authenticated_route_inherits_default_tier_limit(
+    enabled_limiter: TestClient,
+    make_user: object,
+    auth_headers: object,
+) -> None:
+    """Routes without an explicit `@limiter.limit` decorator must still be
+    rate-limited via the Limiter's `default_limits` setting.
+
+    Pins the `default_limits=[rate_limit_authenticated]` contract in
+    `app/core/rate_limit.py::_build_limiter` so a future refactor that
+    drops the default leaves a load-bearing test failure rather than a
+    silently uncapped surface. We exercise GET /api/v1/assets/mine, which
+    carries no per-route `@limiter.limit` decorator at the time of
+    writing — the default tier is the only thing protecting it.
+
+    Conftest's RATE_LIMIT_AUTHENTICATED is "5/minute", so the sixth call
+    must 429.
+    """
+    from app.models.user import UserRole
+
+    holder = make_user(role=UserRole.HOLDER)  # type: ignore[operator]
+    headers = auth_headers(holder)  # type: ignore[operator]
+
+    seen_429 = False
+    for _ in range(10):
+        response = enabled_limiter.get("/api/v1/assets/mine", headers=headers)
+        if response.status_code == 429:
+            seen_429 = True
+            body = response.json()
+            assert body["error"]["code"] == "rate_limit_exceeded", body
+            break
+    assert seen_429, (
+        "expected default authenticated tier (5/minute under conftest) to "
+        "kick in on an undecorated authenticated route"
+    )
