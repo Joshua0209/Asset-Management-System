@@ -65,7 +65,10 @@ _STALE_VERSION_MESSAGE = (
 
 
 def _safe_log(value: object) -> str:
-    # Escape CR/LF so user-controlled path params cannot forge log entries (CWE-117).
+    # Defense-in-depth against CWE-117 (log injection). Path params are
+    # already UUID-validated upstream so they cannot contain CR/LF; this
+    # helper keeps the log call safe if a future caller ever passes a
+    # non-UUID value (e.g., free-form id, exception message excerpt).
     return str(value).replace("\r", "\\r").replace("\n", "\\n")
 
 
