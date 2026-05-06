@@ -24,9 +24,19 @@ from app.schemas.auth import (
 from app.schemas.common import DataResponse, error_responses
 from app.schemas.user import UserRead
 
-_settings = get_settings()
-
 logger = logging.getLogger(__name__)
+
+
+def _anonymous_rate_limit() -> str:
+    """Return the current anonymous-tier limit string.
+
+    Passed as a callable to ``@limiter.limit(...)`` so the value is read
+    *per request* rather than baked into the decorator at import time.
+    `get_settings()` is `@lru_cache`-decorated, so this stays cheap; the
+    important property is that conftest can set env vars + clear the cache
+    and the live decorator picks up the change without a re-import dance.
+    """
+    return get_settings().rate_limit_anonymous
 # Routes here have heterogeneous auth requirements (`/register` is public,
 # `/me` is read-only authed, `/users` is manager-only), so the router does
 # not declare a shared `responses=` block — each endpoint enumerates its
@@ -67,7 +77,7 @@ _DUMMY_PASSWORD_HASH = hash_password("placeholder-password-for-timing-equalizati
         status.HTTP_503_SERVICE_UNAVAILABLE,
     ),
 )
-@limiter.limit(_settings.rate_limit_anonymous)
+@limiter.limit(_anonymous_rate_limit)
 def register(
     request: Request, payload: RegisterRequest, db: DbSession
 ) -> DataResponse[UserRead]:
@@ -132,7 +142,7 @@ _INVALID_CREDENTIALS = HTTPException(
         status.HTTP_429_TOO_MANY_REQUESTS,
     ),
 )
-@limiter.limit(_settings.rate_limit_anonymous)
+@limiter.limit(_anonymous_rate_limit)
 def login(
     request: Request, payload: LoginRequest, db: DbSession
 ) -> DataResponse[LoginResponse]:

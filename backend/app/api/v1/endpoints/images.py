@@ -24,7 +24,16 @@ from app.services.image_storage import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_settings = get_settings()
+
+def _image_rate_limit() -> str:
+    """Return the current image-tier limit string.
+
+    Lazy callable form (vs ``@limiter.limit(<str>)``) so the value is
+    re-read per request and tests that toggle env vars don't have to
+    work around an import-time string baked into the decorator.
+    """
+    return get_settings().rate_limit_images
+
 
 DbSession = Annotated[Session, Depends(get_db)]
 ImageIdPath = UUIDPath
@@ -61,7 +70,7 @@ _ERROR_RESPONSES = error_responses(
         **_ERROR_RESPONSES,
     },
 )
-@limiter.limit(_settings.rate_limit_images)
+@limiter.limit(_image_rate_limit)
 def get_image(
     request: Request,
     image_id: ImageIdPath,
