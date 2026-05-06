@@ -29,6 +29,14 @@ dev = [
   "pytest-cov>=5.0,<6.0",
   "ruff>=0.5,<1.0",
 ]
+# Production-only runtime extras. Kept separate from `dev` so the prod
+# Docker image can install `.[prod]` without pulling pytest/mypy/ruff.
+# gunicorn supervises uvicorn workers — it's what handles SIGTERM cleanly
+# during ECS rolling deploys.
+prod = [
+  "gunicorn>=22.0,<24.0",
+  "boto3>=1.34,<2.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
