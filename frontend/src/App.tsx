@@ -10,6 +10,8 @@ import { ConfigProvider, theme } from "antd";
 import MainLayout from "./components/layout/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import AssetList from "./pages/AssetList";
+import MyAssetList from "./pages/MyAssetList";
+import AssetDetail from "./pages/AssetDetail";
 import Reviews from "./pages/Reviews";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
@@ -87,15 +89,19 @@ export const routes: RouteObject[] = [
             children: [
               { index: true, element: <RoleLandingRedirect /> },
               { path: "forbidden", element: <Forbidden /> },
-              { path: "assets", element: <AssetList /> },
+              { path: "assets/:id", element: <AssetDetail /> },
               {
                 element: <ProtectedRoute allowedRoles={["holder"]} />,
-                children: [{ path: "repairs/new", element: <SubmitRepairRequest /> }],
+                children: [
+                  { path: "my-assets", element: <MyAssetList /> },
+                  { path: "repairs/new", element: <SubmitRepairRequest /> },
+                ],
               },
               {
                 element: <ProtectedRoute allowedRoles={["manager"]} />,
                 children: [
                   { path: "dashboard", element: <Dashboard /> },
+                  { path: "assets", element: <AssetList /> },
                   { path: "reviews", element: <Reviews /> },
                 ],
               },

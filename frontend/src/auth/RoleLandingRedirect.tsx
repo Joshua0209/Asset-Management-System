@@ -5,7 +5,7 @@ import { useAuth } from "./AuthContext";
 const RoleLandingRedirect: React.FC = () => {
   const { user } = useAuth();
   if (user?.role === "manager") return <Navigate to="/dashboard" replace />;
-  if (user?.role === "holder") return <Navigate to="/assets" replace />;
+  if (user?.role === "holder") return <Navigate to="/my-assets" replace />;
   return <Navigate to="/forbidden" replace />;
 };
 

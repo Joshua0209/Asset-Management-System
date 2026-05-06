@@ -6,11 +6,13 @@
       "submit": "送出",
       "confirm": "確認",
       "delete": "刪除",
-      "edit": "編輯"
+      "edit": "編輯",
+      "back": "返回"
     },
     "nav": {
       "dashboard": "儀表板",
       "assets": "資產",
+      "myAssets": "我的資產",
       "repairs": "維修申請",
       "reviews": "審核",
       "users": "使用者",
@@ -175,6 +177,10 @@
       "holdersLoadErrorTitle": "載入持有者清單失敗"
     },
     "serverError": "伺服器發生錯誤，請稍後再試",
+    "error": {
+      "notFound": "找不到該資產",
+      "forbidden": "您沒有權限查看此資產"
+    },
     "loginFailed": "電子郵件或密碼錯誤"
   },
   "reviews": {

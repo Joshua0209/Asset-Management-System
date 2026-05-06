@@ -84,8 +84,8 @@ The team adopts a new FE division for Week 3: **split by audience, not by featur
 
 | Page | Status | Target | Notes |
 |------|--------|--------|-------|
-| Asset detail | ⏳ Pending | Wed | Read-only view of asset metadata; manager view (FE-1) layers in edit/assign actions |
-| My assets list (holder view) | ⏳ Pending | Wed | Reuses the shared list table component but reads from `GET /assets/mine` |
+| Asset detail | ✅ Done | Wed | Read-only view of asset metadata; manager view (FE-1) layers in edit/assign actions |
+| My assets list (holder view) | ✅ Done | Wed | Reuses the shared list table component and reads from `GET /assets/mine` |
 | Repair request list | ⏳ Pending | Wed–Thu | Status badges, sortable columns. Manager sees all; holder sees own only — same component, role-aware filter |
 | Repair request detail | ⏳ Pending | Thu–Fri | Timeline view of workflow stages, status transitions, manager comments |
 | Image display on repair detail | ⏳ Pending | Fri | Thumbnail grid, click-to-enlarge modal. **Risk:** depends on backend image upload landing Wed–Thu. Fallback: placeholder thumbnails using mock URLs if BE slips, real wiring lands first thing W4 |

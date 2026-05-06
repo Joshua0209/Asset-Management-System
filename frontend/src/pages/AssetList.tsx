@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Button,
@@ -10,7 +10,6 @@ import {
   Select,
   Space,
   Table,
-  Tag,
   Typography,
   notification,
 } from 'antd';
@@ -21,24 +20,16 @@ import { useAuth } from '../auth/AuthContext';
 import { ApiError, assetsApi, usersApi } from '../api';
 import { getApiErrorMessage } from '../utils/apiErrors';
 import { createAmountValidator } from '../utils/validators';
+import { formatDateValue, formatAmountValue } from '../utils/format';
+import { PAGE_SIZE_OPTIONS } from '../components/assets/constants';
+import { getAssetColumns } from '../components/assets/columns';
 import type {
   AssetCategory,
   AssetCreatePayload,
   AssetRecord,
-  AssetStatus,
   AssetUpdatePayload,
 } from '../api/assets';
 import type { UserRecord } from '../api/users';
-
-const STATUS_COLORS: Record<AssetStatus, string> = {
-  in_stock: 'default',
-  in_use: 'success',
-  pending_repair: 'processing',
-  under_repair: 'warning',
-  disposed: 'error',
-};
-
-const PAGE_SIZE_OPTIONS = [5, 10, 20];
 const CATEGORY_OPTIONS: AssetCategory[] = [
   'phone',
   'computer',
@@ -147,30 +138,6 @@ const AssetList: React.FC = () => {
 
   const isManager = user?.role === 'manager';
 
-  const moneyFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: 'TWD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }),
-    [],
-  );
-
-  const formatDateValue = (value: string | null): string => {
-    if (!value) {
-      return t('assetList.detail.notAvailable');
-    }
-
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
-  };
-
-  const formatAmountValue = (value: string | number): string => {
-    const parsed = Number.parseFloat(String(value));
-    return Number.isNaN(parsed) ? String(value) : moneyFormatter.format(parsed);
-  };
 
   useEffect(() => {
     setPage(1);
@@ -230,7 +197,7 @@ const AssetList: React.FC = () => {
     let cancelled = false;
     const loadHolders = async () => {
       try {
-        const response = await usersApi.listUsers({ page: 1, perPage: 200, role: 'holder' });
+        const response = await usersApi.listUsers({ page: 1, perPage: 100, role: 'holder' });
         if (!cancelled) {
           setHolders(response.data);
         }
@@ -425,100 +392,44 @@ const AssetList: React.FC = () => {
     }
   };
 
-  const columns: TableColumnsType<AssetRecord> = [
-    {
-      title: t('assetList.columns.assetCode'),
-      dataIndex: 'asset_code',
-      key: 'asset_code',
-      render: (value: string) => <span style={{ fontFamily: 'monospace' }}>{value}</span>,
-      width: 150,
-    },
-    {
-      title: t('assetList.columns.name'),
-      dataIndex: 'name',
-      key: 'name',
-      ellipsis: true,
-      width: 210,
-    },
-    {
-      title: t('assetList.columns.category'),
-      dataIndex: 'category',
-      key: 'category',
-      width: 120,
-    },
-    {
-      title: t('assetList.columns.department'),
-      dataIndex: 'department',
-      key: 'department',
-      width: 130,
-    },
-    {
-      title: t('assetList.columns.location'),
-      dataIndex: 'location',
-      key: 'location',
-      width: 150,
-    },
-    {
-      title: t('assetList.columns.status'),
-      dataIndex: 'status',
-      key: 'status',
-      width: 140,
-      render: (status: AssetStatus) => (
-        <Tag color={STATUS_COLORS[status]}>{t(`assetList.status.${status}`)}</Tag>
-      ),
-    },
-    {
-      title: t('assetList.columns.purchaseAmount'),
-      dataIndex: 'purchase_amount',
-      key: 'purchase_amount',
-      width: 160,
-      align: 'right',
-      render: (amount: string) => formatAmountValue(amount),
-    },
-    {
-      title: t('assetList.columns.purchaseDate'),
-      dataIndex: 'purchase_date',
-      key: 'purchase_date',
-      width: 150,
-      render: (value: string) => formatDateValue(value),
-    },
-    {
-      title: t('assetList.columns.actions'),
-      key: 'actions',
-      width: isManager ? 260 : 110,
-      render: (_: unknown, asset: AssetRecord) => (
-        <Space size={4} wrap>
-          <Button type="link" onClick={() => setDetailAsset(asset)}>
-            {t('assetList.actions.detail')}
+  const actionsColumn: TableColumnsType<AssetRecord>[number] = {
+    title: t('assetList.columns.actions'),
+    key: 'actions',
+    width: isManager ? 260 : 110,
+    render: (_: unknown, asset: AssetRecord) => (
+      <Space size={4} wrap>
+        <Button type="link" onClick={() => setDetailAsset(asset)}>
+          {t('assetList.actions.detail')}
+        </Button>
+
+        {isManager ? (
+          <Button type="link" onClick={() => openEditModal(asset)}>
+            {t('assetList.actions.edit')}
           </Button>
+        ) : null}
 
-          {isManager ? (
-            <Button type="link" onClick={() => openEditModal(asset)}>
-              {t('assetList.actions.edit')}
-            </Button>
-          ) : null}
+        {isManager && asset.status === 'in_stock' ? (
+          <Button type="link" onClick={() => openAssignModal(asset)}>
+            {t('assetList.actions.assign')}
+          </Button>
+        ) : null}
 
-          {isManager && asset.status === 'in_stock' ? (
-            <Button type="link" onClick={() => openAssignModal(asset)}>
-              {t('assetList.actions.assign')}
-            </Button>
-          ) : null}
+        {isManager && asset.status === 'in_use' ? (
+          <Button type="link" onClick={() => openAssignModal(asset)}>
+            {t('assetList.actions.unassign')}
+          </Button>
+        ) : null}
 
-          {isManager && asset.status === 'in_use' ? (
-            <Button type="link" onClick={() => openAssignModal(asset)}>
-              {t('assetList.actions.unassign')}
-            </Button>
-          ) : null}
+        {isManager && asset.status === 'in_stock' ? (
+          <Button type="link" danger onClick={() => openDisposeModal(asset)}>
+            {t('assetList.actions.dispose')}
+          </Button>
+        ) : null}
+      </Space>
+    ),
+  };
 
-          {isManager && asset.status === 'in_stock' ? (
-            <Button type="link" danger onClick={() => openDisposeModal(asset)}>
-              {t('assetList.actions.dispose')}
-            </Button>
-          ) : null}
-        </Space>
-      ),
-    },
-  ];
+  const columns: TableColumnsType<AssetRecord> = [...getAssetColumns(t), actionsColumn];
 
   return (
     <Space orientation="vertical" size={16} style={{ width: '100%' }}>
@@ -603,10 +514,10 @@ const AssetList: React.FC = () => {
                   {detailAsset.supplier}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('assetList.detail.activationDate')}>
-                  {formatDateValue(detailAsset.activation_date)}
+                  {formatDateValue(detailAsset.activation_date, t)}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('assetList.detail.warrantyExpiry')}>
-                  {formatDateValue(detailAsset.warranty_expiry)}
+                  {formatDateValue(detailAsset.warranty_expiry, t)}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('assetList.columns.department')}>
                   {detailAsset.department}
@@ -618,7 +529,7 @@ const AssetList: React.FC = () => {
                   {formatAmountValue(detailAsset.purchase_amount)}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('assetList.columns.purchaseDate')}>
-                  {formatDateValue(detailAsset.purchase_date)}
+                  {formatDateValue(detailAsset.purchase_date, t)}
                 </Descriptions.Item>
               </Descriptions>
             ) : null}
