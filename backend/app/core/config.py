@@ -23,6 +23,24 @@ class Settings(BaseSettings):
 
     repair_upload_dir: str = "uploads/repair-requests"
 
+    # Rate limiting (slowapi, in-memory per-process — see
+    # docs/system-design/05-phase2-architecture.md for the no-Redis decision).
+    # `rate_limit_enabled=False` lets the test suite no-op the limiter without
+    # patching every fixture; production must keep this true.
+    rate_limit_enabled: bool = True
+    rate_limit_authenticated: str = "100/minute"
+    rate_limit_anonymous: str = "30/minute"
+    # Image polling (`GET /images/{id}`) can legitimately fan out when a holder
+    # browses several repair requests with attachments. Higher tier so a normal
+    # session does not bump into the authenticated default.
+    rate_limit_images: str = "300/minute"
+
+    # CORS — methods/headers default to the *actual* surface of this API
+    # (no DELETE routes; no If-Match in either backend or frontend). Operators
+    # broaden via env when a new endpoint adds either.
+    cors_allowed_methods: list[str] = ["GET", "POST", "PATCH", "OPTIONS"]
+    cors_allowed_headers: list[str] = ["Authorization", "Content-Type"]
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
