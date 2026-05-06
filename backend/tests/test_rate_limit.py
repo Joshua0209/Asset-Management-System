@@ -132,6 +132,42 @@ def test_key_func_ignores_non_bearer_authorization() -> None:
     assert get_rate_limit_key(request) == "10.10.10.10"
 
 
+def test_key_func_uses_xforwarded_for_when_present() -> None:
+    """Anonymous bucket must split on the original client IP behind a proxy.
+
+    Regression guard for the ALB self-DoS: if `_client_ip` ever stops
+    reading X-Forwarded-For, every anonymous request collapses to the
+    proxy IP and one attacker drains the global anon quota.
+
+    The header is hyphen-cased here on purpose — slowapi's built-in
+    ``get_ipaddr`` looks up underscores, which Starlette never matches.
+    """
+    from unittest.mock import MagicMock
+
+    request = MagicMock()
+    request.headers = {"x-forwarded-for": "203.0.113.7, 10.0.0.5"}
+    # ALB private IP — what request.client.host would be without proxy-headers.
+    request.client.host = "10.0.0.5"
+
+    # Leftmost (original client), not the proxy.
+    assert get_rate_limit_key(request) == "203.0.113.7"
+
+
+def test_key_func_xforwarded_for_takes_precedence_over_client_host() -> None:
+    """XFF wins over client.host even when client.host is set.
+
+    Production trust comes from uvicorn's --forwarded-allow-ips gate,
+    not from this code. The application layer is defense-in-depth.
+    """
+    from unittest.mock import MagicMock
+
+    request = MagicMock()
+    request.headers = {"x-forwarded-for": "198.51.100.42"}
+    request.client.host = "10.0.0.5"
+
+    assert get_rate_limit_key(request) == "198.51.100.42"
+
+
 def test_anonymous_buckets_are_per_ip(rl_client: TestClient) -> None:
     """Two distinct client IPs share separate quotas.
 

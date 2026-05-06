@@ -71,6 +71,29 @@ The limiter (`backend/app/core/rate_limit.py`) is in-process via slowapi. Per `0
 
 **ECS task command:** keep `--workers 1` until rate limits are backed by Redis. Auto-scaling at the *task* level (not the worker level) is the supported scaling axis.
 
+### Behind the ALB: client-IP resolution (CRITICAL)
+
+By default Starlette's `request.client.host` is the **immediate TCP peer** — behind an ALB that is the load-balancer's private IP, so every anonymous request would collapse into one bucket and the limiter would silently become a self-DoS (one attacker burns the global anon quota for every other user).
+
+The mitigation has two layers and both are required for a hardened production deploy:
+
+1. **Run uvicorn with proxy-headers enabled, scoped to the ALB CIDR.** Add to the ECS task command:
+
+   ```text
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 \
+     --workers 1 \
+     --proxy-headers \
+     --forwarded-allow-ips="<ALB-VPC-CIDR>"
+   ```
+
+   `--forwarded-allow-ips` is the trust gate: uvicorn's `ProxyHeadersMiddleware` only rewrites `request.client.host` from `X-Forwarded-For` when the immediate TCP peer is in this allowlist. Without it, an attacker hitting the task directly could spoof XFF and inject any IP they like into the bucket key. Use the **VPC CIDR of the ALB subnets** (e.g. `10.0.0.0/16`), not `*` and not the public ALB IP — public IPs rotate, the VPC CIDR is stable.
+
+2. **Application-layer fallback (`backend/app/core/rate_limit.py`).** `_client_ip()` reads the `X-Forwarded-For` header explicitly (correct hyphen-cased form, leftmost IP) before falling back to `request.client.host`. This is defense-in-depth: even if step 1 is mis-configured the bucket key will still vary per client. It is *not* a substitute for step 1 — without uvicorn's trust gate, XFF is forgeable.
+
+**Verification after rollout:** `curl -H 'X-Forwarded-For: 1.2.3.4' https://<api>/health` from outside the VPC should NOT shift the bucket key (i.e. response headers should keep the same `X-RateLimit-Remaining` for repeated calls with the same source IP regardless of the spoofed XFF). If repeated calls drain the quota normally, step 1 is working.
+
+### Env-var matrix
+
 | Env var | Production default |
 |---|---|
 | `RATE_LIMIT_ENABLED` | `true` |
