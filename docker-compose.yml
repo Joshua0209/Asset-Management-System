@@ -32,14 +32,17 @@ services:
       # Browser origin is the host's published port, not the container.
       CORS_ALLOWED_ORIGINS: '["http://localhost:5173"]'
       # Persisted via the named volume below so uploads survive restarts.
-      REPAIR_UPLOAD_DIR: /app/uploads/repair-requests
+      # Lives outside /app so the bind mount on /app cannot mask the image's
+      # app-owned mkdir that seeds the volume's initial permissions.
+      REPAIR_UPLOAD_DIR: /var/lib/ams/uploads/repair-requests
     ports:
       - "8000:8000"
     volumes:
       # Bind-mount source so uvicorn --reload picks up host edits.
       - ./backend:/app
-      # Named volume keeps repair-image uploads outside the bind mount.
-      - backend_uploads:/app/uploads
+      # Named volume keeps repair-image uploads outside the /app bind mount,
+      # which is what lets it inherit app-owned permissions from the image.
+      - backend_uploads:/var/lib/ams/uploads
     # Migrations run on every start (idempotent). Seeding is destructive
     # (wipes all tables before re-seeding) and gated behind AMS_SEED_CONFIRM=1,
     # so it is a one-shot — see README "Option A" for the seeding command.

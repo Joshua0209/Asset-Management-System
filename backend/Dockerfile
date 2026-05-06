@@ -24,11 +24,12 @@ COPY pyproject.toml README.md ./
 COPY app ./app
 RUN pip install --no-cache-dir -e '.[dev]'
 
-# Drop root before runtime. The uploads dir is pre-created so the named
-# volume initialises with app-owned permissions on first mount.
+# Drop root before runtime. The uploads dir lives outside /app so the
+# compose bind mount on /app cannot mask it; the named volume mounting
+# on /var/lib/ams/uploads then inherits the image's app-owned permissions.
 RUN useradd --create-home --uid 1000 app \
-    && mkdir -p /app/uploads \
-    && chown -R app:app /app
+    && mkdir -p /var/lib/ams/uploads \
+    && chown -R app:app /app /var/lib/ams
 USER app
 
 EXPOSE 8000
