@@ -123,3 +123,61 @@ def test_disabled_limiter_is_a_noop() -> None:
         for _ in range(5):
             response = client.get("/probe")
             assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Per-endpoint application tests — exercise the *real* app with a temporary
+# enabled limiter so /health exempt and the auth-endpoints anonymous tier
+# behave as the spec requires.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def enabled_limiter(client: TestClient) -> Generator[TestClient, None, None]:
+    """Re-enable the production app's limiter with tight test-friendly limits.
+
+    Layers on top of the conftest ``client`` fixture so ``get_db`` remains
+    overridden against the in-memory SQLite test engine. Only the limiter
+    is swapped — routes, middleware, and DB binding all stay intact.
+    """
+    from app.main import app
+
+    saved = app.state.limiter
+    app.state.limiter = Limiter(
+        key_func=get_rate_limit_key,
+        default_limits=["5/minute"],
+        enabled=True,
+        headers_enabled=True,
+    )
+    try:
+        yield client
+    finally:
+        app.state.limiter = saved
+
+
+def test_health_endpoint_is_exempt_from_rate_limit(
+    enabled_limiter: TestClient,
+) -> None:
+    """/health serves monitoring probes — must not 429 even after many hits."""
+    for _ in range(20):
+        response = enabled_limiter.get("/health")
+        assert response.status_code == 200, response.text
+
+
+def test_auth_login_uses_anonymous_tier(enabled_limiter: TestClient) -> None:
+    """POST /auth/login must 429 once the anonymous-IP budget is spent.
+
+    Default-tier budget here is 5/minute; the auth endpoints should also
+    carry a per-IP decorator so the tighter limit kicks in.
+    """
+    seen_429 = False
+    for _ in range(15):
+        response = enabled_limiter.post(
+            "/api/v1/auth/login",
+            json={"email": "nope@example.com", "password": "wrongpass"},
+        )
+        if response.status_code == 429:
+            seen_429 = True
+            assert response.json()["error"]["code"] == "rate_limit_exceeded"
+            break
+    assert seen_429, "expected POST /auth/login to enter 429 after exhaustion"
