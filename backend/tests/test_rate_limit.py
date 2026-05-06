@@ -83,6 +83,55 @@ def test_2xx_responses_carry_x_ratelimit_headers(rl_client: TestClient) -> None:
     assert "x-ratelimit-reset" in headers
 
 
+def test_key_func_authenticated_returns_user_sub(make_user: object) -> None:
+    """A valid bearer token should bucket as ``user:<sub>``."""
+    from unittest.mock import MagicMock
+
+    from app.core.security import create_access_token
+    from app.models.user import UserRole
+
+    token, _ = create_access_token(subject="user-42", role=UserRole.HOLDER)
+
+    request = MagicMock()
+    request.headers = {"authorization": f"Bearer {token}"}
+    request.client.host = "10.0.0.1"
+
+    assert get_rate_limit_key(request) == "user:user-42"
+
+
+def test_key_func_falls_back_to_ip_for_garbage_token() -> None:
+    """An expired/tampered token must fall back to ``get_remote_address``."""
+    from unittest.mock import MagicMock
+
+    request = MagicMock()
+    request.headers = {"authorization": "Bearer not-a-real-jwt"}
+    request.client.host = "192.168.0.1"
+
+    # Falls back to IP rather than 500-ing on bad tokens.
+    assert get_rate_limit_key(request) == "192.168.0.1"
+
+
+def test_key_func_falls_back_to_ip_when_header_missing() -> None:
+    from unittest.mock import MagicMock
+
+    request = MagicMock()
+    request.headers = {}
+    request.client.host = "172.16.0.5"
+
+    assert get_rate_limit_key(request) == "172.16.0.5"
+
+
+def test_key_func_ignores_non_bearer_authorization() -> None:
+    """Basic-auth and other schemes should not be parsed as JWTs."""
+    from unittest.mock import MagicMock
+
+    request = MagicMock()
+    request.headers = {"authorization": "Basic dXNlcjpwYXNz"}
+    request.client.host = "10.10.10.10"
+
+    assert get_rate_limit_key(request) == "10.10.10.10"
+
+
 def test_anonymous_buckets_are_per_ip(rl_client: TestClient) -> None:
     """Two distinct client IPs share separate quotas.
 

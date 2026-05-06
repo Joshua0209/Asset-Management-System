@@ -44,3 +44,36 @@
 | Phase 1 | Daily `mysqldump` to S3 | 24 hours | 4 hours (manual restore) |
 | Phase 2 | RDS automated backups + snapshots | 5 minutes (PITR) | 30 minutes |
 | Phase 3 | RDS automated backups + cross-region snapshot replication | 5 minutes | 15 minutes |
+
+---
+
+## API Hardening: CORS Allowlist (Phase 2 AWS Rollout)
+
+The backend's CORS configuration is environment-driven (`backend/app/core/config.py` → `Settings.cors_allowed_*`). Set the following on the ECS task definition / Secrets Manager when promoting between environments. **Do not** ship a wildcard origin to anything serving real users.
+
+| Env var | Local dev | Staging | Production |
+|---|---|---|---|
+| `CORS_ALLOWED_ORIGINS` | `["http://localhost:5173"]` | `["https://staging.ams.example.com"]` | `["https://ams.example.com"]` |
+| `CORS_ALLOWED_METHODS` | `["GET","POST","PATCH","OPTIONS"]` | same | same |
+| `CORS_ALLOWED_HEADERS` | `["Authorization","Content-Type"]` | same | same |
+
+**Audit findings** (W4):
+- Backend has zero `@router.delete` routes — soft-deletes go through `PATCH`. `DELETE` is intentionally absent from the default allow-methods.
+- Neither backend nor frontend reference `If-Match`. The header is intentionally absent from the default allow-headers; if optimistic-locking ETags are added later, broaden the env var, do not loosen the code.
+
+When adding a new client surface (mobile webview, marketing site, etc.) the **only** change required is appending its origin to `CORS_ALLOWED_ORIGINS` in the task definition — no code or container rebuild.
+
+---
+
+## API Hardening: Rate Limiting (Phase 2)
+
+The limiter (`backend/app/core/rate_limit.py`) is in-process via slowapi. Per `05-phase2-architecture.md` we explicitly skipped Redis for Phase 2 — the trade-off is that running multiple Uvicorn workers per task multiplies the effective limit (a single user can burst N× the configured rate, where N is `--workers`). Acceptable at ~4 QPS; revisit when Phase 3 lands a shared store.
+
+**ECS task command:** keep `--workers 1` until rate limits are backed by Redis. Auto-scaling at the *task* level (not the worker level) is the supported scaling axis.
+
+| Env var | Production default |
+|---|---|
+| `RATE_LIMIT_ENABLED` | `true` |
+| `RATE_LIMIT_AUTHENTICATED` | `100/minute` |
+| `RATE_LIMIT_ANONYMOUS` | `30/minute` |
+| `RATE_LIMIT_IMAGES` | `300/minute` |
