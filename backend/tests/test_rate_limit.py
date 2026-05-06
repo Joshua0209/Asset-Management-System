@@ -168,15 +168,22 @@ def test_key_func_xforwarded_for_takes_precedence_over_client_host() -> None:
     assert get_rate_limit_key(request) == "198.51.100.42"
 
 
-def test_anonymous_buckets_are_per_ip(rl_client: TestClient) -> None:
-    """Two distinct client IPs share separate quotas.
+def test_fresh_limiter_starts_at_full_quota(rl_client: TestClient) -> None:
+    """A fresh Limiter instance is unaffected by a sibling's exhausted bucket.
 
-    TestClient defaults to 'testclient' for the remote address, but slowapi's
-    `get_remote_address` reads `request.client.host`. The TestClient honors
-    the `client` kwarg per-request only via ASGI scope, so we use distinct
-    `X-Forwarded-For` would not work without trusting it; instead we bracket
-    by exhausting one client and verifying a second `TestClient` on a fresh
-    app sees full quota.
+    Originally named ``test_anonymous_buckets_are_per_ip``, but TestClient
+    cannot vary ``request.client.host`` per-request (the underlying ASGI
+    scope is fixed at construction time, and slowapi's `get_remote_address`
+    reads `client.host` directly). The actual per-IP bucketing test lives
+    on the unit-level: ``test_key_func_uses_xforwarded_for_when_present``
+    drives `_client_ip()` with a `MagicMock` and confirms two XFFs produce
+    two distinct bucket keys.
+
+    What this test *does* lock down is that each Limiter has its own
+    in-memory storage — exhausting `rl_client` does not bleed into a
+    second app's counters. A regression here (e.g. a shared module-level
+    storage) would cross-contaminate concurrent test apps and break
+    isolation.
     """
     # Same app, same key (testclient host). Burn 3 requests, fourth blocks.
     for _ in range(3):
