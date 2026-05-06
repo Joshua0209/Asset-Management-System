@@ -4,17 +4,10 @@ import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { RcFile, UploadFile } from 'antd/es/upload/interface';
-import { API_BASE } from '../api';
+import { ApiError, request } from '../api';
 
 const { Title } = Typography;
 const { TextArea } = Input;
-
-interface ErrorEnvelope {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-}
 
 const SubmitRepairRequest: React.FC = () => {
   const { t } = useTranslation();
@@ -63,32 +56,20 @@ const SubmitRepairRequest: React.FC = () => {
     });
 
     try {
-      const response = await fetch(`${API_BASE}/repair-requests`, {
+      await request({
         method: 'POST',
-        headers: {
-          // Note: Content-Type is handled automatically by fetch for FormData
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: formData,
+        url: '/repair-requests',
+        data: formData,
       });
-
-      if (response.ok) {
-        message.success(t('common.repairRequest.successMessage'));
-        navigate('/reviews'); // Or wherever it makes sense to go after
-      } else {
-        let errorData: ErrorEnvelope | null = null;
-        try {
-          errorData = (await response.json()) as ErrorEnvelope;
-        } catch {
-          // Non-JSON responses (e.g., proxy misroutes) still surface a friendly fallback.
-        }
-        message.error(
-          getErrorMessageByCode(errorData?.error?.code, errorData?.error?.message),
-        );
-      }
+      message.success(t('common.repairRequest.successMessage'));
+      navigate('/repairs');
     } catch (error) {
-      console.error('Submission error:', error);
-      message.error(t('common.repairRequest.errorMessage'));
+      if (error instanceof ApiError) {
+        message.error(getErrorMessageByCode(error.code, error.message));
+      } else {
+        console.error('Submission error:', error);
+        message.error(t('common.repairRequest.errorMessage'));
+      }
     } finally {
       setSubmitting(false);
     }

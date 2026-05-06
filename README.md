@@ -88,7 +88,7 @@ The team adopts a new FE division for Week 3: **split by audience, not by featur
 | My assets list (holder view) | ✅ Done | Wed | Reuses the shared list table component and reads from `GET /assets/mine` |
 | Repair request list | ✅ Done | Wed–Thu | Status badges, sortable columns, pagination. Reads from `GET /repair-requests` |
 | Repair request detail | ✅ Done | Thu–Fri | Timeline view of workflow stages, status transitions, asset info, and fault description |
-| Image display on repair detail | ⏳ Pending | Fri | Thumbnail grid, click-to-enlarge modal. **Risk:** depends on backend image upload landing Wed–Thu. Fallback: placeholder thumbnails using mock URLs if BE slips, real wiring lands first thing W4 |
+| Image display on repair detail | ✅ Done | Fri | Authenticated thumbnail grid with click-to-enlarge modal (uses `AuthImage` component) |
 
 #### FE-3 — Integration & quality
 

@@ -83,6 +83,17 @@ Object.defineProperty(globalThis, 'getComputedStyle', {
   configurable: true,
   value: (element: Element) => originalGetComputedStyle(element),
 });
+
+// Mock URL.createObjectURL and URL.revokeObjectURL for jsdom
+Object.defineProperty(URL, 'createObjectURL', {
+  writable: true,
+  value: () => 'blob:mock-url',
+});
+Object.defineProperty(URL, 'revokeObjectURL', {
+  writable: true,
+  value: () => {},
+});
+
 // Fix for Vitest + React Router + JSDOM AbortSignal mismatch
 // This happens because React Router uses the global Request/Fetch which might be from Node (undici)
 // while JSDOM provides its own AbortSignal.

@@ -12,11 +12,19 @@ vi.mock("../api", async () => {
     repairRequestsApi: {
       getRepairRequestById: vi.fn(),
     },
+    apiClient: {
+      get: vi.fn(),
+      interceptors: {
+        request: { use: vi.fn(), eject: vi.fn() },
+        response: { use: vi.fn(), eject: vi.fn() },
+      },
+    },
   };
 });
 
 const apiModule = await import("../api");
 const mockGetRepairRequestById = vi.mocked(apiModule.repairRequestsApi.getRepairRequestById);
+const mockApiClientGet = vi.mocked(apiModule.apiClient.get);
 
 const mockRequest = {
   id: "req-1",
@@ -46,6 +54,8 @@ const mockRequest = {
 describe("RepairRequestDetail", () => {
   beforeEach(async () => {
     mockGetRepairRequestById.mockReset();
+    mockApiClientGet.mockReset();
+    mockApiClientGet.mockResolvedValue({ data: new Blob(["mock-image-data"], { type: "image/jpeg" }) });
     await act(async () => {
       await i18n.changeLanguage("en");
     });
@@ -72,6 +82,13 @@ describe("RepairRequestDetail", () => {
     expect(screen.getByText("AST-001")).toBeInTheDocument();
     expect(screen.getByText("Screen flicker")).toBeInTheDocument();
     expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
+
+    // Check images
+    await waitFor(() => {
+      const img = screen.getByAltText("Fault");
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute("src", "blob:mock-url");
+    });
 
     // Check result section (visible because status is completed)
     expect(screen.getByText("Genius Bar")).toBeInTheDocument();
