@@ -305,14 +305,17 @@ def _commit_repair_change(
     except IntegrityError as exc:
         # State conflict — not retryable.
         db.rollback()
-        logger.warning("%s integrity error: %s", log_context, exc)
+        # exc_info=True so the traceback identifies which setattr corrupted
+        # state (str(IntegrityError) truncates at [parameters: ...] and
+        # discards the call-site frame).
+        logger.warning("%s integrity error: %s", log_context, exc, exc_info=True)
         raise _conflict(
             "Repair request could not be updated due to a conflicting state."
         ) from exc
     except DataError as exc:
         # Caller's input → validation_error (422).
         db.rollback()
-        logger.warning("%s data error: %s", log_context, exc)
+        logger.warning("%s data error: %s", log_context, exc, exc_info=True)
         raise _validation_error(
             "Repair request payload contains invalid values."
         ) from exc
@@ -611,7 +614,8 @@ def get_repair_request(
     except HTTPException:
         raise
     except SQLAlchemyError as exc:
-        db.rollback()
+        # Read-only handler — no rollback needed; consistent with list_assets,
+        # list_repair_requests, get_asset, list_asset_history.
         logger.error(
             "Failed to get repair request: %s",
             exc,
@@ -663,9 +667,13 @@ def approve_repair_request(
         )
         return _commit_repair_change(db, repair_request, "Repair request approval")
     except HTTPException:
-        db.rollback()
+        # _commit_repair_change owns rollback for the commit path; precondition
+        # raises (_ensure_*) happen before any pending writes.
         raise
     except Exception:
+        # Catch-all so the audit row never lands without the FSM commit. The
+        # raised exception is rewrapped into the project envelope by the
+        # global handler in app/main.py.
         db.rollback()
         logger.exception("Unexpected error in approve_repair_request")
         raise
@@ -715,7 +723,6 @@ def reject_repair_request(
         )
         return _commit_repair_change(db, repair_request, "Repair request rejection")
     except HTTPException:
-        db.rollback()
         raise
     except Exception:
         db.rollback()
@@ -770,7 +777,6 @@ def update_repair_details(
             setattr(repair_request, field_name, value)
         return _commit_repair_change(db, repair_request, "Repair details update")
     except HTTPException:
-        db.rollback()
         raise
     except Exception:
         db.rollback()
@@ -829,7 +835,6 @@ def complete_repair_request(
         )
         return _commit_repair_change(db, repair_request, "Repair request completion")
     except HTTPException:
-        db.rollback()
         raise
     except Exception:
         db.rollback()
@@ -919,6 +924,9 @@ async def submit_repair_request(
         committed = True
         return result
     except HTTPException:
+        # Roll back any pending FSM mutation / audit row / image FK rows so
+        # the session never half-commits when a precondition raises.
+        db.rollback()
         raise
     except StaleDataError as exc:
         db.rollback()
@@ -946,6 +954,14 @@ async def submit_repair_request(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to submit repair request. Please try again later.",
         ) from exc
+    except Exception:
+        # Catch-all so the audit row never lands without the FSM commit (e.g.,
+        # if record_asset_action raises a non-DB exception). The exception is
+        # rewrapped into the project envelope by the global handler in
+        # app/main.py.
+        db.rollback()
+        logger.exception("Unexpected error in submit_repair_request")
+        raise
     finally:
         if not committed and saved_keys:
             try:
