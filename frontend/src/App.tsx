@@ -13,6 +13,8 @@ import AssetList from "./pages/AssetList";
 import MyAssetList from "./pages/MyAssetList";
 import AssetDetail from "./pages/AssetDetail";
 import Reviews from "./pages/Reviews";
+import RepairRequestList from "./pages/RepairRequestList";
+import RepairRequestDetail from "./pages/RepairRequestDetail";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import Forbidden from "./pages/Forbidden";
@@ -94,7 +96,9 @@ export const routes: RouteObject[] = [
                 element: <ProtectedRoute allowedRoles={["holder"]} />,
                 children: [
                   { path: "my-assets", element: <MyAssetList /> },
+                  { path: "repairs", element: <RepairRequestList /> },
                   { path: "repairs/new", element: <SubmitRepairRequest /> },
+                  { path: "repairs/:id", element: <RepairRequestDetail /> },
                 ],
               },
               {
