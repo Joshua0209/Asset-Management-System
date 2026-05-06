@@ -41,7 +41,7 @@ Core modules: asset basic-info management, and the repair request workflow (appl
 
 `docker-compose.yml` runs the full dev stack — `mysql` + `backend` + `frontend` — and is the recommended local workflow (README "Option A"). Conventions worth knowing before touching it:
 
-- **Both app images are dev-only.** Backend uses `pip install -e '.[dev]'` then `uvicorn --reload`; frontend uses `npm ci --ignore-scripts` then `vite --host`. There is no `Dockerfile.prod` yet — production ECS images per `docs/system-design/05-phase2-architecture.md` will get separate multi-stage Dockerfiles when Phase 2 deployment lands. Don't preemptively add prod stages to the dev images; keep them lean and reload-friendly.
+- **Two image families per service:** `Dockerfile` (dev — bind-mount + `--reload`) and `Dockerfile.prod` (multi-stage, what ECS runs). Production backend uses `gunicorn` + `uvicorn.workers.UvicornWorker` for clean SIGTERM handling during ECS rolling deploys; production frontend serves the Vite build through `nginx:alpine` with SPA fallback + asset cache headers (see `frontend/nginx.conf`). Don't conflate the two — dev images install `[dev]` extras (pytest, mypy, ruff) that have no place in production.
 - **Bind mount + editable install** is what makes hot-reload work. The image installs the package so the `.pth` lives in site-packages, then compose mounts `./backend` over `/app` at runtime. Source edits flow through; dependency edits (`pyproject.toml`, `package.json`) need `docker compose build <service>`.
 - **Frontend `node_modules`** is preserved by an anonymous volume on `/app/node_modules`. If you ever change the bind-mount layout, keep that volume — without it the host bind mount will mask the image's installed deps and the container will fail to start.
 - **Backend command runs migrations only — never the seed.** `scripts/seed_demo_data.py` is destructive (wipes all four tables before re-seeding) and gated behind `AMS_SEED_CONFIRM=1`, so it must stay a one-shot: `docker compose run --rm -e AMS_SEED_CONFIRM=1 backend python scripts/seed_demo_data.py`. The "idempotent bootstrap manager" note under "Auth conventions" describes the *upsert inside the seed*, not the seed itself.
@@ -53,7 +53,8 @@ Core modules: asset basic-info management, and the repair request workflow (appl
 - GitHub Actions are **pinned to commit SHAs** with a `# vX` comment. If you add an action, fetch the real SHA via `gh api repos/<owner>/<repo>/git/refs/tags/<tag>` — don't invent one. A previous bug used a non-existent SHA and blocked the reviewer-assign workflow.
 - Reviewer assignment is **workflow-based**, not CODEOWNERS. See `.github/workflows/assign-reviewers.yml`. `CODEOWNERS` only covers `/.github/`.
 - SonarQube runs against **SonarCloud**; the host URL is hardcoded in the workflow. Only `SONAR_TOKEN` is required as a secret.
-- CI has five jobs: `backend`, `frontend`, `secrets` (gitleaks), `sast` (Semgrep OWASP top-10), `sonarqube`. A red `sast` or `secrets` job usually means a real issue — do not bypass.
+- CI (`.github/workflows/ci.yml`) has eight jobs: `backend`, `frontend`, `secrets` (gitleaks), `sast` (Semgrep OWASP top-10), `pip-audit` (Python SCA), `npm-audit` (Node SCA, HIGH+ in prod deps), `dependency-check` (OWASP, fails on CVSS ≥ 7), and `sonarqube`. A red gate from any of those usually means a real issue — do not bypass. The CVE gates respect `--audit-level=high` / `--failOnCVSS 7` on purpose: MEDIUM/LOW noise would dilute the signal.
+- Deploy pipeline (`.github/workflows/deploy.yml`) fires on push to `main`. Builds prod images from `Dockerfile.prod` (backend + frontend), pushes to ECR via OIDC role assumption (no long-lived AWS keys), then renders `infra/ecs/*-task-def.json` and runs an ECS rolling update with `wait-for-service-stability`. Required secret: `AWS_DEPLOY_ROLE_ARN`. Required vars: `AWS_REGION`, `ECR_REPOSITORY_BACKEND/FRONTEND`, `ECS_CLUSTER`, `ECS_SERVICE_BACKEND/FRONTEND`. See `infra/ecs/README.md` for the IAM trust policy snippet.
 - `mypy` runs in `--strict` mode; `tsc` runs with TypeScript strict. Don't loosen either to make errors go away.
 - Local pre-commit is configured (gitleaks + ruff + hygiene). Never commit with `--no-verify` unless the user explicitly asks.
 
@@ -71,10 +72,18 @@ Non-obvious patterns established in the Week 2 Auth API — read before touching
 
 Repair-request images are persisted via a small abstraction in `app/services/image_storage.py`:
 
-- **`ImageStorage` Protocol** — narrow interface (`save`, `open`, `cleanup`) so a future S3 backend drops in without touching call sites.
-- **`LocalImageStorage`** — current concrete impl, rooted at `REPAIR_UPLOAD_DIR` (default `uploads/repair-requests/`, git-ignored).
-- **`repair_images.image_url`** stores a **backend storage key** (`"<rr-id>/<img-id>.<ext>"`), NOT a public URL. The public URL `/api/v1/images/<id>` is computed in `RepairImageRead.url` (a Pydantic `computed_field`). When migrating to S3 in Week 5, write a new storage impl, swap `get_image_storage()`, and no DB rows need to be rewritten.
+- **`ImageStorage` Protocol** — narrow interface (`save`, `open`, `cleanup`) so backends are swappable without touching call sites.
+- **`LocalImageStorage`** — disk-backed, rooted at `REPAIR_UPLOAD_DIR` (default `uploads/repair-requests/`, git-ignored). Used by dev / docker compose.
+- **`S3ImageStorage`** — production backend. Selected by `REPAIR_IMAGE_BACKEND=s3` + `REPAIR_S3_BUCKET=<name>` (optional `REPAIR_S3_PREFIX`). Boto3 is lazy-imported, so dev environments don't need it. The ECS task definition under `infra/ecs/backend-task-def.json` enables this by default in production.
+- **`repair_images.image_url`** stores a **backend storage key** (`"<rr-id>/<img-id>.<ext>"`), NOT a public URL or filesystem path. The public URL `/api/v1/images/<id>` is computed in `RepairImageRead.url` (Pydantic `computed_field`). The same key works for both backends — no DB rewrite is needed when cutting over from local to S3.
 - The `POST /repair-requests` endpoint owns the multipart parsing inline; the storage service only handles bytes-in / bytes-out plus rollback. If a DB flush fails after files are written, the endpoint's `finally` block calls `storage.cleanup(saved_keys)` to avoid orphans.
+
+## Health endpoints (Week 5+)
+
+Two distinct probes, both in `backend/app/main.py`:
+
+- **`GET /health`** — liveness only. Always returns `{"status": "ok"}`. Used as the ECS container-level health check (the process is up).
+- **`GET /ready`** — readiness probe. Runs `SELECT 1` against the DB; returns 200 + `{"status":"ready"}` on success or 503 + `{"status":"not_ready"}` if SQLAlchemy raises. ALB target groups should hit this — returning 503 makes the load balancer drain the unhealthy target without killing the otherwise-fine container (e.g. during RDS Multi-AZ failover). The compose `backend.healthcheck` also uses `/ready` so `depends_on: service_healthy` waits for actual DB connectivity, not just the process being up.
 
 ## Working preferences
 
