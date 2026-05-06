@@ -217,6 +217,33 @@ def test_disabled_limiter_is_a_noop() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _reset_limiter_storage(limiter_obj: object) -> None:
+    """Best-effort reset of slowapi's MemoryStorage between tests.
+
+    slowapi 0.1.9 exposes ``Limiter._storage.reset()`` as a private attribute,
+    pinned in pyproject as ``slowapi>=0.1.9,<1.0`` — a future 0.1.10 could
+    rename or relocate ``_storage`` and we'd break test isolation silently
+    rather than nine of ten ways noisily. Defensive lookup logs a warning
+    instead of AttributeError-ing the whole suite. If ``.reset()`` truly
+    disappears, MemoryStorage carries per-test counters into the next test
+    and bucket-exhaustion tests start flaking — that *is* worth a logged
+    warning each test, not a silent skip.
+    """
+    storage = getattr(limiter_obj, "_storage", None)
+    reset = getattr(storage, "reset", None) if storage is not None else None
+    if callable(reset):
+        reset()
+        return
+    import logging
+
+    logging.getLogger(__name__).warning(
+        "slowapi Limiter._storage.reset() unavailable on %r; "
+        "rate-limit test isolation may degrade. Pin slowapi tighter or "
+        "update _reset_limiter_storage().",
+        type(limiter_obj),
+    )
+
+
 @pytest.fixture
 def enabled_limiter(client: TestClient) -> Generator[TestClient, None, None]:
     """Re-enable the production app's limiter for a single test.
@@ -231,14 +258,14 @@ def enabled_limiter(client: TestClient) -> Generator[TestClient, None, None]:
 
     saved_enabled = app.state.limiter.enabled
     # Reset per-key counters between tests so rapid-fire pytest runs don't
-    # accumulate. slowapi's MemoryStorage exposes ``.reset()``.
-    app.state.limiter._storage.reset()
+    # accumulate.
+    _reset_limiter_storage(app.state.limiter)
     app.state.limiter.enabled = True
     try:
         yield client
     finally:
         app.state.limiter.enabled = saved_enabled
-        app.state.limiter._storage.reset()
+        _reset_limiter_storage(app.state.limiter)
 
 
 def test_health_endpoint_is_exempt_from_rate_limit(
