@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import SubmitRepairRequest from '../pages/SubmitRepairRequest';
 import { ConfigProvider } from 'antd';
-import { API_BASE } from '../api';
+import { ApiError, apiClient } from '../api';
 
 // Mock i18next
 vi.mock('react-i18next', () => ({
@@ -12,9 +12,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock fetch
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const mockRequest = vi.spyOn(apiClient, 'request');
 
 // Mock matchMedia for antd
 Object.defineProperty(globalThis, 'matchMedia', {
@@ -83,11 +81,7 @@ describe('SubmitRepairRequest', () => {
   });
 
   it('submits form successfully', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { id: 'test-id' } }),
-    });
-    localStorage.setItem('token', 'test-token');
+    mockRequest.mockResolvedValueOnce({ data: { data: { id: 'test-id' } } } as never);
 
     render(
       <MemoryRouter>
@@ -108,20 +102,20 @@ describe('SubmitRepairRequest', () => {
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith(`${API_BASE}/repair-requests`, expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'Authorization': 'Bearer test-token',
+      expect(mockRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'POST',
+          url: '/repair-requests',
+          data: expect.any(FormData),
         }),
-      }));
+      );
     });
   });
 
   it('handles submission error', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ error: { message: 'Internal Server Error' } }),
-    });
+    mockRequest.mockRejectedValueOnce(
+      new ApiError(500, 'internal_error', 'Internal Server Error'),
+    );
 
     render(
       <MemoryRouter>
@@ -142,9 +136,9 @@ describe('SubmitRepairRequest', () => {
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalled();
+      expect(mockRequest).toHaveBeenCalled();
     });
     // Message component is hard to test with RTL without more setup,
-    // but we've verified fetch was called.
+    // but we've verified the request was made.
   });
 });
