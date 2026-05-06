@@ -3,6 +3,7 @@ import { vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import RepairRequestList from "../pages/RepairRequestList";
 import i18n from "../i18n";
+import type { PaginatedRepairRequestResponse } from "../api/repair-requests/types";
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
@@ -49,7 +50,7 @@ describe("RepairRequestList", () => {
   });
 
   it("renders the list of repair requests", async () => {
-    mockListRepairRequests.mockResolvedValueOnce(mockRequests as any);
+    mockListRepairRequests.mockResolvedValueOnce(mockRequests as unknown as PaginatedRepairRequestResponse);
 
     await act(async () => {
       render(
