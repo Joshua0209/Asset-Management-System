@@ -134,25 +134,26 @@ def test_disabled_limiter_is_a_noop() -> None:
 
 @pytest.fixture
 def enabled_limiter(client: TestClient) -> Generator[TestClient, None, None]:
-    """Re-enable the production app's limiter with tight test-friendly limits.
+    """Re-enable the production app's limiter for a single test.
 
-    Layers on top of the conftest ``client`` fixture so ``get_db`` remains
-    overridden against the in-memory SQLite test engine. Only the limiter
-    is swapped — routes, middleware, and DB binding all stay intact.
+    Flips ``Limiter.enabled`` rather than swapping the instance — the
+    ``_exempt_routes`` registry (set at decorator time) lives on the
+    original instance, so swapping it would lose ``@limiter.exempt`` marks.
+    Conftest pre-configures tight numeric limits via env so a few requests
+    are enough to trigger 429.
     """
     from app.main import app
 
-    saved = app.state.limiter
-    app.state.limiter = Limiter(
-        key_func=get_rate_limit_key,
-        default_limits=["5/minute"],
-        enabled=True,
-        headers_enabled=True,
-    )
+    saved_enabled = app.state.limiter.enabled
+    # Reset per-key counters between tests so rapid-fire pytest runs don't
+    # accumulate. slowapi's MemoryStorage exposes ``.reset()``.
+    app.state.limiter._storage.reset()
+    app.state.limiter.enabled = True
     try:
         yield client
     finally:
-        app.state.limiter = saved
+        app.state.limiter.enabled = saved_enabled
+        app.state.limiter._storage.reset()
 
 
 def test_health_endpoint_is_exempt_from_rate_limit(

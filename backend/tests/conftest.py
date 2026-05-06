@@ -9,6 +9,16 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-do-not-use-in-production")
 os.environ.setdefault("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "720")
 os.environ.setdefault("REPAIR_UPLOAD_DIR", "/tmp/ams-test-repair-uploads")
 
+# Rate limiting — disabled by default so the existing test suite is not
+# timing-sensitive. Tests that *want* limits flip
+# ``app.state.limiter.enabled = True`` via the ``enabled_limiter`` fixture
+# (see tests/test_rate_limit.py). Tight numeric limits are pre-configured so
+# the per-test 429s trigger in only a handful of requests rather than 30+.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("RATE_LIMIT_ANONYMOUS", "3/minute")
+os.environ.setdefault("RATE_LIMIT_AUTHENTICATED", "5/minute")
+os.environ.setdefault("RATE_LIMIT_IMAGES", "10/minute")
+
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402

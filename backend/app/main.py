@@ -241,5 +241,11 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 @app.get("/health", tags=["health"])
-def health_check() -> dict[str, str]:
+@limiter.exempt  # type: ignore[untyped-decorator]  # slowapi decorators have no type stubs
+def health_check(request: Request) -> dict[str, str]:
+    """Liveness probe.
+
+    Exempt from rate limiting so monitoring (compose healthcheck, ALB, etc.)
+    cannot DoS itself when the global default tier shrinks.
+    """
     return {"status": "ok"}
