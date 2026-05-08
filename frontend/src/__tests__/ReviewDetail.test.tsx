@@ -30,6 +30,11 @@ vi.mock('../api', async () => {
 const apiModule = await import('../api');
 const mockGetRepairRequestById = vi.mocked(apiModule.repairRequestsApi.getRepairRequestById);
 const mockApproveRepairRequest = vi.mocked(apiModule.repairRequestsApi.approveRepairRequest);
+const mockRejectRepairRequest = vi.mocked(apiModule.repairRequestsApi.rejectRepairRequest);
+const mockUpdateRepairRequestDetails = vi.mocked(
+  apiModule.repairRequestsApi.updateRepairRequestDetails,
+);
+const mockCompleteRepairRequest = vi.mocked(apiModule.repairRequestsApi.completeRepairRequest);
 
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
   return {
@@ -62,12 +67,12 @@ function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecor
   };
 }
 
-async function renderDetailPage(): Promise<void> {
+async function renderDetailPage(path = '/reviews/rr-1', routePath = '/reviews/:id'): Promise<void> {
   await act(async () => {
     render(
-      <MemoryRouter initialEntries={['/reviews/rr-1']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="/reviews/:id" element={<ReviewDetail />} />
+          <Route path={routePath} element={<ReviewDetail />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -78,7 +83,13 @@ describe('ReviewDetail', () => {
   beforeEach(async () => {
     mockGetRepairRequestById.mockReset();
     mockApproveRepairRequest.mockReset();
+    mockRejectRepairRequest.mockReset();
+    mockUpdateRepairRequestDetails.mockReset();
+    mockCompleteRepairRequest.mockReset();
     mockApproveRepairRequest.mockResolvedValue({} as never);
+    mockRejectRepairRequest.mockResolvedValue({} as never);
+    mockUpdateRepairRequestDetails.mockResolvedValue({} as never);
+    mockCompleteRepairRequest.mockResolvedValue({} as never);
 
     await act(async () => {
       await i18n.changeLanguage('en');
@@ -137,8 +148,42 @@ describe('ReviewDetail', () => {
     });
   });
 
-  it('shows update-details and complete actions on under-repair requests', async () => {
-    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('under_repair'));
+  it('moves reject operation to review details page and submits payload', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildRequest('pending_review'))
+      .mockResolvedValueOnce(buildRequest('rejected'));
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Reject' }));
+    });
+
+    await act(async () => {
+      await user.type(screen.getByLabelText('Rejection Reason'), 'Cannot reproduce');
+      const rejectButtons = screen.getAllByRole('button', { name: 'Reject' });
+      await user.click(rejectButtons[rejectButtons.length - 1]);
+    });
+
+    await waitFor(() => {
+      expect(mockRejectRepairRequest).toHaveBeenCalledWith('rr-1', {
+        version: 1,
+        rejection_reason: 'Cannot reproduce',
+      });
+    });
+  });
+
+  it('moves update-details and complete operations to review details page', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildRequest('under_repair'))
+      .mockResolvedValueOnce(buildRequest('under_repair'))
+      .mockResolvedValueOnce(buildRequest('completed'));
 
     await renderDetailPage();
 
@@ -146,6 +191,87 @@ describe('ReviewDetail', () => {
       expect(screen.getByRole('button', { name: 'Update Details' })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('button', { name: 'Complete' })).toBeInTheDocument();
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Update Details' }));
+    });
+
+    await act(async () => {
+      await user.type(screen.getByLabelText('Repair Date'), '2026-04-21');
+      await user.type(screen.getByLabelText('Fault Content'), 'Connector issue');
+      await user.type(screen.getByLabelText('Repair Plan'), 'Reseat connector');
+      await user.type(screen.getByLabelText('Repair Cost'), '1500');
+      await user.type(screen.getByLabelText('Repair Vendor'), 'Vendor B');
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+    });
+
+    await waitFor(() => {
+      expect(mockUpdateRepairRequestDetails).toHaveBeenCalledWith(
+        'rr-1',
+        expect.objectContaining({
+          version: 1,
+          fault_content: 'Connector issue',
+          repair_plan: 'Reseat connector',
+        }),
+      );
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'Complete' }));
+    });
+
+    await act(async () => {
+      await user.type(screen.getByLabelText('Repair Date'), '2026-04-28');
+      await user.type(screen.getByLabelText('Fault Content'), 'Resolved');
+      await user.type(screen.getByLabelText('Repair Plan'), 'Replaced part');
+      await user.type(screen.getByLabelText('Repair Cost'), '1800');
+      await user.type(screen.getByLabelText('Repair Vendor'), 'Vendor C');
+      const completeButtons = screen.getAllByRole('button', { name: 'Complete' });
+      await user.click(completeButtons[completeButtons.length - 1]);
+    });
+
+    await waitFor(() => {
+      expect(mockCompleteRepairRequest).toHaveBeenCalledWith(
+        'rr-1',
+        expect.objectContaining({
+          version: 1,
+          repair_vendor: 'Vendor C',
+        }),
+      );
+    });
+  });
+
+  it('shows fallback content for completed requests without images', async () => {
+    const request = buildRequest('completed');
+    request.images = [];
+
+    mockGetRepairRequestById.mockResolvedValueOnce(request);
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Repair Result')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('shows generic error when loading fails with non-api error', async () => {
+    mockGetRepairRequestById.mockRejectedValueOnce(new Error('boom'));
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Something went wrong. Please try again later.')).toBeInTheDocument();
+    });
+  });
+
+  it('shows not-found when route has no request id', async () => {
+    await renderDetailPage('/reviews', '/reviews');
+
+    await waitFor(() => {
+      expect(screen.getByText('Resource not found')).toBeInTheDocument();
+    });
   });
 });
