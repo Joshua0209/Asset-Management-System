@@ -52,14 +52,14 @@ const Login: React.FC = () => {
       }}
     >
       <Card style={{ width: 400, maxWidth: "100%" }}>
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <Space orientation="vertical" size="middle" style={{ width: "100%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Typography.Title level={3} style={{ margin: 0 }}>
               {t("auth.login.title")}
             </Typography.Title>
             <LanguageSwitcher />
           </div>
-          {error && <Alert type="error" message={error} showIcon role="alert" />}
+          {error && <Alert type="error" title={error} showIcon role="alert" />}
           <Form<LoginFormValues> layout="vertical" onFinish={handleFinish} disabled={submitting}>
             <Form.Item
               label={t("auth.login.email")}

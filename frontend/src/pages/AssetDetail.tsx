@@ -5,6 +5,11 @@ import {
   Button,
   Card,
   Descriptions,
+  Form,
+  Input,
+  Modal,
+  Select,
+  notification,
   Result,
   Skeleton,
   Space,
@@ -13,26 +18,157 @@ import {
 } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { assetsApi, ApiError } from '../api';
-import type { AssetRecord } from '../api/assets';
+import { useAuth } from '../auth/AuthContext';
+import { assetsApi, ApiError, usersApi } from '../api';
+import { getApiErrorMessage } from '../utils/apiErrors';
+import { createAmountValidator } from '../utils/validators';
+import type { AssetCategory, AssetRecord, AssetUpdatePayload } from '../api/assets';
+import type { UserRecord } from '../api/users';
 import { STATUS_COLORS } from '../components/assets/constants';
 import { formatDateValue, formatAmountValue } from '../utils/format';
+
+const CATEGORY_OPTIONS: AssetCategory[] = [
+  'phone',
+  'computer',
+  'tablet',
+  'monitor',
+  'printer',
+  'network_equipment',
+  'other',
+];
+
+interface AssetFormValues {
+  name: string;
+  model: string;
+  specs?: string;
+  category: AssetCategory;
+  supplier: string;
+  purchase_date: string;
+  purchase_amount: string;
+  location?: string;
+  department?: string;
+  activation_date?: string;
+  warranty_expiry?: string;
+}
+
+interface AssignFormValues {
+  responsible_person_id?: string;
+  assignment_date?: string;
+  reason?: string;
+}
+
+interface DisposeFormValues {
+  disposal_reason: string;
+}
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseDateOnly(value?: string | null): Date | null {
+  if (!value || !DATE_ONLY_PATTERN.test(value)) {
+    return null;
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
+function isFutureDate(value: string): boolean {
+  const parsed = parseDateOnly(value);
+  if (!parsed) {
+    return false;
+  }
+
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  return parsed.getTime() > todayUtc.getTime();
+}
+
+const pageContainerStyle: React.CSSProperties = {
+  maxWidth: 1200,
+  margin: '0 auto',
+};
 
 const AssetDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const [api, contextHolder] = notification.useNotification();
   const [asset, setAsset] = useState<AssetRecord | null>(null);
+  const [holders, setHolders] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isDisposeModalOpen, setIsDisposeModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<number | null>(null);
+  const [assetForm] = Form.useForm<AssetFormValues>();
+  const [assignForm] = Form.useForm<AssignFormValues>();
+  const [disposeForm] = Form.useForm<DisposeFormValues>();
+
+  const isManager = user?.role === 'manager';
+  const formatApiError = (apiError: ApiError): string => getApiErrorMessage(apiError, t);
+  const validatePurchaseAmount = createAmountValidator(t, { required: true });
+
+  const validateWarrantyExpiry = async (_: unknown, value?: string) => {
+    if (!value) {
+      return;
+    }
+
+    const warrantyDate = parseDateOnly(value);
+    if (!warrantyDate) {
+      return;
+    }
+
+    const purchaseDate = parseDateOnly(assetForm.getFieldValue('purchase_date'));
+    if (purchaseDate && warrantyDate.getTime() <= purchaseDate.getTime()) {
+      throw new Error(t('validation.warrantyAfterPurchase'));
+    }
+
+    const activationDate = parseDateOnly(assetForm.getFieldValue('activation_date'));
+    if (activationDate && warrantyDate.getTime() <= activationDate.getTime()) {
+      throw new Error(t('validation.warrantyAfterActivation'));
+    }
+  };
+
+  const loadAsset = async (showLoading = true) => {
+    if (!id) {
+      return;
+    }
+
+    if (showLoading) {
+      setLoading(true);
+    }
+
+    setError(null);
+    setStatus(null);
+
+    try {
+      const data = await assetsApi.getAssetById(id);
+      setAsset(data);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setError(e.message);
+        setStatus(e.status);
+      } else {
+        setError(t('assetList.serverError'));
+      }
+    } finally {
+      if (showLoading) {
+        setLoading(false);
+      }
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
 
     let cancelled = false;
 
-    const loadAsset = async () => {
+    void (async () => {
       setLoading(true);
       setError(null);
       setStatus(null);
@@ -53,55 +189,238 @@ const AssetDetail: React.FC = () => {
           setLoading(false);
         }
       }
-    };
-
-    void loadAsset();
+    })();
 
     return () => {
       cancelled = true;
     };
   }, [id, t]);
 
-  if (loading) {
+  useEffect(() => {
+    if (!isManager) {
+      setHolders([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadHolders = async () => {
+      try {
+        const response = await usersApi.listUsers({ page: 1, perPage: 100, role: 'holder' });
+        if (!cancelled) {
+          setHolders(response.data);
+        }
+      } catch (e) {
+        if (!cancelled && e instanceof ApiError) {
+          api.error({
+            title: t('assetList.manager.holdersLoadErrorTitle'),
+            description: formatApiError(e),
+          });
+        }
+      }
+    };
+
+    void loadHolders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, isManager, t]);
+
+  const openEditModal = () => {
+    if (!asset) {
+      return;
+    }
+
+    assetForm.setFieldsValue({
+      name: asset.name,
+      model: asset.model,
+      specs: asset.specs ?? undefined,
+      category: asset.category as AssetCategory,
+      supplier: asset.supplier,
+      purchase_date: asset.purchase_date,
+      purchase_amount: String(asset.purchase_amount),
+      location: asset.location,
+      department: asset.department,
+      activation_date: asset.activation_date ?? undefined,
+      warranty_expiry: asset.warranty_expiry ?? undefined,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const openAssignModal = () => {
+    if (!asset) {
+      return;
+    }
+
+    assignForm.resetFields();
+    if (asset.status === 'in_use') {
+      assignForm.setFieldValue('reason', '');
+    } else if (asset.responsible_person_id) {
+      assignForm.setFieldValue('responsible_person_id', asset.responsible_person_id);
+    }
+    setIsAssignModalOpen(true);
+  };
+
+  const openDisposeModal = () => {
+    disposeForm.resetFields();
+    setIsDisposeModalOpen(true);
+  };
+
+  const toAssetPayload = (values: AssetFormValues): Omit<AssetUpdatePayload, 'version'> => ({
+    name: values.name,
+    model: values.model,
+    specs: values.specs?.trim() ? values.specs.trim() : null,
+    category: values.category,
+    supplier: values.supplier,
+    purchase_date: values.purchase_date,
+    purchase_amount: values.purchase_amount,
+    location: values.location?.trim() ? values.location.trim() : null,
+    department: values.department?.trim() ? values.department.trim() : null,
+    activation_date: values.activation_date?.trim() ? values.activation_date.trim() : null,
+    warranty_expiry: values.warranty_expiry?.trim() ? values.warranty_expiry.trim() : null,
+  });
+
+  const handleSaveAsset = async () => {
+    if (!asset) {
+      return;
+    }
+
+    try {
+      const values = await assetForm.validateFields();
+      setIsSubmitting(true);
+      const payload: AssetUpdatePayload = {
+        ...toAssetPayload(values),
+        version: asset.version,
+      };
+      await assetsApi.updateAsset(asset.id, payload);
+      setIsEditModalOpen(false);
+      await loadAsset(false);
+      api.success({ title: t('assetList.manager.editSuccess') });
+    } catch (e) {
+      if (e instanceof ApiError) {
+        api.error({
+          title: t('assetList.manager.actionFailedTitle'),
+          description: formatApiError(e),
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAssignOrUnassign = async () => {
+    if (!asset) {
+      return;
+    }
+
+    try {
+      const values = await assignForm.validateFields();
+      setIsSubmitting(true);
+
+      if (asset.status === 'in_use') {
+        await assetsApi.unassignAsset(asset.id, {
+          reason: values.reason ?? '',
+          version: asset.version,
+        });
+        api.success({ title: t('assetList.manager.unassignSuccess') });
+      } else {
+        await assetsApi.assignAsset(asset.id, {
+          responsible_person_id: values.responsible_person_id ?? '',
+          assignment_date: values.assignment_date,
+          version: asset.version,
+        });
+        api.success({ title: t('assetList.manager.assignSuccess') });
+      }
+
+      setIsAssignModalOpen(false);
+      await loadAsset(false);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        api.error({
+          title: t('assetList.manager.actionFailedTitle'),
+          description: formatApiError(e),
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDispose = async () => {
+    if (!asset) {
+      return;
+    }
+
+    try {
+      const values = await disposeForm.validateFields();
+      setIsSubmitting(true);
+      await assetsApi.disposeAsset(asset.id, {
+        disposal_reason: values.disposal_reason,
+        version: asset.version,
+      });
+      setIsDisposeModalOpen(false);
+      await loadAsset(false);
+      api.success({ title: t('assetList.manager.disposeSuccess') });
+    } catch (e) {
+      if (e instanceof ApiError) {
+        api.error({
+          title: t('assetList.manager.actionFailedTitle'),
+          description: formatApiError(e),
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <Card>
+          <Skeleton active title paragraph={{ rows: 10 }} />
+        </Card>
+      );
+    }
+
+    if (status === 404) {
+      return (
+        <Card>
+          <Result
+            status="404"
+            title="404"
+            subTitle={t('assetList.error.notFound')}
+            extra={
+              <Button type="primary" onClick={() => navigate(-1)}>
+                {t('common.button.back')}
+              </Button>
+            }
+          />
+        </Card>
+      );
+    }
+
+    if (status === 403) {
+      return (
+        <Card>
+          <Result
+            status="403"
+            title="403"
+            subTitle={t('assetList.error.forbidden')}
+            extra={
+              <Button type="primary" onClick={() => navigate(-1)}>
+                {t('common.button.back')}
+              </Button>
+            }
+          />
+        </Card>
+      );
+    }
+
+    if (error || !asset) {
+      return <Alert title={error || t('assetList.serverError')} type="error" showIcon />;
+    }
+
     return (
-      <Card>
-        <Skeleton active title paragraph={{ rows: 10 }} />
-      </Card>
-    );
-  }
-
-  if (status === 404) {
-    return (
-      <Result
-        status="404"
-        title="404"
-        subTitle={t('assetList.error.notFound')}
-        extra={<Button type="primary" onClick={() => navigate(-1)}>{t('common.button.back')}</Button>}
-      />
-    );
-  }
-
-  if (status === 403) {
-    return (
-      <Result
-        status="403"
-        title="403"
-        subTitle={t('assetList.error.forbidden')}
-        extra={<Button type="primary" onClick={() => navigate(-1)}>{t('common.button.back')}</Button>}
-      />
-    );
-  }
-
-  if (error || !asset) {
-    return <Alert message={error || t('assetList.serverError')} type="error" showIcon />;
-  }
-
-  return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
-        {t('common.button.back')}
-      </Button>
-
       <Card
         title={
           <Space>
@@ -154,7 +473,238 @@ const AssetDetail: React.FC = () => {
           </Descriptions.Item>
         </Descriptions>
       </Card>
-    </Space>
+    );
+  };
+
+  return (
+    <div style={pageContainerStyle}>
+      {contextHolder}
+      <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
+          {t('common.button.back')}
+        </Button>
+
+        {isManager && asset ? (
+          <Space wrap>
+            <Button onClick={openEditModal}>{t('assetList.actions.edit')}</Button>
+
+            {asset.status === 'in_stock' ? (
+              <Button onClick={openAssignModal}>{t('assetList.actions.assign')}</Button>
+            ) : null}
+
+            {asset.status === 'in_use' ? (
+              <Button onClick={openAssignModal}>{t('assetList.actions.unassign')}</Button>
+            ) : null}
+
+            {asset.status === 'in_stock' ? (
+              <Button danger onClick={openDisposeModal}>{t('assetList.actions.dispose')}</Button>
+            ) : null}
+          </Space>
+        ) : null}
+
+        {renderContent()}
+
+        <Modal
+          open={isEditModalOpen}
+          title={asset ? t('assetList.manager.editTitle', { assetCode: asset.asset_code }) : ''}
+          onCancel={() => setIsEditModalOpen(false)}
+          onOk={() => void handleSaveAsset()}
+          okText={t('common.button.save')}
+          cancelText={t('common.button.cancel')}
+          confirmLoading={isSubmitting}
+          destroyOnHidden
+          forceRender
+        >
+          <Form form={assetForm} layout="vertical">
+            <Form.Item
+              name="name"
+              label={t('assetList.form.name')}
+              rules={[
+                { required: true, message: t('validation.required') },
+                { max: 120, message: t('validation.max120Chars') },
+              ]}
+            >
+              <Input />
+            </Form.Item>
+
+            <Form.Item
+              name="model"
+              label={t('assetList.form.model')}
+              rules={[
+                { required: true, message: t('validation.required') },
+                { max: 120, message: t('validation.max120Chars') },
+              ]}
+            >
+              <Input />
+            </Form.Item>
+
+            <Form.Item
+              name="specs"
+              label={t('assetList.form.specs')}
+              rules={[{ max: 500, message: t('validation.max500Chars') }]}
+            >
+              <Input.TextArea rows={2} />
+            </Form.Item>
+
+            <Form.Item
+              name="category"
+              label={t('assetList.form.category')}
+              rules={[{ required: true, message: t('validation.required') }]}
+            >
+              <Select
+                options={CATEGORY_OPTIONS.map((category) => ({
+                  value: category,
+                  label: category,
+                }))}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="supplier"
+              label={t('assetList.form.supplier')}
+              rules={[
+                { required: true, message: t('validation.required') },
+                { max: 120, message: t('validation.max120Chars') },
+              ]}
+            >
+              <Input />
+            </Form.Item>
+
+            <Form.Item
+              name="purchase_date"
+              label={t('assetList.form.purchaseDate')}
+              rules={[
+                { required: true, message: t('validation.required') },
+                {
+                  validator: async (_rule, value?: string) => {
+                    if (!value) {
+                      return;
+                    }
+                    if (isFutureDate(value)) {
+                      throw new Error(t('validation.purchaseDateNotFuture'));
+                    }
+                  },
+                },
+              ]}
+            >
+              <Input type="date" />
+            </Form.Item>
+
+            <Form.Item
+              name="purchase_amount"
+              label={t('assetList.form.purchaseAmount')}
+              rules={[{ validator: validatePurchaseAmount }]}
+            >
+              <Input type="number" min={0} step="0.01" />
+            </Form.Item>
+
+            <Form.Item
+              name="location"
+              label={t('assetList.form.location')}
+              rules={[{ max: 120, message: t('validation.max120Chars') }]}
+            >
+              <Input />
+            </Form.Item>
+
+            <Form.Item
+              name="department"
+              label={t('assetList.form.department')}
+              rules={[{ max: 100, message: t('validation.max100Chars') }]}
+            >
+              <Input />
+            </Form.Item>
+
+            <Form.Item name="activation_date" label={t('assetList.form.activationDate')}>
+              <Input type="date" />
+            </Form.Item>
+
+            <Form.Item
+              name="warranty_expiry"
+              label={t('assetList.form.warrantyExpiry')}
+              dependencies={['purchase_date', 'activation_date']}
+              rules={[{ validator: validateWarrantyExpiry }]}
+            >
+              <Input type="date" />
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        <Modal
+          open={isAssignModalOpen}
+          title={
+            asset?.status === 'in_use'
+              ? t('assetList.manager.unassignTitle', { assetCode: asset?.asset_code ?? '' })
+              : t('assetList.manager.assignTitle', { assetCode: asset?.asset_code ?? '' })
+          }
+          onCancel={() => setIsAssignModalOpen(false)}
+          onOk={() => void handleAssignOrUnassign()}
+          okText={t('common.button.confirm')}
+          cancelText={t('common.button.cancel')}
+          confirmLoading={isSubmitting}
+          destroyOnHidden
+          forceRender
+        >
+          <Form form={assignForm} layout="vertical">
+            {asset?.status === 'in_use' ? (
+              <Form.Item
+                name="reason"
+                label={t('assetList.form.unassignReason')}
+                rules={[{ required: true, message: t('validation.required') }]}
+              >
+                <Input.TextArea rows={3} />
+              </Form.Item>
+            ) : (
+              <>
+                <Form.Item
+                  name="responsible_person_id"
+                  label={t('assetList.form.holder')}
+                  rules={[{ required: true, message: t('validation.required') }]}
+                >
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    options={holders.map((holder) => ({
+                      value: holder.id,
+                      label: `${holder.name} (${holder.email})`,
+                    }))}
+                  />
+                </Form.Item>
+
+                <Form.Item
+                  name="assignment_date"
+                  label={t('assetList.form.assignmentDate')}
+                  rules={[{ required: true, message: t('validation.required') }]}
+                >
+                  <Input type="date" />
+                </Form.Item>
+              </>
+            )}
+          </Form>
+        </Modal>
+
+        <Modal
+          open={isDisposeModalOpen}
+          title={t('assetList.manager.disposeTitle', { assetCode: asset?.asset_code ?? '' })}
+          onCancel={() => setIsDisposeModalOpen(false)}
+          onOk={() => void handleDispose()}
+          okText={t('common.button.confirm')}
+          cancelText={t('common.button.cancel')}
+          confirmLoading={isSubmitting}
+          destroyOnHidden
+          forceRender
+        >
+          <Form form={disposeForm} layout="vertical">
+            <Form.Item
+              name="disposal_reason"
+              label={t('assetList.form.disposalReason')}
+              rules={[{ required: true, message: t('validation.required') }]}
+            >
+              <Input.TextArea rows={4} />
+            </Form.Item>
+          </Form>
+        </Modal>
+      </Space>
+    </div>
   );
 };
 

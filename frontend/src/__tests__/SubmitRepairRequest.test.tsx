@@ -51,7 +51,7 @@ describe('SubmitRepairRequest', () => {
 
   it('renders form fields', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ConfigProvider>
           <SubmitRepairRequest />
         </ConfigProvider>
@@ -65,7 +65,7 @@ describe('SubmitRepairRequest', () => {
 
   it('shows validation errors for empty fields', async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ConfigProvider>
           <SubmitRepairRequest />
         </ConfigProvider>
@@ -84,7 +84,7 @@ describe('SubmitRepairRequest', () => {
     mockRequest.mockResolvedValueOnce({ data: { data: { id: 'test-id' } } } as never);
 
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ConfigProvider>
           <SubmitRepairRequest />
         </ConfigProvider>
@@ -118,7 +118,7 @@ describe('SubmitRepairRequest', () => {
     );
 
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ConfigProvider>
           <SubmitRepairRequest />
         </ConfigProvider>

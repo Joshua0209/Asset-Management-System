@@ -6,18 +6,46 @@ import AssetDetail from "../pages/AssetDetail";
 import i18n from "../i18n";
 import { ApiError } from "../api";
 
-vi.mock("../api", async () => {
-  const actual = await vi.importActual<typeof import("../api")>("../api");
+const mockGetAsset = vi.hoisted(() => vi.fn());
+const mockListUsers = vi.hoisted(() => vi.fn());
+
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: vi.fn(),
+}));
+
+vi.mock("../api", () => {
+  class MockApiError extends Error {
+    readonly status: number;
+    readonly code: string;
+    readonly details: Array<{ field: string; message: string; code: string }>;
+
+    constructor(
+      status: number,
+      code: string,
+      message: string,
+      details: Array<{ field: string; message: string; code: string }> = [],
+    ) {
+      super(message);
+      this.name = "ApiError";
+      this.status = status;
+      this.code = code;
+      this.details = details;
+    }
+  }
+
   return {
-    ...actual,
+    ApiError: MockApiError,
     assetsApi: {
-      getAssetById: vi.fn(),
+      getAssetById: mockGetAsset,
     },
+      usersApi: {
+        listUsers: mockListUsers,
+      },
   };
 });
 
-const apiModule = await import("../api");
-const mockGetAsset = vi.mocked(apiModule.assetsApi.getAssetById);
+const authModule = await import("../auth/AuthContext");
+const mockUseAuth = vi.mocked(authModule.useAuth);
 
 const mockAsset = {
   id: "AST-2026-00001-id",
@@ -48,8 +76,64 @@ const mockAsset = {
 describe("AssetDetail", () => {
   beforeEach(async () => {
     mockGetAsset.mockReset();
+    mockListUsers.mockReset();
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "holder-1",
+        email: "holder@example.com",
+        name: "Holder",
+        role: "holder",
+      },
+      token: "token",
+      isAuthenticated: true,
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
     await act(async () => {
       await i18n.changeLanguage("en");
+    });
+  });
+
+  it("shows manager action buttons on asset detail page", async () => {
+    mockUseAuth.mockReturnValue({
+      user: {
+        id: "manager-1",
+        email: "manager@example.com",
+        name: "Manager",
+        role: "manager",
+      },
+      token: "token",
+      isAuthenticated: true,
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+    mockGetAsset.mockResolvedValueOnce(mockAsset);
+    mockListUsers.mockResolvedValueOnce({
+      data: [],
+      meta: {
+        total: 0,
+        page: 1,
+        per_page: 100,
+        total_pages: 0,
+      },
+    });
+
+    await act(async () => {
+      render(
+        <MemoryRouter
+          initialEntries={["/assets/AST-2026-00001-id"]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <Routes>
+            <Route path="/assets/:id" element={<AssetDetail />} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Unassign" })).toBeInTheDocument();
     });
   });
 
@@ -58,7 +142,10 @@ describe("AssetDetail", () => {
 
     await act(async () => {
       render(
-        <MemoryRouter initialEntries={["/assets/AST-2026-00001-id"]}>
+        <MemoryRouter
+          initialEntries={["/assets/AST-2026-00001-id"]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <Routes>
             <Route path="/assets/:id" element={<AssetDetail />} />
           </Routes>
@@ -82,7 +169,10 @@ describe("AssetDetail", () => {
 
     await act(async () => {
       render(
-        <MemoryRouter initialEntries={["/assets/unknown"]}>
+        <MemoryRouter
+          initialEntries={["/assets/unknown"]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <Routes>
             <Route path="/assets/:id" element={<AssetDetail />} />
           </Routes>
@@ -100,7 +190,10 @@ describe("AssetDetail", () => {
 
     await act(async () => {
       render(
-        <MemoryRouter initialEntries={["/assets/AST-forbidden"]}>
+        <MemoryRouter
+          initialEntries={["/assets/AST-forbidden"]}
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
           <Routes>
             <Route path="/assets/:id" element={<AssetDetail />} />
           </Routes>

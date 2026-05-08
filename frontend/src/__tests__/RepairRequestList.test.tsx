@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import RepairRequestList from "../pages/RepairRequestList";
@@ -44,21 +44,17 @@ const mockRequests = {
 describe("RepairRequestList", () => {
   beforeEach(async () => {
     mockListRepairRequests.mockReset();
-    await act(async () => {
-      await i18n.changeLanguage("en");
-    });
+    await i18n.changeLanguage("en");
   });
 
   it("renders the list of repair requests", async () => {
     mockListRepairRequests.mockResolvedValueOnce(mockRequests as unknown as PaginatedRepairRequestResponse);
 
-    await act(async () => {
-      render(
-        <MemoryRouter>
-          <RepairRequestList />
-        </MemoryRouter>
-      );
-    });
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <RepairRequestList />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText("My Repair Requests")).toBeInTheDocument();
@@ -76,13 +72,11 @@ describe("RepairRequestList", () => {
   it("shows error alert when fetch fails", async () => {
     mockListRepairRequests.mockRejectedValueOnce(new Error("Failed to load"));
 
-    await act(async () => {
-      render(
-        <MemoryRouter>
-          <RepairRequestList />
-        </MemoryRouter>
-      );
-    });
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <RepairRequestList />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Something went wrong. Please try again later.")).toBeInTheDocument();
