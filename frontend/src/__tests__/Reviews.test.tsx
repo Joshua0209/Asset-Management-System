@@ -4,6 +4,7 @@ import { vi } from "vitest";
 
 import Reviews from "../pages/Reviews";
 import i18n from "../i18n";
+import { getModalField, getOpenModalContent } from "./test-helpers";
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
@@ -27,29 +28,6 @@ const mockUpdateRepairRequestDetails = vi.mocked(
   apiModule.repairRequestsApi.updateRepairRequestDetails,
 );
 const mockCompleteRepairRequest = vi.mocked(apiModule.repairRequestsApi.completeRepairRequest);
-
-function getOpenModalContent(): HTMLElement {
-  const openModal = Array.from(document.querySelectorAll<HTMLElement>(".ant-modal")).find((modal) => {
-    const wrap = modal.closest(".ant-modal-wrap") as HTMLElement | null;
-    return wrap !== null && wrap.style.display !== "none";
-  });
-
-  if (!openModal) {
-    throw new Error("Expected an open modal, but none was found.");
-  }
-
-  return openModal;
-}
-
-function getModalField(modal: HTMLElement, selector: string): HTMLElement {
-  const field = modal.querySelector<HTMLElement>(selector);
-
-  if (!field) {
-    throw new Error(`Expected modal field ${selector}, but none was found.`);
-  }
-
-  return field;
-}
 
 function buildResponse(status: "pending_review" | "under_repair") {
   return {

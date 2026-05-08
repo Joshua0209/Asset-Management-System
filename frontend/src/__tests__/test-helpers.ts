@@ -14,6 +14,29 @@ export const managerUser = {
   role: "manager" as const,
 };
 
+export function getOpenModalContent(): HTMLElement {
+  const openModal = Array.from(document.querySelectorAll<HTMLElement>(".ant-modal")).find((modal) => {
+    const wrap = modal.closest(".ant-modal-wrap") as HTMLElement | null;
+    return wrap !== null && wrap.style.display !== "none";
+  });
+
+  if (!openModal) {
+    throw new Error("Expected an open modal, but none was found.");
+  }
+
+  return openModal;
+}
+
+export function getModalField(modal: HTMLElement, selector: string): HTMLElement {
+  const field = modal.querySelector<HTMLElement>(selector);
+
+  if (!field) {
+    throw new Error(`Expected modal field ${selector}, but none was found.`);
+  }
+
+  return field;
+}
+
 export function buildAssetResponse(assetCode: string, assetName: string, total: number) {
   return {
     data: [

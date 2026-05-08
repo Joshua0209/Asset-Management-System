@@ -7,6 +7,7 @@ import AssetDetail from "../pages/AssetDetail";
 import i18n from "../i18n";
 import { ApiError } from "../api";
 import type { AssetRecord } from "../api/assets";
+import { getModalField, getOpenModalContent, holderUser, managerUser } from "./test-helpers";
 
 const mockGetAsset = vi.hoisted(() => vi.fn());
 const mockListUsers = vi.hoisted(() => vi.fn());
@@ -57,47 +58,7 @@ vi.mock("../api", () => {
 const authModule = await import("../auth/AuthContext");
 const mockUseAuth = vi.mocked(authModule.useAuth);
 
-const managerUser = {
-  id: "manager-1",
-  email: "manager@example.com",
-  name: "Manager",
-  role: "manager" as const,
-};
-
-const holderUser = {
-  id: "holder-1",
-  email: "holder@example.com",
-  name: "Holder",
-  role: "holder" as const,
-};
-
-type TestAuthUser = {
-  id: string;
-  email: string;
-  name: string;
-  role: "manager" | "holder";
-};
-
-function getOpenModalContent(): HTMLElement {
-  const openModal = Array.from(document.querySelectorAll<HTMLElement>(".ant-modal")).find((modal) => {
-    const wrap = modal.closest(".ant-modal-wrap") as HTMLElement | null;
-    return wrap !== null && wrap.style.display !== "none";
-  });
-
-  if (!openModal) {
-    throw new Error("Expected an open modal, but none was found.");
-  }
-
-  return openModal;
-}
-
-function getModalField(modal: HTMLElement, selector: string): HTMLElement {
-  const field = modal.querySelector<HTMLElement>(selector);
-  if (!field) {
-    throw new Error(`Expected modal field ${selector}, but none was found.`);
-  }
-  return field;
-}
+type TestAuthUser = typeof holderUser | typeof managerUser;
 
 function setAuthUser(user: TestAuthUser = holderUser): void {
   mockUseAuth.mockReturnValue({
@@ -127,6 +88,13 @@ function buildAsset(overrides: Partial<AssetRecord> = {}): AssetRecord {
     ...mockAsset,
     ...overrides,
   };
+}
+
+function mockAssetReloadSequence(
+  initialAsset: Partial<AssetRecord>,
+  refreshedAsset: Partial<AssetRecord>,
+): void {
+  mockGetAsset.mockResolvedValueOnce(buildAsset(initialAsset)).mockResolvedValueOnce(buildAsset(refreshedAsset));
 }
 
 const mockAsset: AssetRecord = {
@@ -283,9 +251,10 @@ describe("AssetDetail", () => {
   it("assigns an in-stock asset from detail page", async () => {
     const user = userEvent.setup({ delay: null });
     setAuthUser(managerUser);
-    mockGetAsset
-      .mockResolvedValueOnce(buildAsset({ status: "in_stock", responsible_person: null, responsible_person_id: null }))
-      .mockResolvedValueOnce(buildAsset({ status: "in_use", responsible_person_id: "holder-2" }));
+    mockAssetReloadSequence(
+      { status: "in_stock", responsible_person: null, responsible_person_id: null },
+      { status: "in_use", responsible_person_id: "holder-2" },
+    );
 
     renderAssetDetail();
 
@@ -340,9 +309,10 @@ describe("AssetDetail", () => {
   it("disposes an in-stock asset from detail page", async () => {
     const user = userEvent.setup({ delay: null });
     setAuthUser(managerUser);
-    mockGetAsset
-      .mockResolvedValueOnce(buildAsset({ status: "in_stock", responsible_person: null, responsible_person_id: null }))
-      .mockResolvedValueOnce(buildAsset({ status: "disposed" }));
+    mockAssetReloadSequence(
+      { status: "in_stock", responsible_person: null, responsible_person_id: null },
+      { status: "disposed" },
+    );
 
     renderAssetDetail();
 
