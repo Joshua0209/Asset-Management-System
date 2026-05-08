@@ -13,6 +13,7 @@ import AssetList from "./pages/AssetList";
 import MyAssetList from "./pages/MyAssetList";
 import AssetDetail from "./pages/AssetDetail";
 import Reviews from "./pages/Reviews";
+import ReviewDetail from "./pages/ReviewDetail";
 import RepairRequestList from "./pages/RepairRequestList";
 import RepairRequestDetail from "./pages/RepairRequestDetail";
 import Login from "./pages/auth/Login";
@@ -107,6 +108,7 @@ export const routes: RouteObject[] = [
                   { path: "dashboard", element: <Dashboard /> },
                   { path: "assets", element: <AssetList /> },
                   { path: "reviews", element: <Reviews /> },
+                  { path: "reviews/:id", element: <ReviewDetail /> },
                 ],
               },
             ],
