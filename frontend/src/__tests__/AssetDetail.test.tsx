@@ -1,13 +1,19 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import AssetDetail from "../pages/AssetDetail";
 import i18n from "../i18n";
 import { ApiError } from "../api";
+import type { AssetRecord } from "../api/assets";
 
 const mockGetAsset = vi.hoisted(() => vi.fn());
 const mockListUsers = vi.hoisted(() => vi.fn());
+const mockUpdateAsset = vi.hoisted(() => vi.fn());
+const mockAssignAsset = vi.hoisted(() => vi.fn());
+const mockUnassignAsset = vi.hoisted(() => vi.fn());
+const mockDisposeAsset = vi.hoisted(() => vi.fn());
 
 vi.mock("../auth/AuthContext", () => ({
   useAuth: vi.fn(),
@@ -37,17 +43,93 @@ vi.mock("../api", () => {
     ApiError: MockApiError,
     assetsApi: {
       getAssetById: mockGetAsset,
+      updateAsset: mockUpdateAsset,
+      assignAsset: mockAssignAsset,
+      unassignAsset: mockUnassignAsset,
+      disposeAsset: mockDisposeAsset,
     },
-      usersApi: {
-        listUsers: mockListUsers,
-      },
+    usersApi: {
+      listUsers: mockListUsers,
+    },
   };
 });
 
 const authModule = await import("../auth/AuthContext");
 const mockUseAuth = vi.mocked(authModule.useAuth);
 
-const mockAsset = {
+const managerUser = {
+  id: "manager-1",
+  email: "manager@example.com",
+  name: "Manager",
+  role: "manager" as const,
+};
+
+const holderUser = {
+  id: "holder-1",
+  email: "holder@example.com",
+  name: "Holder",
+  role: "holder" as const,
+};
+
+type TestAuthUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: "manager" | "holder";
+};
+
+function getOpenModalContent(): HTMLElement {
+  const openModal = Array.from(document.querySelectorAll<HTMLElement>(".ant-modal")).find((modal) => {
+    const wrap = modal.closest(".ant-modal-wrap") as HTMLElement | null;
+    return wrap !== null && wrap.style.display !== "none";
+  });
+
+  if (!openModal) {
+    throw new Error("Expected an open modal, but none was found.");
+  }
+
+  return openModal;
+}
+
+function getModalField(modal: HTMLElement, selector: string): HTMLElement {
+  const field = modal.querySelector<HTMLElement>(selector);
+  if (!field) {
+    throw new Error(`Expected modal field ${selector}, but none was found.`);
+  }
+  return field;
+}
+
+function setAuthUser(user: TestAuthUser = holderUser): void {
+  mockUseAuth.mockReturnValue({
+    user,
+    token: "token",
+    isAuthenticated: true,
+    login: vi.fn(),
+    logout: vi.fn(),
+  });
+}
+
+function renderAssetDetail(path = "/assets/AST-2026-00001-id") {
+  return render(
+    <MemoryRouter
+      initialEntries={[path]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <Routes>
+        <Route path="/assets/:id" element={<AssetDetail />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
+function buildAsset(overrides: Partial<AssetRecord> = {}): AssetRecord {
+  return {
+    ...mockAsset,
+    ...overrides,
+  };
+}
+
+const mockAsset: AssetRecord = {
   id: "AST-2026-00001-id",
   asset_code: "AST-2026-00001",
   name: "Business Laptop 13",
@@ -77,17 +159,25 @@ describe("AssetDetail", () => {
   beforeEach(async () => {
     mockGetAsset.mockReset();
     mockListUsers.mockReset();
-    mockUseAuth.mockReturnValue({
-      user: {
-        id: "holder-1",
-        email: "holder@example.com",
-        name: "Holder",
-        role: "holder",
+    mockUpdateAsset.mockReset();
+    mockAssignAsset.mockReset();
+    mockUnassignAsset.mockReset();
+    mockDisposeAsset.mockReset();
+    setAuthUser(holderUser);
+    mockUpdateAsset.mockResolvedValue({} as never);
+    mockAssignAsset.mockResolvedValue({} as never);
+    mockUnassignAsset.mockResolvedValue({} as never);
+    mockDisposeAsset.mockResolvedValue({} as never);
+    mockListUsers.mockResolvedValue({
+      data: [
+        { id: "holder-2", name: "Bob Lee", email: "bob@example.com", role: "holder" },
+      ],
+      meta: {
+        total: 1,
+        page: 1,
+        per_page: 100,
+        total_pages: 1,
       },
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
     });
     await act(async () => {
       await i18n.changeLanguage("en");
@@ -95,41 +185,10 @@ describe("AssetDetail", () => {
   });
 
   it("shows manager action buttons on asset detail page", async () => {
-    mockUseAuth.mockReturnValue({
-      user: {
-        id: "manager-1",
-        email: "manager@example.com",
-        name: "Manager",
-        role: "manager",
-      },
-      token: "token",
-      isAuthenticated: true,
-      login: vi.fn(),
-      logout: vi.fn(),
-    });
+    setAuthUser(managerUser);
     mockGetAsset.mockResolvedValueOnce(mockAsset);
-    mockListUsers.mockResolvedValueOnce({
-      data: [],
-      meta: {
-        total: 0,
-        page: 1,
-        per_page: 100,
-        total_pages: 0,
-      },
-    });
 
-    await act(async () => {
-      render(
-        <MemoryRouter
-          initialEntries={["/assets/AST-2026-00001-id"]}
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        >
-          <Routes>
-            <Route path="/assets/:id" element={<AssetDetail />} />
-          </Routes>
-        </MemoryRouter>
-      );
-    });
+    renderAssetDetail();
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
@@ -140,18 +199,7 @@ describe("AssetDetail", () => {
   it("loads and displays asset details", async () => {
     mockGetAsset.mockResolvedValueOnce(mockAsset);
 
-    await act(async () => {
-      render(
-        <MemoryRouter
-          initialEntries={["/assets/AST-2026-00001-id"]}
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        >
-          <Routes>
-            <Route path="/assets/:id" element={<AssetDetail />} />
-          </Routes>
-        </MemoryRouter>
-      );
-    });
+    renderAssetDetail();
 
     await waitFor(() => {
       expect(mockGetAsset).toHaveBeenCalledWith("AST-2026-00001-id");
@@ -167,18 +215,7 @@ describe("AssetDetail", () => {
   it("renders 404 when asset is not found", async () => {
     mockGetAsset.mockRejectedValueOnce(new ApiError(404, "not_found", "Not Found"));
 
-    await act(async () => {
-      render(
-        <MemoryRouter
-          initialEntries={["/assets/unknown"]}
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        >
-          <Routes>
-            <Route path="/assets/:id" element={<AssetDetail />} />
-          </Routes>
-        </MemoryRouter>
-      );
-    });
+    renderAssetDetail("/assets/unknown");
 
     await waitFor(() => {
       expect(screen.getByText("Asset not found")).toBeInTheDocument();
@@ -188,21 +225,142 @@ describe("AssetDetail", () => {
   it("renders 403 when access is forbidden", async () => {
     mockGetAsset.mockRejectedValueOnce(new ApiError(403, "forbidden", "Forbidden"));
 
-    await act(async () => {
-      render(
-        <MemoryRouter
-          initialEntries={["/assets/AST-forbidden"]}
-          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-        >
-          <Routes>
-            <Route path="/assets/:id" element={<AssetDetail />} />
-          </Routes>
-        </MemoryRouter>
-      );
-    });
+    renderAssetDetail("/assets/AST-forbidden");
 
     await waitFor(() => {
       expect(screen.getByText("You do not have permission to view this asset")).toBeInTheDocument();
+    });
+  });
+
+  it("hides manager action buttons for holder users", async () => {
+    setAuthUser(holderUser);
+    mockGetAsset.mockResolvedValueOnce(mockAsset);
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByText("Asset Detail - AST-2026-00001")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Assign" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Unassign" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dispose" })).not.toBeInTheDocument();
+  });
+
+  it("updates an asset from the edit modal", async () => {
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockGetAsset
+      .mockResolvedValueOnce(buildAsset())
+      .mockResolvedValueOnce(buildAsset({ name: "Updated Laptop" }));
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    const editModal = getOpenModalContent();
+    const nameInput = getModalField(editModal, "#name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Updated Laptop");
+    await user.click(within(editModal).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mockUpdateAsset).toHaveBeenCalledWith(
+        "AST-2026-00001-id",
+        expect.objectContaining({
+          version: 1,
+          name: "Updated Laptop",
+        }),
+      );
+    });
+  });
+
+  it("assigns an in-stock asset from detail page", async () => {
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockGetAsset
+      .mockResolvedValueOnce(buildAsset({ status: "in_stock", responsible_person: null, responsible_person_id: null }))
+      .mockResolvedValueOnce(buildAsset({ status: "in_use", responsible_person_id: "holder-2" }));
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Assign" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Assign" }));
+
+    const assignModal = getOpenModalContent();
+    await user.click(within(assignModal).getByRole("combobox", { name: "Holder" }));
+    await user.click(screen.getByText("Bob Lee (bob@example.com)"));
+    await user.type(getModalField(assignModal, "#assignment_date"), "2026-05-08");
+    await user.click(within(assignModal).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockAssignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
+        responsible_person_id: "holder-2",
+        assignment_date: "2026-05-08",
+        version: 1,
+      });
+    });
+  });
+
+  it("unassigns an in-use asset from detail page", async () => {
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockGetAsset
+      .mockResolvedValueOnce(buildAsset({ status: "in_use" }))
+      .mockResolvedValueOnce(buildAsset({ status: "in_stock", responsible_person: null, responsible_person_id: null }));
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Unassign" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Unassign" }));
+
+    const unassignModal = getOpenModalContent();
+    await user.type(getModalField(unassignModal, "#reason"), "Returned to IT");
+    await user.click(within(unassignModal).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockUnassignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
+        reason: "Returned to IT",
+        version: 1,
+      });
+    });
+  });
+
+  it("disposes an in-stock asset from detail page", async () => {
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockGetAsset
+      .mockResolvedValueOnce(buildAsset({ status: "in_stock", responsible_person: null, responsible_person_id: null }))
+      .mockResolvedValueOnce(buildAsset({ status: "disposed" }));
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Dispose" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Dispose" }));
+
+    const disposeModal = getOpenModalContent();
+    await user.type(getModalField(disposeModal, "#disposal_reason"), "Lifecycle end");
+    await user.click(within(disposeModal).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockDisposeAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
+        disposal_reason: "Lifecycle end",
+        version: 1,
+      });
     });
   });
 });

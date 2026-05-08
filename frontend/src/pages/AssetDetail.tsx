@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -61,6 +61,13 @@ interface DisposeFormValues {
   disposal_reason: string;
 }
 
+interface AssetTextFieldConfig {
+  name: keyof AssetFormValues;
+  label: string;
+  required?: boolean;
+  max?: number;
+}
+
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseDateOnly(value?: string | null): Date | null {
@@ -110,8 +117,34 @@ const AssetDetail: React.FC = () => {
   const [disposeForm] = Form.useForm<DisposeFormValues>();
 
   const isManager = user?.role === 'manager';
-  const formatApiError = (apiError: ApiError): string => getApiErrorMessage(apiError, t);
+  const formatApiError = useCallback((apiError: ApiError): string => getApiErrorMessage(apiError, t), [t]);
   const validatePurchaseAmount = createAmountValidator(t, { required: true });
+
+  const showActionError = useCallback(
+    (error: unknown) => {
+      if (error instanceof ApiError) {
+        api.error({
+          title: t('assetList.manager.actionFailedTitle'),
+          description: formatApiError(error),
+        });
+      }
+    },
+    [api, formatApiError, t],
+  );
+
+  const runSubmittingAction = useCallback(
+    async (action: () => Promise<void>) => {
+      setIsSubmitting(true);
+      try {
+        await action();
+      } catch (error) {
+        showActionError(error);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [showActionError],
+  );
 
   const validateWarrantyExpiry = async (_: unknown, value?: string) => {
     if (!value) {
@@ -134,50 +167,23 @@ const AssetDetail: React.FC = () => {
     }
   };
 
-  const loadAsset = async (showLoading = true) => {
-    if (!id) {
-      return;
-    }
-
-    if (showLoading) {
-      setLoading(true);
-    }
-
-    setError(null);
-    setStatus(null);
-
-    try {
-      const data = await assetsApi.getAssetById(id);
-      setAsset(data);
-    } catch (e) {
-      if (e instanceof ApiError) {
-        setError(e.message);
-        setStatus(e.status);
-      } else {
-        setError(t('assetList.serverError'));
+  const loadAsset = useCallback(
+    async (showLoading = true) => {
+      if (!id) {
+        return;
       }
-    } finally {
+
       if (showLoading) {
-        setLoading(false);
+        setLoading(true);
       }
-    }
-  };
 
-  useEffect(() => {
-    if (!id) return;
-
-    let cancelled = false;
-
-    void (async () => {
-      setLoading(true);
       setError(null);
       setStatus(null);
+
       try {
         const data = await assetsApi.getAssetById(id);
-        if (cancelled) return;
         setAsset(data);
       } catch (e) {
-        if (cancelled) return;
         if (e instanceof ApiError) {
           setError(e.message);
           setStatus(e.status);
@@ -185,16 +191,20 @@ const AssetDetail: React.FC = () => {
           setError(t('assetList.serverError'));
         }
       } finally {
-        if (!cancelled) {
+        if (showLoading) {
           setLoading(false);
         }
       }
-    })();
+    },
+    [id, t],
+  );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [id, t]);
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+    void loadAsset();
+  }, [id, loadAsset]);
 
   useEffect(() => {
     if (!isManager) {
@@ -224,7 +234,7 @@ const AssetDetail: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [api, isManager, t]);
+  }, [api, formatApiError, isManager, t]);
 
   const openEditModal = () => {
     if (!asset) {
@@ -287,24 +297,18 @@ const AssetDetail: React.FC = () => {
 
     try {
       const values = await assetForm.validateFields();
-      setIsSubmitting(true);
-      const payload: AssetUpdatePayload = {
-        ...toAssetPayload(values),
-        version: asset.version,
-      };
-      await assetsApi.updateAsset(asset.id, payload);
-      setIsEditModalOpen(false);
-      await loadAsset(false);
-      api.success({ title: t('assetList.manager.editSuccess') });
-    } catch (e) {
-      if (e instanceof ApiError) {
-        api.error({
-          title: t('assetList.manager.actionFailedTitle'),
-          description: formatApiError(e),
-        });
-      }
-    } finally {
-      setIsSubmitting(false);
+      await runSubmittingAction(async () => {
+        const payload: AssetUpdatePayload = {
+          ...toAssetPayload(values),
+          version: asset.version,
+        };
+        await assetsApi.updateAsset(asset.id, payload);
+        setIsEditModalOpen(false);
+        await loadAsset(false);
+        api.success({ title: t('assetList.manager.editSuccess') });
+      });
+    } catch {
+      // Form validation failure is handled by Ant Design field errors.
     }
   };
 
@@ -315,34 +319,27 @@ const AssetDetail: React.FC = () => {
 
     try {
       const values = await assignForm.validateFields();
-      setIsSubmitting(true);
+      await runSubmittingAction(async () => {
+        if (asset.status === 'in_use') {
+          await assetsApi.unassignAsset(asset.id, {
+            reason: values.reason ?? '',
+            version: asset.version,
+          });
+          api.success({ title: t('assetList.manager.unassignSuccess') });
+        } else {
+          await assetsApi.assignAsset(asset.id, {
+            responsible_person_id: values.responsible_person_id ?? '',
+            assignment_date: values.assignment_date,
+            version: asset.version,
+          });
+          api.success({ title: t('assetList.manager.assignSuccess') });
+        }
 
-      if (asset.status === 'in_use') {
-        await assetsApi.unassignAsset(asset.id, {
-          reason: values.reason ?? '',
-          version: asset.version,
-        });
-        api.success({ title: t('assetList.manager.unassignSuccess') });
-      } else {
-        await assetsApi.assignAsset(asset.id, {
-          responsible_person_id: values.responsible_person_id ?? '',
-          assignment_date: values.assignment_date,
-          version: asset.version,
-        });
-        api.success({ title: t('assetList.manager.assignSuccess') });
-      }
-
-      setIsAssignModalOpen(false);
-      await loadAsset(false);
-    } catch (e) {
-      if (e instanceof ApiError) {
-        api.error({
-          title: t('assetList.manager.actionFailedTitle'),
-          description: formatApiError(e),
-        });
-      }
-    } finally {
-      setIsSubmitting(false);
+        setIsAssignModalOpen(false);
+        await loadAsset(false);
+      });
+    } catch {
+      // Form validation failure is handled by Ant Design field errors.
     }
   };
 
@@ -353,24 +350,56 @@ const AssetDetail: React.FC = () => {
 
     try {
       const values = await disposeForm.validateFields();
-      setIsSubmitting(true);
-      await assetsApi.disposeAsset(asset.id, {
-        disposal_reason: values.disposal_reason,
-        version: asset.version,
-      });
-      setIsDisposeModalOpen(false);
-      await loadAsset(false);
-      api.success({ title: t('assetList.manager.disposeSuccess') });
-    } catch (e) {
-      if (e instanceof ApiError) {
-        api.error({
-          title: t('assetList.manager.actionFailedTitle'),
-          description: formatApiError(e),
+      await runSubmittingAction(async () => {
+        await assetsApi.disposeAsset(asset.id, {
+          disposal_reason: values.disposal_reason,
+          version: asset.version,
         });
-      }
-    } finally {
-      setIsSubmitting(false);
+        setIsDisposeModalOpen(false);
+        await loadAsset(false);
+        api.success({ title: t('assetList.manager.disposeSuccess') });
+      });
+    } catch {
+      // Form validation failure is handled by Ant Design field errors.
     }
+  };
+
+  const assetTextFields = useMemo<AssetTextFieldConfig[]>(
+    () => [
+      { name: 'name', label: t('assetList.form.name'), required: true, max: 120 },
+      { name: 'model', label: t('assetList.form.model'), required: true, max: 120 },
+      { name: 'supplier', label: t('assetList.form.supplier'), required: true, max: 120 },
+      { name: 'location', label: t('assetList.form.location'), max: 120 },
+      { name: 'department', label: t('assetList.form.department'), max: 100 },
+    ],
+    [t],
+  );
+
+  const commonModalProps = {
+    cancelText: t('common.button.cancel'),
+    confirmLoading: isSubmitting,
+    destroyOnHidden: true,
+    forceRender: true,
+  };
+
+  const renderAssetTextField = ({ name, label, required, max }: AssetTextFieldConfig) => {
+    const rules: Array<{ required?: true; max?: number; message: string }> = [];
+    if (required) {
+      rules.push({ required: true, message: t('validation.required') });
+    }
+    if (typeof max === 'number') {
+      const maxMessageMap: Record<number, string> = {
+        100: t('validation.max100Chars'),
+        120: t('validation.max120Chars'),
+      };
+      rules.push({ max, message: maxMessageMap[max] ?? t('validation.max120Chars') });
+    }
+
+    return (
+      <Form.Item key={name} name={name} label={label} rules={rules}>
+        <Input />
+      </Form.Item>
+    );
   };
 
   const renderContent = () => {
@@ -510,33 +539,10 @@ const AssetDetail: React.FC = () => {
           onCancel={() => setIsEditModalOpen(false)}
           onOk={() => void handleSaveAsset()}
           okText={t('common.button.save')}
-          cancelText={t('common.button.cancel')}
-          confirmLoading={isSubmitting}
-          destroyOnHidden
-          forceRender
+          {...commonModalProps}
         >
           <Form form={assetForm} layout="vertical">
-            <Form.Item
-              name="name"
-              label={t('assetList.form.name')}
-              rules={[
-                { required: true, message: t('validation.required') },
-                { max: 120, message: t('validation.max120Chars') },
-              ]}
-            >
-              <Input />
-            </Form.Item>
-
-            <Form.Item
-              name="model"
-              label={t('assetList.form.model')}
-              rules={[
-                { required: true, message: t('validation.required') },
-                { max: 120, message: t('validation.max120Chars') },
-              ]}
-            >
-              <Input />
-            </Form.Item>
+            {assetTextFields.slice(0, 2).map(renderAssetTextField)}
 
             <Form.Item
               name="specs"
@@ -559,16 +565,7 @@ const AssetDetail: React.FC = () => {
               />
             </Form.Item>
 
-            <Form.Item
-              name="supplier"
-              label={t('assetList.form.supplier')}
-              rules={[
-                { required: true, message: t('validation.required') },
-                { max: 120, message: t('validation.max120Chars') },
-              ]}
-            >
-              <Input />
-            </Form.Item>
+            {assetTextFields.slice(2, 3).map(renderAssetTextField)}
 
             <Form.Item
               name="purchase_date"
@@ -598,21 +595,7 @@ const AssetDetail: React.FC = () => {
               <Input type="number" min={0} step="0.01" />
             </Form.Item>
 
-            <Form.Item
-              name="location"
-              label={t('assetList.form.location')}
-              rules={[{ max: 120, message: t('validation.max120Chars') }]}
-            >
-              <Input />
-            </Form.Item>
-
-            <Form.Item
-              name="department"
-              label={t('assetList.form.department')}
-              rules={[{ max: 100, message: t('validation.max100Chars') }]}
-            >
-              <Input />
-            </Form.Item>
+            {assetTextFields.slice(3).map(renderAssetTextField)}
 
             <Form.Item name="activation_date" label={t('assetList.form.activationDate')}>
               <Input type="date" />
@@ -639,10 +622,7 @@ const AssetDetail: React.FC = () => {
           onCancel={() => setIsAssignModalOpen(false)}
           onOk={() => void handleAssignOrUnassign()}
           okText={t('common.button.confirm')}
-          cancelText={t('common.button.cancel')}
-          confirmLoading={isSubmitting}
-          destroyOnHidden
-          forceRender
+          {...commonModalProps}
         >
           <Form form={assignForm} layout="vertical">
             {asset?.status === 'in_use' ? (
@@ -688,10 +668,7 @@ const AssetDetail: React.FC = () => {
           onCancel={() => setIsDisposeModalOpen(false)}
           onOk={() => void handleDispose()}
           okText={t('common.button.confirm')}
-          cancelText={t('common.button.cancel')}
-          confirmLoading={isSubmitting}
-          destroyOnHidden
-          forceRender
+          {...commonModalProps}
         >
           <Form form={disposeForm} layout="vertical">
             <Form.Item
