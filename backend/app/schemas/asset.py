@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
 from app.models.asset import AssetStatus
+from app.models.asset_action_history import AssetAction
 from app.schemas.common import APIModel, UUIDString
 
 
@@ -137,3 +138,32 @@ class AssetRead(APIModel):
     version: int
     created_at: datetime | None
     updated_at: datetime | None
+
+
+class ActorRef(APIModel):
+    id: str
+    name: str
+
+
+class AssetActionHistoryRead(APIModel):
+    # `from_attributes=True` (inherited via APIModel) populates by attr name,
+    # so the SQLAlchemy attribute `event_metadata` maps to the wire field
+    # `metadata` here. The serialization alias is what the JSON consumer sees.
+    # `populate_by_name=True` is load-bearing alongside the alias: it keeps
+    # both the attr name (`event_metadata`) and the alias (`metadata`)
+    # accepted on input, so neither ORM attribute access nor a hand-built
+    # dict breaks. (StrEnum on action/from_status/to_status renders as the
+    # enum value on the wire, but constrains OpenAPI to a known set.)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: str
+    action: AssetAction
+    from_status: AssetStatus
+    to_status: AssetStatus
+    actor: ActorRef | None
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        validation_alias="event_metadata",
+        serialization_alias="metadata",
+    )
+    created_at: datetime

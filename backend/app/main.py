@@ -111,6 +111,32 @@ async def pydantic_validation_to_envelope(
     )
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_to_envelope(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Catch-all so non-HTTPException failures still emit the project envelope.
+
+    Without this, Starlette's default returns ``{"detail": "Internal Server Error"}``
+    which silently violates the response contract (`docs/system-design/12-api-design.md`).
+    """
+    logger.error(
+        "Unhandled exception on %s %s",
+        request.method,
+        request.url.path,
+        exc_info=exc,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": "internal_server_error",
+                "message": "Internal server error.",
+            }
+        },
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_to_envelope(
     request: Request, exc: RequestValidationError

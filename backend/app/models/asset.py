@@ -50,3 +50,15 @@ class Asset(TimestampVersionMixin, Base):
 
     responsible_person = relationship("User", back_populates="assets")
     repair_requests = relationship("RepairRequest", back_populates="asset")
+    # viewonly=True: appending to ``asset.action_histories`` is silently
+    # ignored at flush time. ALL inserts MUST go through
+    # ``app.services.audit_log.record_asset_action`` so the audit-trail
+    # invariant ("no transition without log") cannot be bypassed. Do not
+    # flip this without rerouting the service. Guarded by
+    # ``test_action_histories_relationship_is_viewonly``.
+    action_histories = relationship(
+        "AssetActionHistory",
+        back_populates="asset",
+        order_by="AssetActionHistory.created_at.desc()",
+        viewonly=True,
+    )
