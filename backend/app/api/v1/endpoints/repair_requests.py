@@ -93,6 +93,10 @@ _REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset(
     }
 )
 
+_ASSET_VERSION_CONFLICT_MESSAGE = (
+    "Asset was modified by another user. Please refresh and try again."
+)
+
 # Mirrors `_next_asset_code` in the assets endpoint: same race + retry
 # semantics, same human-readable per-year sequence shape.
 _REPAIR_ID_CREATE_ATTEMPTS = 3
@@ -279,9 +283,7 @@ def _ensure_request_version(repair_request: RepairRequest, version: int) -> None
 
 def _ensure_asset_version_match(asset: Asset, expected_version: int | None) -> None:
     if expected_version is not None and asset.version != expected_version:
-        raise _conflict(
-            "Asset was modified by another user. Please refresh and try again."
-        )
+        raise _conflict(_ASSET_VERSION_CONFLICT_MESSAGE)
 
 
 def _ensure_asset_status(
@@ -889,7 +891,7 @@ def _load_asset_for_submit(
     if asset.responsible_person_id != current_user.id:
         raise _forbidden("Requester is not assigned to this asset.")
     if payload.version is not None and asset.version != payload.version:
-        raise _conflict("Asset was modified by another user. Please refresh and try again.")
+        raise _conflict(_ASSET_VERSION_CONFLICT_MESSAGE)
     if asset.status is not AssetStatus.IN_USE:
         raise _conflict(
             "Repair request is only allowed for assets in use.",
@@ -975,9 +977,7 @@ async def submit_repair_request(
     except StaleDataError as exc:
         db.rollback()
         logger.warning("Repair request submit conflict: %s", exc)
-        raise _conflict(
-            "Asset was modified by another user. Please refresh and try again."
-        ) from exc
+        raise _conflict(_ASSET_VERSION_CONFLICT_MESSAGE) from exc
     except IntegrityError as exc:
         db.rollback()
         logger.warning("Repair request submit constraint error: %s", exc)
