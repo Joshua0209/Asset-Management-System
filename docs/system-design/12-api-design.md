@@ -1140,7 +1140,7 @@ POST /api/v1/repair-requests/:id/complete
 - `responsible_person_id` unchanged
 - Audit log entry written 
 
-**Errors:** `409 conflict` (version mismatch), `409 invalid_transition` (request not under_repair), `404` (not found), `422` (validation)
+**Errors:** `409 conflict` (version mismatch), `409 invalid_transition` (request not under_repair, or associated asset not under_repair), `404` (not found), `422` (validation)
 
 ---
 
