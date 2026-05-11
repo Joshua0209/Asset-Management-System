@@ -1,8 +1,8 @@
 import "@testing-library/jest-dom";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-if (typeof window !== 'undefined') {
-  (window as Window & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+if (typeof globalThis.window !== 'undefined') {
+  (globalThis.window as Window & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 }
 
 // Node 25+ ships an unfinished WebStorage at globalThis.localStorage that

@@ -54,7 +54,7 @@ function parseDateOnly(value?: string | null): Date | null {
 
 function normalizeOptionalText(value?: string): string | null {
   const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
+  return trimmed || null;
 }
 
 export function isFutureDate(value: string): boolean {
