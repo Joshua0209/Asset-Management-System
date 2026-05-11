@@ -22,34 +22,16 @@ import { useAuth } from '../auth/AuthContext';
 import { assetsApi, ApiError, usersApi } from '../api';
 import { getApiErrorMessage } from '../utils/apiErrors';
 import { createAmountValidator } from '../utils/validators';
-import type { AssetCategory, AssetRecord, AssetUpdatePayload } from '../api/assets';
+import type { AssetRecord, AssetUpdatePayload } from '../api/assets';
 import type { UserRecord } from '../api/users';
 import { STATUS_COLORS } from '../components/assets/constants';
+import AssetFormFields from '../components/assets/AssetFormFields';
+import {
+  createWarrantyExpiryValidator,
+  normalizeAssetFormValues,
+  type AssetFormValues,
+} from '../components/assets/assetFormShared';
 import { formatDateValue, formatAmountValue } from '../utils/format';
-
-const CATEGORY_OPTIONS: AssetCategory[] = [
-  'phone',
-  'computer',
-  'tablet',
-  'monitor',
-  'printer',
-  'network_equipment',
-  'other',
-];
-
-interface AssetFormValues {
-  name: string;
-  model: string;
-  specs?: string;
-  category: AssetCategory;
-  supplier: string;
-  purchase_date: string;
-  purchase_amount: string;
-  location?: string;
-  department?: string;
-  activation_date?: string;
-  warranty_expiry?: string;
-}
 
 interface AssignFormValues {
   responsible_person_id?: string;
@@ -61,36 +43,6 @@ interface DisposeFormValues {
   disposal_reason: string;
 }
 
-interface AssetTextFieldConfig {
-  name: keyof AssetFormValues;
-  label: string;
-  required?: boolean;
-  max?: number;
-}
-
-const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function parseDateOnly(value?: string | null): Date | null {
-  if (!value || !DATE_ONLY_PATTERN.test(value)) {
-    return null;
-  }
-  const parsed = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-  return parsed;
-}
-
-function isFutureDate(value: string): boolean {
-  const parsed = parseDateOnly(value);
-  if (!parsed) {
-    return false;
-  }
-
-  const todayUtc = new Date();
-  todayUtc.setUTCHours(0, 0, 0, 0);
-  return parsed.getTime() > todayUtc.getTime();
-}
 
 const pageContainerStyle: React.CSSProperties = {
   maxWidth: 1200,
@@ -119,6 +71,10 @@ const AssetDetail: React.FC = () => {
   const isManager = user?.role === 'manager';
   const formatApiError = useCallback((apiError: ApiError): string => getApiErrorMessage(apiError, t), [t]);
   const validatePurchaseAmount = createAmountValidator(t, { required: true });
+  const validateWarrantyExpiry = useMemo(
+    () => createWarrantyExpiryValidator(assetForm, t),
+    [assetForm, t],
+  );
 
   const showActionError = useCallback(
     (error: unknown) => {
@@ -145,27 +101,6 @@ const AssetDetail: React.FC = () => {
     },
     [showActionError],
   );
-
-  const validateWarrantyExpiry = async (_: unknown, value?: string) => {
-    if (!value) {
-      return;
-    }
-
-    const warrantyDate = parseDateOnly(value);
-    if (!warrantyDate) {
-      return;
-    }
-
-    const purchaseDate = parseDateOnly(assetForm.getFieldValue('purchase_date'));
-    if (purchaseDate && warrantyDate.getTime() <= purchaseDate.getTime()) {
-      throw new Error(t('validation.warrantyAfterPurchase'));
-    }
-
-    const activationDate = parseDateOnly(assetForm.getFieldValue('activation_date'));
-    if (activationDate && warrantyDate.getTime() <= activationDate.getTime()) {
-      throw new Error(t('validation.warrantyAfterActivation'));
-    }
-  };
 
   const loadAsset = useCallback(
     async (showLoading = true) => {
@@ -245,7 +180,7 @@ const AssetDetail: React.FC = () => {
       name: asset.name,
       model: asset.model,
       specs: asset.specs ?? undefined,
-      category: asset.category as AssetCategory,
+      category: asset.category as AssetFormValues['category'],
       supplier: asset.supplier,
       purchase_date: asset.purchase_date,
       purchase_amount: String(asset.purchase_amount),
@@ -276,20 +211,6 @@ const AssetDetail: React.FC = () => {
     setIsDisposeModalOpen(true);
   };
 
-  const toAssetPayload = (values: AssetFormValues): Omit<AssetUpdatePayload, 'version'> => ({
-    name: values.name,
-    model: values.model,
-    specs: values.specs?.trim() ? values.specs.trim() : null,
-    category: values.category,
-    supplier: values.supplier,
-    purchase_date: values.purchase_date,
-    purchase_amount: values.purchase_amount,
-    location: values.location?.trim() ? values.location.trim() : null,
-    department: values.department?.trim() ? values.department.trim() : null,
-    activation_date: values.activation_date?.trim() ? values.activation_date.trim() : null,
-    warranty_expiry: values.warranty_expiry?.trim() ? values.warranty_expiry.trim() : null,
-  });
-
   const handleSaveAsset = async () => {
     if (!asset) {
       return;
@@ -299,7 +220,7 @@ const AssetDetail: React.FC = () => {
       const values = await assetForm.validateFields();
       await runSubmittingAction(async () => {
         const payload: AssetUpdatePayload = {
-          ...toAssetPayload(values),
+          ...normalizeAssetFormValues(values),
           version: asset.version,
         };
         await assetsApi.updateAsset(asset.id, payload);
@@ -364,42 +285,11 @@ const AssetDetail: React.FC = () => {
     }
   };
 
-  const assetTextFields = useMemo<AssetTextFieldConfig[]>(
-    () => [
-      { name: 'name', label: t('assetList.form.name'), required: true, max: 120 },
-      { name: 'model', label: t('assetList.form.model'), required: true, max: 120 },
-      { name: 'supplier', label: t('assetList.form.supplier'), required: true, max: 120 },
-      { name: 'location', label: t('assetList.form.location'), max: 120 },
-      { name: 'department', label: t('assetList.form.department'), max: 100 },
-    ],
-    [t],
-  );
-
   const commonModalProps = {
     cancelText: t('common.button.cancel'),
     confirmLoading: isSubmitting,
     destroyOnHidden: true,
     forceRender: true,
-  };
-
-  const renderAssetTextField = ({ name, label, required, max }: AssetTextFieldConfig) => {
-    const rules: Array<{ required?: true; max?: number; message: string }> = [];
-    if (required) {
-      rules.push({ required: true, message: t('validation.required') });
-    }
-    if (typeof max === 'number') {
-      const maxMessageMap: Record<number, string> = {
-        100: t('validation.max100Chars'),
-        120: t('validation.max120Chars'),
-      };
-      rules.push({ max, message: maxMessageMap[max] ?? t('validation.max120Chars') });
-    }
-
-    return (
-      <Form.Item key={name} name={name} label={label} rules={rules}>
-        <Input />
-      </Form.Item>
-    );
   };
 
   const renderContent = () => {
@@ -542,73 +432,11 @@ const AssetDetail: React.FC = () => {
           {...commonModalProps}
         >
           <Form form={assetForm} layout="vertical">
-            {assetTextFields.slice(0, 2).map(renderAssetTextField)}
-
-            <Form.Item
-              name="specs"
-              label={t('assetList.form.specs')}
-              rules={[{ max: 500, message: t('validation.max500Chars') }]}
-            >
-              <Input.TextArea rows={2} />
-            </Form.Item>
-
-            <Form.Item
-              name="category"
-              label={t('assetList.form.category')}
-              rules={[{ required: true, message: t('validation.required') }]}
-            >
-              <Select
-                options={CATEGORY_OPTIONS.map((category) => ({
-                  value: category,
-                  label: category,
-                }))}
-              />
-            </Form.Item>
-
-            {assetTextFields.slice(2, 3).map(renderAssetTextField)}
-
-            <Form.Item
-              name="purchase_date"
-              label={t('assetList.form.purchaseDate')}
-              rules={[
-                { required: true, message: t('validation.required') },
-                {
-                  validator: async (_rule, value?: string) => {
-                    if (!value) {
-                      return;
-                    }
-                    if (isFutureDate(value)) {
-                      throw new Error(t('validation.purchaseDateNotFuture'));
-                    }
-                  },
-                },
-              ]}
-            >
-              <Input type="date" />
-            </Form.Item>
-
-            <Form.Item
-              name="purchase_amount"
-              label={t('assetList.form.purchaseAmount')}
-              rules={[{ validator: validatePurchaseAmount }]}
-            >
-              <Input type="number" min={0} step="0.01" />
-            </Form.Item>
-
-            {assetTextFields.slice(3).map(renderAssetTextField)}
-
-            <Form.Item name="activation_date" label={t('assetList.form.activationDate')}>
-              <Input type="date" />
-            </Form.Item>
-
-            <Form.Item
-              name="warranty_expiry"
-              label={t('assetList.form.warrantyExpiry')}
-              dependencies={['purchase_date', 'activation_date']}
-              rules={[{ validator: validateWarrantyExpiry }]}
-            >
-              <Input type="date" />
-            </Form.Item>
+            <AssetFormFields
+              t={t}
+              validatePurchaseAmount={validatePurchaseAmount}
+              validateWarrantyExpiry={validateWarrantyExpiry}
+            />
           </Form>
         </Modal>
 
