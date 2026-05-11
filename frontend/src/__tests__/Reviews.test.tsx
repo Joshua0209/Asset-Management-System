@@ -30,6 +30,18 @@ vi.mock("../api", async () => {
 const apiModule = await import("../api");
 const mockListRepairRequests = vi.mocked(apiModule.repairRequestsApi.listRepairRequests);
 
+async function renderReviewsPage(): Promise<void> {
+  await act(async () => {
+    render(<Reviews />);
+  });
+}
+
+async function clickWithAct(user: ReturnType<typeof userEvent.setup>, target: HTMLElement): Promise<void> {
+  await act(async () => {
+    await user.click(target);
+  });
+}
+
 function buildResponse(
   status: "pending_review" | "under_repair" | "completed" | "rejected",
 ) {
@@ -78,7 +90,7 @@ describe("Reviews", () => {
   });
 
   it("renders repair list and status badge", async () => {
-    render(<Reviews />);
+    await renderReviewsPage();
 
     await waitFor(() => {
       expect(mockListRepairRequests).toHaveBeenCalledWith({
@@ -97,17 +109,13 @@ describe("Reviews", () => {
     const user = userEvent.setup({ delay: null });
     mockListRepairRequests.mockResolvedValueOnce(buildResponse("completed"));
 
-    await act(async () => {
-      render(<Reviews />);
-    });
+    await renderReviewsPage();
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Detail" })).toBeInTheDocument();
     });
 
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Detail" }));
-    });
+    await clickWithAct(user, screen.getByRole("button", { name: "Detail" }));
 
     expect(mockNavigate).toHaveBeenCalledWith("/reviews/rr-1");
   });
@@ -115,7 +123,7 @@ describe("Reviews", () => {
   it("applies status filter and reloads list", async () => {
     const user = userEvent.setup({ delay: null });
 
-    render(<Reviews />);
+    await renderReviewsPage();
 
     await waitFor(() => {
       expect(screen.getByText("AST-1")).toBeInTheDocument();
@@ -124,8 +132,8 @@ describe("Reviews", () => {
     mockListRepairRequests.mockResolvedValueOnce(buildResponse("under_repair"));
 
     const [statusFilterCombobox] = screen.getAllByRole("combobox");
-    await user.click(statusFilterCombobox);
-    await user.click(screen.getByText("Under Repair"));
+    await clickWithAct(user, statusFilterCombobox);
+    await clickWithAct(user, screen.getByText("Under Repair"));
 
     await waitFor(() => {
       expect(mockListRepairRequests).toHaveBeenLastCalledWith({
