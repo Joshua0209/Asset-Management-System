@@ -106,10 +106,10 @@ describe('ReviewDetail', () => {
     mockRejectRepairRequest.mockReset();
     mockUpdateRepairRequestDetails.mockReset();
     mockCompleteRepairRequest.mockReset();
-    mockApproveRepairRequest.mockResolvedValue({});
-    mockRejectRepairRequest.mockResolvedValue({});
-    mockUpdateRepairRequestDetails.mockResolvedValue({});
-    mockCompleteRepairRequest.mockResolvedValue({});
+    mockApproveRepairRequest.mockResolvedValue({} as never);
+    mockRejectRepairRequest.mockResolvedValue({} as never);
+    mockUpdateRepairRequestDetails.mockResolvedValue({} as never);
+    mockCompleteRepairRequest.mockResolvedValue({} as never);
 
     await act(async () => {
       await i18n.changeLanguage('en');
