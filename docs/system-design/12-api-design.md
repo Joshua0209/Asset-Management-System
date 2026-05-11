@@ -150,8 +150,7 @@ HTTP/1.1 409 Conflict
 {
   "error": {
     "code": "conflict",
-    "message": "Resource was modified by another user. Please refresh and try again.",
-    "details": [{ "field": "version", "message": "Expected 3, but current is 4", "code": "version_mismatch" }]
+    "message": "Resource was modified by another user. Please refresh and try again."
   }
 }
 ```
