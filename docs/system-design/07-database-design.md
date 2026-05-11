@@ -123,13 +123,14 @@ CREATE UNIQUE INDEX idx_assets_code_active ON assets(asset_code) WHERE deleted_a
 > reinstated for improved write performance and index size.
 
 ```sql
--- Phase 1: Basic indexes
-CREATE INDEX idx_assets_responsible ON assets(responsible_person_id);
-CREATE INDEX idx_assets_status ON assets(status);
-CREATE INDEX idx_repair_asset ON repair_requests(asset_id);
-CREATE INDEX idx_repair_requester ON repair_requests(requester_id);
+-- Phase 1: Basic indexes (created in migration 20260417_0001)
+CREATE INDEX ix_assets_responsible_person_id ON assets(responsible_person_id);
+CREATE INDEX ix_assets_status ON assets(status);
+CREATE INDEX ix_repair_requests_asset_id ON repair_requests(asset_id);
+CREATE INDEX ix_repair_requests_requester_id ON repair_requests(requester_id);
+CREATE INDEX ix_repair_requests_status ON repair_requests(status);
 
--- History table
+-- History table (created in migration 20260506_0003)
 CREATE INDEX idx_history_asset ON asset_action_histories(asset_id);
 CREATE INDEX idx_history_actor ON asset_action_histories(actor_id);
 CREATE INDEX idx_history_created ON asset_action_histories(created_at);
