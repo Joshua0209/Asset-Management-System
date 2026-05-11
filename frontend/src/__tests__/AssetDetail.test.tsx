@@ -132,10 +132,10 @@ describe("AssetDetail", () => {
     mockUnassignAsset.mockReset();
     mockDisposeAsset.mockReset();
     setAuthUser(holderUser);
-    mockUpdateAsset.mockResolvedValue({} as never);
-    mockAssignAsset.mockResolvedValue({} as never);
-    mockUnassignAsset.mockResolvedValue({} as never);
-    mockDisposeAsset.mockResolvedValue({} as never);
+    mockUpdateAsset.mockResolvedValue({});
+    mockAssignAsset.mockResolvedValue({});
+    mockUnassignAsset.mockResolvedValue({});
+    mockDisposeAsset.mockResolvedValue({});
     mockListUsers.mockResolvedValue({
       data: [
         { id: "holder-2", name: "Bob Lee", email: "bob@example.com", role: "holder" },

@@ -138,7 +138,7 @@ const AssetDetail: React.FC = () => {
     if (!id) {
       return;
     }
-    void loadAsset();
+    loadAsset();
   }, [id, loadAsset]);
 
   useEffect(() => {
