@@ -1259,6 +1259,25 @@ class TestMetadataDiscriminatedUnion:
         schema = AssetActionHistoryRead.model_validate(history)
         assert schema.metadata is None
 
+    def test_legacy_freeform_row_fails_loudly(self) -> None:
+        # Pinned behavior: a pre-existing row whose event_metadata doesn't
+        # match its action's variant raises ValidationError on read. The
+        # DB JSON column stays flexible for writers, but the response
+        # schema now requires shape conformance — there is no silent
+        # fallback to a freeform dict. `{"foo": "bar"}` is the exact
+        # shape the original TestSchemaAliasing fixture used before this
+        # PR, so it's a faithful stand-in for any legacy row.
+        #
+        # If a future refactor adds a graceful fallback variant, this
+        # test must be updated deliberately — don't delete it silently.
+        from pydantic import ValidationError
+
+        from app.schemas.asset import AssetActionHistoryRead
+
+        history = self._build_history(AssetAction.DISPOSE, {"foo": "bar"})
+        with pytest.raises(ValidationError):
+            AssetActionHistoryRead.model_validate(history)
+
 
 class TestMetadataOpenAPISchema:
     """Pydantic v2 emits `oneOf` + `discriminator` for tagged unions; this
