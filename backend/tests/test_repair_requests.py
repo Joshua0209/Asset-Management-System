@@ -2220,3 +2220,30 @@ class TestRepairIdField:
         )
         assert response.status_code == 200
         assert response.json()["data"]["repair_id"] == "REP-2026-00042"
+
+    def test_next_repair_id_raises_500_when_sequence_exhausted(
+        self,
+        db_session: Session,
+    ) -> None:
+        # Seed a repair_request at the year boundary (sequence 99999).
+        # The next call to _next_repair_id should raise 500, not silently
+        # produce a 6-digit id that breaks lexicographic ordering.
+        from fastapi import HTTPException
+
+        from app.api.v1.endpoints.repair_requests import _next_repair_id
+
+        db_session.add(
+            RepairRequest(
+                asset_id="00000000-0000-0000-0000-000000000001",
+                repair_id="REP-2026-99999",
+                requester_id="00000000-0000-0000-0000-000000000002",
+                status=RepairRequestStatus.PENDING_REVIEW,
+                fault_description="boundary fixture",
+            )
+        )
+        db_session.flush()
+
+        with pytest.raises(HTTPException) as exc_info:
+            _next_repair_id(db_session)
+
+        assert exc_info.value.status_code == 500
