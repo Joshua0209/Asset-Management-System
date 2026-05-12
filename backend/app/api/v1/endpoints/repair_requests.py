@@ -987,7 +987,10 @@ async def submit_repair_request(
                 return result
             except IntegrityError as exc:
                 db.rollback()
-                storage.cleanup(attempt_keys)
+                try:
+                    storage.cleanup(attempt_keys)
+                except Exception:
+                    logger.exception("Failed to clean up images after attempt %s failure", attempt)
                 if not _is_repair_id_uniqueness_violation(exc):
                     raise _conflict(
                         "Repair request could not be submitted due to a conflicting state."
