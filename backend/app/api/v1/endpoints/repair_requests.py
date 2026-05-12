@@ -219,8 +219,11 @@ def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
     )
 
 
-def _validation_error(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
+def _validation_error(message: str, *, code: str = "validation_error") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"code": code, "message": message},
+    )
 
 
 def _repair_create_from_mapping(raw_payload: object) -> RepairRequestCreate:

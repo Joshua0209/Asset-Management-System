@@ -114,14 +114,10 @@ def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
     )
 
 
-def _validation_error(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
-
-
-def _invalid_unassignment_date(message: str) -> HTTPException:
+def _validation_error(message: str, *, code: str = "validation_error") -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail={"code": "invalid_unassignment_date", "message": message},
+        detail={"code": code, "message": message},
     )
 
 
@@ -631,8 +627,9 @@ def unassign_asset(
             # Pre-existing rows assigned before this column landed have
             # assignment_date = NULL; only enforce ordering when we have a
             # real anchor to compare against.
-            raise _invalid_unassignment_date(
-                "unassignment_date must not be earlier than assignment_date."
+            raise _validation_error(
+                "unassignment_date must not be earlier than assignment_date.",
+                code="invalid_unassignment_date",
             )
         if asset.version != payload.version:
             raise _conflict(_STALE_VERSION_MESSAGE)
