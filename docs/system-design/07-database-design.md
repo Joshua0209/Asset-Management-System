@@ -115,26 +115,39 @@ CREATE UNIQUE INDEX idx_assets_code_active ON assets(asset_code) WHERE deleted_a
 
 ## Index Strategy
 
-```sql
--- Phase 1: Basic indexes
-CREATE INDEX idx_assets_responsible ON assets(responsible_person_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_assets_status ON assets(status) WHERE deleted_at IS NULL;
-CREATE INDEX idx_repair_asset ON repair_requests(asset_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_repair_requester ON repair_requests(requester_id) WHERE deleted_at IS NULL;
+> **MySQL 8.0 limitation:** MySQL does not support partial indexes (`CREATE INDEX ... WHERE ...`).
+> The `WHERE deleted_at IS NULL` filter shown in early drafts has been removed from all index
+> definitions. Queries apply `deleted_at IS NULL` at query time, so the indexes remain effective;
+> soft-deleted rows are included in the index at a small storage cost but are never returned to
+> callers. If the database is migrated to PostgreSQL in the future, partial indexes can be
+> reinstated for improved write performance and index size.
 
--- History table
+```sql
+-- Phase 1: Basic indexes (created in migration 20260417_0001)
+CREATE INDEX ix_assets_responsible_person_id ON assets(responsible_person_id);
+CREATE INDEX ix_assets_status ON assets(status);
+CREATE INDEX ix_repair_requests_asset_id ON repair_requests(asset_id);
+CREATE INDEX ix_repair_requests_requester_id ON repair_requests(requester_id);
+CREATE INDEX ix_repair_requests_status ON repair_requests(status);
+
+-- History table (created in migration 20260506_0003)
 CREATE INDEX idx_history_asset ON asset_action_histories(asset_id);
 CREATE INDEX idx_history_actor ON asset_action_histories(actor_id);
 CREATE INDEX idx_history_created ON asset_action_histories(created_at);
 
--- Phase 2: Multi-dimensional search support
-CREATE INDEX idx_assets_dept_loc ON assets(department, location) WHERE deleted_at IS NULL;
-CREATE INDEX idx_assets_category_status ON assets(category, status) WHERE deleted_at IS NULL;
-CREATE INDEX idx_repair_status_date ON repair_requests(status, created_at) WHERE deleted_at IS NULL;
+-- Phase 2: Multi-dimensional search support (added in migration 20260511_0004)
+CREATE INDEX idx_assets_dept_loc ON assets(department, location);
+CREATE INDEX idx_assets_category_status ON assets(category, status);
+CREATE INDEX idx_repair_status_date ON repair_requests(status, created_at);
 
 -- Phase 3: Tenant-prefixed indexes
-CREATE INDEX idx_assets_tenant_search ON assets(tenant_id, category, status) WHERE deleted_at IS NULL;
-CREATE INDEX idx_assets_tenant_person ON assets(tenant_id, responsible_person_id) WHERE deleted_at IS NULL;
-CREATE INDEX idx_repair_tenant_status ON repair_requests(tenant_id, status, created_at) WHERE deleted_at IS NULL;
+-- DO NOT RUN against the current schema: the assets, repair_requests, and
+-- asset_action_histories tables do not have a tenant_id column today. The
+-- statements below are illustrative of the shape the Phase 3 migration will
+-- emit once multi-tenancy lands and tenant_id has been added. Executing them
+-- as-is will fail with "Unknown column 'tenant_id'".
+CREATE INDEX idx_assets_tenant_search ON assets(tenant_id, category, status);
+CREATE INDEX idx_assets_tenant_person ON assets(tenant_id, responsible_person_id);
+CREATE INDEX idx_repair_tenant_status ON repair_requests(tenant_id, status, created_at);
 CREATE INDEX idx_history_tenant ON asset_action_histories(tenant_id, asset_id, created_at);
 ```

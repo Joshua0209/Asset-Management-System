@@ -24,7 +24,7 @@ M3 is now 5/5 complete on the BE/FE delivery axis — PR [#27](https://github.co
 
 Two server-side capabilities from the original W4 plan **already shipped earlier:**
 
-- Multi-dim asset search — `GET /assets` already accepts `q` (across `asset_code`/`name`/`model`), `status`, `category`, `department`, `location`, `responsible_person_id`. W4 BE narrows to **composite indexes** per design.md §5.5; the FE filter bar is the remaining bulk.
+- Multi-dim asset search — `GET /assets` already accepts `q` (across `asset_code`/`name`/`model`), `status`, `category`, `department`, `location`, `responsible_person_id`. W4 BE narrows to **composite indexes** per [docs/system-design/07-database-design.md § Index Strategy](docs/system-design/07-database-design.md); the FE filter bar is the remaining bulk.
 - Optimistic locking is enforced on every update path — 4 endpoints in `assets.py` and 5 transitions in `repair_requests.py` check `version` and emit granular 409 codes (PR [#24](https://github.com/Joshua0209/Asset-Management-System/pull/24)). W4 work narrows to a verification pass + the FE conflict-resolution dialog.
 
 Audit log + `GET /assets/:id/history` was explicitly deferred from Week 3's API contract review (PR [#28](https://github.com/Joshua0209/Asset-Management-System/pull/28)) and lands this week.
@@ -33,7 +33,7 @@ Audit log + `GET /assets/:id/history` was explicitly deferred from Week 3's API 
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Composite SQL indexes for asset search | Mon–Wed | Search API already shipped; performance-tune per design.md §5.5 |
+| ✅ Composite SQL indexes for asset search | Mon–Wed | Search API already shipped; performance-tune per [docs/system-design/07-database-design.md § Index Strategy](docs/system-design/07-database-design.md). Phase 2 indexes landed in PR [#46](https://github.com/Joshua0209/Asset-Management-System/pull/46) |
 | Optimistic locking verification pass | Mon | Done (PR #45) — 9 pin tests added, granular 409 codes documented per endpoint |
 | Audit log (event stream) + `GET /assets/:id/history` | Wed–Thu | New `asset_action_histories` model + migration. Endpoint deferred from Week 3 (PR #28). Per design decision Q13 |
 | API hardening: rate limiting, CORS | Thu–Fri | `slowapi` for rate limiting at 100 req/min/user. CORS already wired (`cors_allowed_origins`); audit allowed origins for the AWS rollout |
