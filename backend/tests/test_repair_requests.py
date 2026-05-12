@@ -1024,6 +1024,9 @@ class TestRepairWorkflowFSMGuards:
             headers=auth_headers(manager),
         )
         assert response.status_code == 409
+        # Soft-delete uses the default `_conflict()` code, not `invalid_transition`.
+        # Pinned so a future relabel (it IS a state precondition) fails loudly.
+        assert response.json()["error"]["code"] == "conflict"
 
 
 class TestRepairWorkflowValidation:
@@ -1489,6 +1492,7 @@ class TestSubmitRepairRequest:
         )
 
         assert response.status_code == 409
+        assert response.json()["error"]["code"] == "duplicate_request"
 
     def test_rejects_stale_asset_version(
         self,
