@@ -2259,8 +2259,6 @@ class TestRepairIdRetry:
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        from unittest.mock import patch
-
         holder = make_user(role=UserRole.HOLDER)
         asset = _make_asset(db_session, holder)
 
@@ -2291,6 +2289,67 @@ class TestRepairIdRetry:
                 json={"asset_id": asset.id, "fault_description": "New fault."},
                 headers=auth_headers(holder),
             )
+
+        assert response.status_code == 201
+        assert response.json()["data"]["repair_id"] == "REP-2026-FRESH"
+
+    def test_cleanup_failure_during_collision_does_not_abort_retry(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # If a storage backend's cleanup raises while the retry loop is
+        # handling an IntegrityError, the cleanup exception must NOT propagate
+        # out — otherwise it masks the original IntegrityError and prevents
+        # the next retry attempt from running.
+
+        class CleanupRaisesStorage:
+            def save(
+                self,
+                *,
+                repair_request_id: str,  # noqa: ARG002
+                image_id: str,  # noqa: ARG002
+                suffix: str,  # noqa: ARG002
+                content: bytes,  # noqa: ARG002
+            ) -> str:
+                raise ImageStorageError("save should not be called in this scenario")
+
+            def open(self, storage_key: str) -> tuple[bytes, str]:  # noqa: ARG002
+                raise ImageStorageError("not implemented")
+
+            def cleanup(self, storage_keys: list[str]) -> None:  # noqa: ARG002
+                raise RuntimeError("cleanup itself blew up")
+
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        ids = iter(["REP-2026-DUPE", "REP-2026-FRESH"])
+
+        app.dependency_overrides[get_image_storage] = lambda: CleanupRaisesStorage()
+        try:
+            with patch(
+                "app.api.v1.endpoints.repair_requests._next_repair_id",
+                side_effect=lambda db, today=None: next(ids),
+            ):
+                db_session.add(
+                    RepairRequest(
+                        asset_id=asset.id,
+                        repair_id="REP-2026-DUPE",
+                        requester_id=holder.id,
+                        status=RepairRequestStatus.COMPLETED,
+                        fault_description="pre-existing collision fixture",
+                    )
+                )
+                db_session.commit()
+
+                response = client.post(
+                    "/api/v1/repair-requests",
+                    json={"asset_id": asset.id, "fault_description": "New fault."},
+                    headers=auth_headers(holder),
+                )
+        finally:
+            app.dependency_overrides.pop(get_image_storage, None)
 
         assert response.status_code == 201
         assert response.json()["data"]["repair_id"] == "REP-2026-FRESH"
