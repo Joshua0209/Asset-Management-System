@@ -48,7 +48,7 @@ describe("RepairRequestList", () => {
   });
 
   it("renders the list of repair requests", async () => {
-    mockListRepairRequests.mockResolvedValueOnce(mockRequests as unknown as PaginatedRepairRequestResponse);
+    mockListRepairRequests.mockResolvedValueOnce(mockRequests as PaginatedRepairRequestResponse);
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

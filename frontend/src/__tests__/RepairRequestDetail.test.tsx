@@ -60,7 +60,7 @@ describe("RepairRequestDetail", () => {
   });
 
   it("renders repair request details and timeline", async () => {
-    mockGetRepairRequestById.mockResolvedValueOnce(mockRequest as unknown as RepairRequestRecord);
+    mockGetRepairRequestById.mockResolvedValueOnce(mockRequest as RepairRequestRecord);
 
     render(
       <MemoryRouter
@@ -102,7 +102,7 @@ describe("RepairRequestDetail", () => {
       rejection_reason: "Cannot reproduce",
       completed_at: null,
     };
-    mockGetRepairRequestById.mockResolvedValueOnce(rejectedRequest as unknown as RepairRequestRecord);
+    mockGetRepairRequestById.mockResolvedValueOnce(rejectedRequest as RepairRequestRecord);
 
     render(
       <MemoryRouter
