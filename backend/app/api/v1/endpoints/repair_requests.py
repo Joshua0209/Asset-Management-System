@@ -126,6 +126,14 @@ def _next_repair_id(db: Session, today: date | None = None) -> str:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Repair id sequence is corrupted. Contact an administrator.",
         ) from exc
+    if next_sequence > 99999:
+        logger.error(
+            "Repair id sequence exhausted for year %s (reached %s)", year, next_sequence
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Repair id sequence exhausted for this year. Contact an administrator.",
+        )
     return f"{prefix}{next_sequence:05d}"
 
 
