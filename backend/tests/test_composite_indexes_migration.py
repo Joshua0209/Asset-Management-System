@@ -47,9 +47,16 @@ def test_migration_has_no_partial_index_where_clause() -> None:
 
 
 def test_migration_has_downgrade_dropping_all_indexes() -> None:
+    """Scope the assertions to the downgrade() body so an upgrade-only mention
+    of an index name cannot mask a missing op.drop_index() call."""
     source = MIGRATION_PATH.read_text()
-    assert "op.drop_index" in source, (
-        "downgrade() must drop the indexes it creates."
+    marker = "def downgrade()"
+    assert marker in source, "Migration must define a downgrade() function."
+    downgrade_body = source[source.index(marker):]
+    assert "op.drop_index" in downgrade_body, (
+        "downgrade() must call op.drop_index for each index it creates."
     )
     for name in EXPECTED_INDEXES:
-        assert name in source, f"downgrade() must reference index {name!r}"
+        assert name in downgrade_body, (
+            f"downgrade() must drop index {name!r}"
+        )
