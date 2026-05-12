@@ -163,6 +163,8 @@ def build_repair_requests(
         status = status_cycle[index % len(status_cycle)]
         repair_request = RepairRequest(
             asset_id=asset.id,
+            # Sequential within this seed run; _next_repair_id will resume
+            # from the highest existing repair_id when the endpoint is called post-seed.
             repair_id=f"REP-{date.today().year}-{index + 1:05d}",
             requester_id=holder.id,
             reviewer_id=manager.id if status != RepairRequestStatus.PENDING_REVIEW else None,
