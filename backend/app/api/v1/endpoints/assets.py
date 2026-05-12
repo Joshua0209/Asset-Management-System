@@ -20,9 +20,11 @@ from app.schemas.asset import (
     AssetAssignRequest,
     AssetCreate,
     AssetDisposeRequest,
+    AssetHistoryListResponse,
     AssetRead,
     AssetUnassignRequest,
     AssetUpdate,
+    HistoryMeta,
 )
 from app.schemas.common import (
     DataResponse,
@@ -394,14 +396,21 @@ def list_asset_history(
     _manager: ManagerUser,
     page: Annotated[int, Query(ge=1)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> PaginatedListResponse[AssetActionHistoryRead]:
+) -> AssetHistoryListResponse:
     try:
         # Audit trail outlives the asset — confirmed design choice. Verify
         # the asset row exists, but ignore deleted_at: a soft-deleted asset
         # still has a history that auditors must be able to read.
-        exists = db.scalar(select(Asset.id).where(Asset.id == asset_id))
-        if exists is None:
+        # `deleted_at` is selected in the same probe so the response can
+        # signal the tombstone via `meta.asset_deleted_at` — one round trip,
+        # no second call to `get_asset` (which itself filters soft-deletes
+        # out). See docs/system-design/10-design-decisions.md Q20.
+        row = db.execute(
+            select(Asset.id, Asset.deleted_at).where(Asset.id == asset_id)
+        ).one_or_none()
+        if row is None:
             raise _not_found()
+        _asset_id, asset_deleted_at = row
 
         total = (
             db.scalar(
@@ -426,9 +435,14 @@ def list_asset_history(
             .offset((page - 1) * per_page)
             .limit(per_page)
         ).all()
-        return PaginatedListResponse(
+        return AssetHistoryListResponse(
             data=[AssetActionHistoryRead.model_validate(event) for event in events],
-            meta=PaginationMeta(total=total, page=page, per_page=per_page),
+            meta=HistoryMeta(
+                total=total,
+                page=page,
+                per_page=per_page,
+                asset_deleted_at=asset_deleted_at,
+            ),
         )
     except HTTPException:
         raise
