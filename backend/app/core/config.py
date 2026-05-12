@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import BeforeValidator
+from pydantic import BeforeValidator, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -70,6 +70,33 @@ class Settings(BaseSettings):
     cors_allowed_headers: _StringList = ["Authorization", "Content-Type"]
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("cors_allowed_origins")
+    @classmethod
+    def _reject_wildcard_origin(cls, origins: list[str]) -> list[str]:
+        """Refuse to load when CORS_ALLOWED_ORIGINS contains ``"*"``.
+
+        The app sends ``allow_credentials=True`` (app/main.py) — a wildcard
+        origin combined with credentials is unsafe: modern browsers refuse
+        the response, but a misconfigured proxy that *reflects* the wildcard
+        back defeats the allowlist silently. Per
+        docs/system-design/08-deployment-operations.md:52 ("Do not ship a
+        wildcard origin to anything serving real users"), we hard-fail at
+        config load — same posture as a missing DATABASE_URL or JWT_SECRET.
+
+        Mixed lists like ``["*", "https://ams.example.com"]`` are equally
+        unsafe because Starlette's CORSMiddleware short-circuits on the
+        wildcard before checking the rest; we reject any list containing
+        ``"*"`` rather than only single-element wildcards.
+        """
+        if "*" in origins:
+            raise ValueError(
+                "CORS_ALLOWED_ORIGINS contains wildcard '*', which is unsafe "
+                "with allow_credentials=True. List the explicit origins "
+                "per docs/system-design/08-deployment-operations.md "
+                "§'CORS Allowlist'."
+            )
+        return origins
 
 
 @lru_cache

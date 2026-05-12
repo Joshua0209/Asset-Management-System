@@ -57,16 +57,15 @@ def test_parse_string_list_passes_non_strings_through() -> None:
 # even boot the app.
 # ---------------------------------------------------------------------------
 
-_REQUIRED_KW: dict[str, str] = {
-    "database_url": "sqlite:///:memory:",
-    "jwt_secret": "x" * 32,
-}
+_DB_URL = "sqlite:///:memory:"
+_JWT_SECRET = "x" * 32  # noqa: S105
 
 
 def test_settings_accepts_explicit_origin_list() -> None:
     """Baseline: a finite origin list still loads fine."""
     settings = Settings(
-        **_REQUIRED_KW,
+        database_url=_DB_URL,
+        jwt_secret=_JWT_SECRET,
         cors_allowed_origins=["https://ams.example.com"],
     )
     assert settings.cors_allowed_origins == ["https://ams.example.com"]
@@ -83,7 +82,8 @@ def test_settings_rejects_bare_wildcard_origin() -> None:
     """
     with pytest.raises(ValidationError) as excinfo:
         Settings(
-            **_REQUIRED_KW,
+            database_url=_DB_URL,
+            jwt_secret=_JWT_SECRET,
             cors_allowed_origins=["*"],
         )
     msg = str(excinfo.value)
@@ -100,7 +100,8 @@ def test_settings_rejects_wildcard_even_when_mixed_with_real_origins() -> None:
     """
     with pytest.raises(ValidationError):
         Settings(
-            **_REQUIRED_KW,
+            database_url=_DB_URL,
+            jwt_secret=_JWT_SECRET,
             cors_allowed_origins=["*", "https://ams.example.com"],
         )
 
@@ -116,8 +117,11 @@ def test_settings_rejects_wildcard_via_comma_form() -> None:
     """
     with pytest.raises(ValidationError) as excinfo:
         Settings(
-            **_REQUIRED_KW,
-            cors_allowed_origins="*,https://ams.example.com",
+            database_url=_DB_URL,
+            jwt_secret=_JWT_SECRET,
+            # str-form is valid input — `_parse_string_list` BeforeValidator
+            # widens the field to accept str-or-list, mypy sees only `list[str]`.
+            cors_allowed_origins="*,https://ams.example.com",  # type: ignore[arg-type]
         )
     msg = str(excinfo.value)
     assert "wildcard" in msg.lower() or "*" in msg
