@@ -946,40 +946,76 @@ async def submit_repair_request(
         payload, images = await _repair_payload_from_request(request)
         asset = _load_asset_for_submit(db, payload, current_user)
 
-        repair_request = RepairRequest(
-            asset_id=asset.id,
-            repair_id=_next_repair_id(db),
-            requester_id=current_user.id,
-            status=RepairRequestStatus.PENDING_REVIEW,
-            fault_description=payload.fault_description,
+        last_repair_id_error: IntegrityError | None = None
+        for attempt in range(1, _REPAIR_ID_CREATE_ATTEMPTS + 1):
+            attempt_keys: list[str] = []
+            try:
+                repair_request = RepairRequest(
+                    asset_id=asset.id,
+                    repair_id=_next_repair_id(db),
+                    requester_id=current_user.id,
+                    status=RepairRequestStatus.PENDING_REVIEW,
+                    fault_description=payload.fault_description,
+                )
+                repair_request.asset = asset
+                repair_request.requester = current_user
+                from_status = asset.status
+                asset.status = AssetStatus.PENDING_REPAIR
+                db.add(repair_request)
+                db.flush()
+                # Audit row needs repair_request.id, so it sits between the
+                # flush that assigns the PK and the flush that lays down image rows.
+                record_asset_action(
+                    db,
+                    asset=asset,
+                    actor=current_user,
+                    action=AssetAction.SUBMIT_REPAIR,
+                    from_status=from_status,
+                    to_status=AssetStatus.PENDING_REPAIR,
+                    metadata={
+                        "repair_request_id": repair_request.id,
+                        "fault_description": payload.fault_description,
+                    },
+                )
+                _persist_images(repair_request, images, storage, attempt_keys)
+                db.flush()
+                response.headers["Location"] = f"/api/v1/repair-requests/{repair_request.id}"
+                result = DataResponse(data=RepairRequestRead.model_validate(repair_request))
+                db.commit()
+                committed = True
+                saved_keys.extend(attempt_keys)
+                return result
+            except IntegrityError as exc:
+                db.rollback()
+                storage.cleanup(attempt_keys)
+                if not _is_repair_id_uniqueness_violation(exc):
+                    raise _conflict(
+                        "Repair request could not be submitted due to a conflicting state."
+                    ) from exc
+                last_repair_id_error = exc
+                logger.warning(
+                    "repair_id race on attempt %s/%s: %s",
+                    attempt,
+                    _REPAIR_ID_CREATE_ATTEMPTS,
+                    exc,
+                )
+            except Exception:
+                db.rollback()
+                try:
+                    storage.cleanup(attempt_keys)
+                except Exception:
+                    logger.exception("Failed to clean up images after attempt %s failure", attempt)
+                raise
+
+        logger.error(
+            "submit_repair_request exhausted %s retries; repair_id collision persists",
+            _REPAIR_ID_CREATE_ATTEMPTS,
         )
-        repair_request.asset = asset
-        repair_request.requester = current_user
-        from_status = asset.status
-        asset.status = AssetStatus.PENDING_REPAIR
-        db.add(repair_request)
-        db.flush()
-        # Audit row needs repair_request.id, so it sits between the flush
-        # that assigns the PK and the flush that lays down image rows.
-        record_asset_action(
-            db,
-            asset=asset,
-            actor=current_user,
-            action=AssetAction.SUBMIT_REPAIR,
-            from_status=from_status,
-            to_status=AssetStatus.PENDING_REPAIR,
-            metadata={
-                "repair_request_id": repair_request.id,
-                "fault_description": payload.fault_description,
-            },
-        )
-        _persist_images(repair_request, images, storage, saved_keys)
-        db.flush()
-        response.headers["Location"] = f"/api/v1/repair-requests/{repair_request.id}"
-        result = DataResponse(data=RepairRequestRead.model_validate(repair_request))
-        db.commit()
-        committed = True
-        return result
+        raise _conflict(
+            "Repair id collision; please retry submitting the request.",
+            code="repair_id_conflict",
+        ) from last_repair_id_error
+
     except HTTPException:
         # Roll back any pending FSM mutation / audit row / image FK rows so
         # the session never half-commits when a precondition raises.
@@ -989,19 +1025,6 @@ async def submit_repair_request(
         db.rollback()
         logger.warning("Repair request submit conflict: %s", exc)
         raise _conflict(_ASSET_VERSION_CONFLICT_MESSAGE) from exc
-    except IntegrityError as exc:
-        db.rollback()
-        logger.warning("Repair request submit constraint error: %s", exc)
-        if _is_repair_id_uniqueness_violation(exc):
-            # repair_id is server-generated; a collision means a concurrent
-            # submission within the same year. Surface a retry-friendly code.
-            raise _conflict(
-                "Repair id collision; please retry submitting the request.",
-                code="repair_id_conflict",
-            ) from exc
-        raise _conflict(
-            "Repair request could not be submitted due to a conflicting state."
-        ) from exc
     except (ImageStorageError, OSError) as exc:
         db.rollback()
         logger.error("Failed to persist repair-request image: %s", exc, exc_info=True)
