@@ -8,7 +8,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from app.models.asset import AssetStatus
 from app.models.asset_action_history import AssetAction
-from app.schemas.common import APIModel, UUIDString
+from app.schemas.common import APIModel, PaginationMeta, UUIDString
 
 
 def _today_utc() -> date:
@@ -303,3 +303,22 @@ class AssetActionHistoryRead(APIModel):
             "event_metadata": {**metadata, "action": action},
             "created_at": getattr(data, "created_at", None),
         }
+
+
+class HistoryMeta(PaginationMeta):
+    """Pagination meta + tombstone signal for the asset history endpoint.
+
+    The history endpoint deliberately returns events for soft-deleted
+    assets (auditors must see them) — see the design decision in
+    docs/system-design/10-design-decisions.md. Subclassing `PaginationMeta`
+    keeps the base meta single-purpose for the other list endpoints while
+    surfacing `asset_deleted_at` as a one-round-trip signal so the
+    frontend can render a "deleted asset" banner without a second call.
+    """
+
+    asset_deleted_at: datetime | None = None
+
+
+class AssetHistoryListResponse(APIModel):
+    data: list[AssetActionHistoryRead]
+    meta: HistoryMeta

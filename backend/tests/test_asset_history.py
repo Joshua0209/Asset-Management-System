@@ -615,7 +615,10 @@ class TestHistoryEndpoint:
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        # Confirmed design choice: audit trail outlives the asset row.
+        # Confirmed design choice: audit trail outlives the asset row, AND
+        # the response signals the tombstone via meta.asset_deleted_at so
+        # the auditor's UI can render a "deleted asset" banner without a
+        # second call to GET /assets/{id} (which 404s on soft-deletes).
         manager = make_user(role=UserRole.MANAGER)
         asset = _make_asset(db_session)
         # Seed one history row, then soft-delete the asset.
@@ -628,7 +631,8 @@ class TestHistoryEndpoint:
             to_status=AssetStatus.DISPOSED,
             metadata={"disposal_reason": "test"},
         )
-        asset.deleted_at = datetime.now(UTC)
+        deleted_at = datetime.now(UTC)
+        asset.deleted_at = deleted_at
         db_session.commit()
 
         response = client.get(
@@ -636,7 +640,55 @@ class TestHistoryEndpoint:
             headers=auth_headers(manager),
         )
         assert response.status_code == 200
-        assert len(response.json()["data"]) == 1
+        body = response.json()
+        assert len(body["data"]) == 1
+        # Tombstone surfaced on the meta envelope — ISO-8601 UTC string.
+        assert body["meta"]["asset_deleted_at"] is not None
+        from datetime import datetime as _dt
+
+        # SQLite drops tzinfo on DateTime columns in the test env, so the
+        # round-tripped string may be naive while `deleted_at` is aware.
+        # Normalize both to naive UTC before comparing — what matters is
+        # that the round-trip preserves the *value*, not the TZ marker.
+        echoed = _dt.fromisoformat(body["meta"]["asset_deleted_at"])
+        if echoed.tzinfo is not None:
+            echoed = echoed.replace(tzinfo=None)
+        assert abs((echoed - deleted_at.replace(tzinfo=None)).total_seconds()) < 1
+
+    def test_live_asset_history_meta_has_null_asset_deleted_at(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Live asset (deleted_at IS NULL) → meta.asset_deleted_at is null.
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+        record_asset_action(
+            db_session,
+            asset=asset,
+            actor=manager,
+            action=AssetAction.DISPOSE,
+            from_status=AssetStatus.IN_STOCK,
+            to_status=AssetStatus.DISPOSED,
+            metadata={"disposal_reason": "test"},
+        )
+        db_session.commit()
+
+        response = client.get(
+            f"/api/v1/assets/{asset.id}/history",
+            headers=auth_headers(manager),
+        )
+        assert response.status_code == 200
+        meta = response.json()["meta"]
+        assert "asset_deleted_at" in meta
+        assert meta["asset_deleted_at"] is None
+        # PaginationMeta fields still behave as before.
+        assert meta["total"] == 1
+        assert meta["page"] == 1
+        assert meta["per_page"] == 20
+        assert meta["total_pages"] == 1
 
     def test_soft_deleted_actor_renders_as_null(
         self,
@@ -1060,6 +1112,25 @@ class TestPaginationEdges:
             headers=auth_headers(manager),
         )
         assert response.status_code == 422
+
+
+class TestHistoryMetaOpenAPI:
+    """The history endpoint must advertise `asset_deleted_at` on its
+    response so the generated TS client surfaces it as part of the typed
+    meta envelope. If a future refactor accidentally drops back to plain
+    `PaginationMeta`, the OpenAPI emission loses the field and the
+    frontend's deleted-asset banner regresses to a hand-rolled fallback."""
+
+    def test_response_meta_advertises_asset_deleted_at(self) -> None:
+        from app.main import app
+
+        spec = app.openapi()
+        schemas = spec["components"]["schemas"]
+        meta_schema = schemas["HistoryMeta"]
+        assert "asset_deleted_at" in meta_schema["properties"]
+        # Inherits the pagination fields from PaginationMeta.
+        for field in ("total", "page", "per_page", "total_pages"):
+            assert field in meta_schema["properties"], field
 
 
 class TestSchemaAliasing:

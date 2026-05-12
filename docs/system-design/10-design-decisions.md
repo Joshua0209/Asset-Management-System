@@ -140,3 +140,18 @@ Options: Ant Design (`antd`), shadcn/ui + Tailwind, Material UI, Chakra UI, cust
 **Q19. Design token location?**
 
 → Moved from `docs/system-design/13-design-tokens.md` to `docs/designs/` (dedicated design system directory). `docs/designs/DESIGN.md` is now the normative reference for color, typography, spacing, motion, and the "does this feel TSMC?" checklist. `docs/designs/design-tokens.json` is the machine-readable W3C Design Tokens format file.
+
+---
+
+## Category G: Audit Surface
+
+**Q20. How does `GET /assets/{id}/history` signal that the asset has been soft-deleted?**
+
+Context: the history endpoint intentionally does *not* filter on `Asset.deleted_at` — auditors must be able to read history for disposed/removed assets (sibling of Q13). The companion `GET /assets/{id}` *does* filter and returns 404 on soft-deletes. Without an explicit signal, a frontend rendering an "Asset detail" header on top of the history payload happily renders the tombstone with no visual cue.
+
+Options considered:
+
+1. **Add `asset_deleted_at: datetime | None` to the history response's `meta` block.** Single round-trip; the frontend can show a "Viewing history for a deleted asset" banner with the deletion timestamp directly.
+2. Keep history pure and require a second call to fetch tombstone context. Architecturally cleaner (no cross-resource leakage), but forces a new endpoint or a new query param on `get_asset` (which itself filters soft-deletes out), and shifts complexity to the frontend.
+
+→ **Option 1.** The deletion fact is *about the asset whose history is being viewed*, not a separate resource. Putting it next to the events the auditor is already reading minimizes the chance the signal is missed, and avoids inventing a new "give me the tombstone" endpoint. Shape coupling is bounded to one optional field on a dedicated `HistoryMeta` (a subclass of `PaginationMeta`), so the generic pagination meta stays single-purpose for the other list endpoints. If more parent-context fields appear later, revisit.
