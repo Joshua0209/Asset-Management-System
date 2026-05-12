@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import logging
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -8,10 +9,12 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.v1.endpoints.repair_requests import _next_repair_id
 from app.main import app
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_request import RepairRequest, RepairRequestStatus
@@ -87,6 +90,15 @@ def _make_asset(
     return asset
 
 
+_REPAIR_ID_COUNTER = itertools.count(1)
+
+
+def _unique_repair_id() -> str:
+    """Module-local helper so every test row satisfies the new UNIQUE constraint
+    on RepairRequest.repair_id without forcing each call site to invent one."""
+    return f"REP-2026-{next(_REPAIR_ID_COUNTER):05d}"
+
+
 def _make_repair_request(
     session: Session,
     asset: Asset,
@@ -95,9 +107,11 @@ def _make_repair_request(
     status: RepairRequestStatus = RepairRequestStatus.PENDING_REVIEW,
     reviewer: User | None = None,
     fault_description: str = "Screen flickers.",
+    repair_id: str | None = None,
 ) -> RepairRequest:
     repair_request = RepairRequest(
         asset_id=asset.id,
+        repair_id=repair_id or _unique_repair_id(),
         requester_id=requester.id,
         reviewer_id=reviewer.id if reviewer else None,
         status=status,
@@ -134,6 +148,7 @@ class TestListRepairRequests:
         asset = _make_asset(db_session, holder)
         rr = RepairRequest(
             asset_id=asset.id,
+            repair_id=_unique_repair_id(),
             requester_id=holder.id,
             status=RepairRequestStatus.PENDING_REVIEW,
             fault_description="Screen flickers.",
@@ -165,6 +180,7 @@ class TestListRepairRequests:
         asset = _make_asset(db_session, holder)
         rr = RepairRequest(
             asset_id=asset.id,
+            repair_id=_unique_repair_id(),
             requester_id=holder.id,
             status=RepairRequestStatus.PENDING_REVIEW,
             fault_description="Deleted request.",
@@ -202,6 +218,7 @@ class TestListRepairRequests:
         for i, fault in enumerate(["Issue A", "Issue B", "Issue C"]):
             rr = RepairRequest(
                 asset_id=asset.id,
+                repair_id=_unique_repair_id(),
                 requester_id=holder.id,
                 status=RepairRequestStatus.PENDING_REVIEW,
                 fault_description=fault,
@@ -230,12 +247,14 @@ class TestListRepairRequests:
             [
                 RepairRequest(
                     asset_id=matching_asset.id,
+                    repair_id=_unique_repair_id(),
                     requester_id=holder.id,
                     status=RepairRequestStatus.PENDING_REVIEW,
                     fault_description="Matching issue.",
                 ),
                 RepairRequest(
                     asset_id=other_asset.id,
+                    repair_id=_unique_repair_id(),
                     requester_id=holder.id,
                     status=RepairRequestStatus.UNDER_REPAIR,
                     fault_description="Other issue.",
@@ -286,12 +305,14 @@ class TestListRepairRequests:
             [
                 RepairRequest(
                     asset_id=asset_a.id,
+                    repair_id=_unique_repair_id(),
                     requester_id=holder_a.id,
                     status=RepairRequestStatus.PENDING_REVIEW,
                     fault_description="A fault.",
                 ),
                 RepairRequest(
                     asset_id=asset_b.id,
+                    repair_id=_unique_repair_id(),
                     requester_id=holder_b.id,
                     status=RepairRequestStatus.PENDING_REVIEW,
                     fault_description="B fault.",
@@ -904,9 +925,7 @@ class TestRepairWorkflowFSMGuards:
         manager = make_user(role=UserRole.MANAGER)
         holder = make_user(role=UserRole.HOLDER)
         # Desync: request stuck in pending_review, asset somehow back to in_use.
-        _, rr = _seed_pending_review(
-            db_session, holder, asset_status=AssetStatus.IN_USE
-        )
+        _, rr = _seed_pending_review(db_session, holder, asset_status=AssetStatus.IN_USE)
         db_session.commit()
 
         response = client.post(
@@ -1140,9 +1159,7 @@ class TestRepairWorkflowAtomicity:
         # The endpoint and db_session share the same session via the
         # dependency override in conftest.py; patching the instance method
         # forces _commit_repair_change down its rollback path.
-        with patch.object(
-            db_session, "commit", side_effect=SQLAlchemyError("boom")
-        ):
+        with patch.object(db_session, "commit", side_effect=SQLAlchemyError("boom")):
             response = client.post(
                 f"/api/v1/repair-requests/{rr.id}/approve",
                 json={"version": rr.version},
@@ -1474,6 +1491,7 @@ class TestSubmitRepairRequest:
         db_session.add(
             RepairRequest(
                 asset_id=asset.id,
+                repair_id=_unique_repair_id(),
                 requester_id=holder.id,
                 status=RepairRequestStatus.PENDING_REVIEW,
                 fault_description="Existing issue.",
@@ -1599,8 +1617,7 @@ class TestSubmitRepairRequest:
         holder = make_user(role=UserRole.HOLDER)
         asset = _make_asset(db_session, holder)
         files = [
-            ("images", (f"img-{i}.png", b"\x89PNG\r\n\x1a\nbytes", "image/png"))
-            for i in range(6)
+            ("images", (f"img-{i}.png", b"\x89PNG\r\n\x1a\nbytes", "image/png")) for i in range(6)
         ]
 
         response = client.post(
@@ -1620,7 +1637,7 @@ class TestSubmitRepairRequest:
     ) -> None:
         holder = make_user(role=UserRole.HOLDER)
         asset = _make_asset(db_session, holder)
-        body = f'<request><asset_id>{asset.id}</asset_id></request>'.encode()
+        body = f"<request><asset_id>{asset.id}</asset_id></request>".encode()
 
         response = client.post(
             "/api/v1/repair-requests",
@@ -1659,9 +1676,7 @@ class TestSubmitRepairRequestParsingEdges:
         )
 
         assert response.status_code == 201
-        assert (
-            response.json()["data"]["fault_description"] == "Hyphen-mode failure --"
-        )
+        assert response.json()["data"]["fault_description"] == "Hyphen-mode failure --"
 
     def test_jpeg_payload_ending_with_end_marker_is_persisted_byte_for_byte(
         self,
@@ -1766,9 +1781,7 @@ class TestSubmitRepairRequestParsingEdges:
         holder = make_user(role=UserRole.HOLDER)
         asset = _make_asset(db_session, holder)
         body = (
-            f"asset_id={asset.id}&"
-            f"asset_id={asset.id}&"
-            "fault_description=Cracked%20screen."
+            f"asset_id={asset.id}&asset_id={asset.id}&fault_description=Cracked%20screen."
         ).encode()
 
         response = client.post(
@@ -1831,6 +1844,7 @@ class TestRepairRequest409ErrorCodes:
         db_session.add(
             RepairRequest(
                 asset_id=asset.id,
+                repair_id=_unique_repair_id(),
                 requester_id=holder.id,
                 status=RepairRequestStatus.PENDING_REVIEW,
                 fault_description="Existing issue.",
@@ -2138,3 +2152,243 @@ class TestRepairRequest409ErrorCodes:
 
         assert response.status_code == 409
         assert response.json()["error"]["code"] == "invalid_transition"
+
+
+class TestRepairIdField:
+    """Issue #31: each repair request gets a server-generated REP-YYYY-NNNNN id."""
+
+    def test_submit_assigns_repair_id_in_response(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        response = client.post(
+            "/api/v1/repair-requests",
+            json={
+                "asset_id": asset.id,
+                "fault_description": "First fault.",
+                "version": asset.version,
+            },
+            headers=auth_headers(holder),
+        )
+        assert response.status_code == 201
+        repair_id = response.json()["data"]["repair_id"]
+        year = datetime.now(UTC).year
+        assert repair_id == f"REP-{year}-00001"
+
+    def test_subsequent_submits_increment_repair_id(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset_a = _make_asset(db_session, holder, asset_code="AST-2026-00001")
+        asset_b = _make_asset(db_session, holder, asset_code="AST-2026-00002")
+        first = client.post(
+            "/api/v1/repair-requests",
+            json={"asset_id": asset_a.id, "fault_description": "Fault A."},
+            headers=auth_headers(holder),
+        )
+        second = client.post(
+            "/api/v1/repair-requests",
+            json={"asset_id": asset_b.id, "fault_description": "Fault B."},
+            headers=auth_headers(holder),
+        )
+        assert first.status_code == second.status_code == 201
+        year = datetime.now(UTC).year
+        assert first.json()["data"]["repair_id"] == f"REP-{year}-00001"
+        assert second.json()["data"]["repair_id"] == f"REP-{year}-00002"
+
+    def test_get_returns_repair_id(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        rr = _make_repair_request(db_session, asset, holder, repair_id="REP-2026-00042")
+        db_session.commit()
+        response = client.get(
+            f"/api/v1/repair-requests/{rr.id}",
+            headers=auth_headers(holder),
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["repair_id"] == "REP-2026-00042"
+
+    def test_next_repair_id_raises_500_when_sequence_exhausted(
+        self,
+        db_session: Session,
+        make_user: Callable[..., User],
+    ) -> None:
+        # Seed a repair_request at the year boundary (sequence 99999).
+        # The next call to _next_repair_id should raise 500, not silently
+        # produce a 6-digit id that breaks lexicographic ordering.
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        db_session.add(
+            RepairRequest(
+                asset_id=asset.id,
+                repair_id="REP-2026-99999",
+                requester_id=holder.id,
+                status=RepairRequestStatus.PENDING_REVIEW,
+                fault_description="boundary fixture",
+            )
+        )
+        db_session.flush()
+
+        with pytest.raises(HTTPException) as exc_info:
+            _next_repair_id(db_session)
+
+        assert exc_info.value.status_code == 500
+
+
+class TestRepairIdRetry:
+    """submit_repair_request must retry on repair_id collision like register_asset."""
+
+    def test_submit_succeeds_after_repair_id_collisions_within_retry_budget(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        # side_effect: first two calls produce a colliding id, third produces
+        # a fresh one. Without a retry loop the request fails on the first
+        # collision instead of succeeding on the third call.
+        ids = iter(["REP-2026-DUPE", "REP-2026-DUPE", "REP-2026-FRESH"])
+
+        with patch(
+            "app.api.v1.endpoints.repair_requests._next_repair_id",
+            side_effect=lambda db, today=None: next(ids),
+        ):
+            # Prime the DB with the colliding id so the first two attempts
+            # hit an IntegrityError.
+            db_session.add(
+                RepairRequest(
+                    asset_id=asset.id,
+                    repair_id="REP-2026-DUPE",
+                    requester_id=holder.id,
+                    status=RepairRequestStatus.COMPLETED,
+                    fault_description="pre-existing collision fixture",
+                )
+            )
+            db_session.commit()
+
+            response = client.post(
+                "/api/v1/repair-requests",
+                json={"asset_id": asset.id, "fault_description": "New fault."},
+                headers=auth_headers(holder),
+            )
+
+        assert response.status_code == 201
+        assert response.json()["data"]["repair_id"] == "REP-2026-FRESH"
+
+    def test_submit_returns_repair_id_conflict_when_retries_exhausted(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # When every attempt within _REPAIR_ID_CREATE_ATTEMPTS hits a
+        # uniqueness collision, the endpoint should give up and surface
+        # 409 repair_id_conflict so the client can retry.
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        db_session.add(
+            RepairRequest(
+                asset_id=asset.id,
+                repair_id="REP-2026-STUCK",
+                requester_id=holder.id,
+                status=RepairRequestStatus.COMPLETED,
+                fault_description="pre-existing collision fixture",
+            )
+        )
+        db_session.commit()
+
+        with patch(
+            "app.api.v1.endpoints.repair_requests._next_repair_id",
+            return_value="REP-2026-STUCK",
+        ):
+            response = client.post(
+                "/api/v1/repair-requests",
+                json={"asset_id": asset.id, "fault_description": "New fault."},
+                headers=auth_headers(holder),
+            )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "repair_id_conflict"
+
+    def test_cleanup_failure_during_collision_does_not_abort_retry(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # If a storage backend's cleanup raises while the retry loop is
+        # handling an IntegrityError, the cleanup exception must NOT propagate
+        # out — otherwise it masks the original IntegrityError and prevents
+        # the next retry attempt from running.
+
+        class CleanupRaisesStorage:
+            def save(
+                self,
+                *,
+                repair_request_id: str,  # noqa: ARG002
+                image_id: str,  # noqa: ARG002
+                suffix: str,  # noqa: ARG002
+                content: bytes,  # noqa: ARG002
+            ) -> str:
+                raise ImageStorageError("save should not be called in this scenario")
+
+            def open(self, storage_key: str) -> tuple[bytes, str]:  # noqa: ARG002
+                raise ImageStorageError("not implemented")
+
+            def cleanup(self, storage_keys: list[str]) -> None:  # noqa: ARG002
+                raise RuntimeError("cleanup itself blew up")
+
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        ids = iter(["REP-2026-DUPE", "REP-2026-FRESH"])
+
+        app.dependency_overrides[get_image_storage] = lambda: CleanupRaisesStorage()
+        try:
+            with patch(
+                "app.api.v1.endpoints.repair_requests._next_repair_id",
+                side_effect=lambda db, today=None: next(ids),
+            ):
+                db_session.add(
+                    RepairRequest(
+                        asset_id=asset.id,
+                        repair_id="REP-2026-DUPE",
+                        requester_id=holder.id,
+                        status=RepairRequestStatus.COMPLETED,
+                        fault_description="pre-existing collision fixture",
+                    )
+                )
+                db_session.commit()
+
+                response = client.post(
+                    "/api/v1/repair-requests",
+                    json={"asset_id": asset.id, "fault_description": "New fault."},
+                    headers=auth_headers(holder),
+                )
+        finally:
+            app.dependency_overrides.pop(get_image_storage, None)
+
+        assert response.status_code == 201
+        assert response.json()["data"]["repair_id"] == "REP-2026-FRESH"

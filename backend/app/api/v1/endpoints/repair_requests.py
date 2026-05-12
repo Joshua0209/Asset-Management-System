@@ -3,7 +3,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, cast
 from urllib.parse import parse_qs
 from uuid import UUID
@@ -27,7 +27,7 @@ from app.models.asset import Asset, AssetStatus
 from app.models.asset_action_history import AssetAction
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest, RepairRequestStatus
-from app.models.user import UserRole
+from app.models.user import User, UserRole
 from app.schemas.common import (
     DataResponse,
     PaginatedListResponse,
@@ -44,7 +44,7 @@ from app.schemas.repair_request import (
     RepairRequestReject,
 )
 from app.services.audit_log import record_asset_action
-from app.services.image_storage import ImageStorageDep, ImageStorageError
+from app.services.image_storage import ImageStorage, ImageStorageDep, ImageStorageError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -83,13 +83,64 @@ _MAX_REQUEST_BYTES = _MAX_IMAGE_COUNT * _MAX_IMAGE_BYTES + _MULTIPART_OVERHEAD_B
 # Whitelist of fields that update_repair_details may forward to the ORM via
 # setattr. Guards against silent schema/model drift if the schema gains a
 # field that does not exist on RepairRequest.
-_REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset({
-    "repair_date",
-    "fault_content",
-    "repair_plan",
-    "repair_cost",
-    "repair_vendor",
-})
+_REPAIR_DETAILS_UPDATABLE_FIELDS = frozenset(
+    {
+        "repair_date",
+        "fault_content",
+        "repair_plan",
+        "repair_cost",
+        "repair_vendor",
+    }
+)
+
+_ASSET_VERSION_CONFLICT_MESSAGE = (
+    "Asset was modified by another user. Please refresh and try again."
+)
+
+# Mirrors `_next_asset_code` in the assets endpoint: same race + retry
+# semantics, same human-readable per-year sequence shape.
+_REPAIR_ID_CREATE_ATTEMPTS = 3
+
+
+def _next_repair_id(db: Session, today: date | None = None) -> str:
+    year = (today or date.today()).year
+    prefix = f"REP-{year}-"
+    latest_code = db.scalar(
+        select(RepairRequest.repair_id)
+        .where(RepairRequest.repair_id.like(f"{prefix}%"))
+        .order_by(RepairRequest.repair_id.desc())
+        .limit(1)
+    )
+    if latest_code is None:
+        return f"{prefix}{1:05d}"
+    try:
+        next_sequence = int(latest_code.rsplit("-", maxsplit=1)[1]) + 1
+    except (IndexError, ValueError) as exc:
+        # Falling back to 00001 would re-collide on every retry; fail loudly.
+        logger.error(
+            "Existing repair_id does not match expected format: prefix=%s latest=%r",
+            prefix,
+            latest_code,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Repair id sequence is corrupted. Contact an administrator.",
+        ) from exc
+    if next_sequence > 99999:
+        logger.error(
+            "Repair id sequence exhausted for year %s (reached %s)", year, next_sequence
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Repair id sequence exhausted for this year. Contact an administrator.",
+        )
+    return f"{prefix}{next_sequence:05d}"
+
+
+def _is_repair_id_uniqueness_violation(exc: IntegrityError) -> bool:
+    message = str(getattr(exc, "orig", None) or exc).lower()
+    return "repair_id" in message
+
 
 _ERROR_RESPONSES = error_responses(
     status.HTTP_401_UNAUTHORIZED,
@@ -102,6 +153,7 @@ _ERROR_RESPONSES = error_responses(
     status.HTTP_503_SERVICE_UNAVAILABLE,
 )
 
+
 def _build_repair_submit_openapi_extra() -> dict[str, Any]:
     """Build the multipart schema from `RepairRequestCreate` so it never drifts.
 
@@ -111,9 +163,7 @@ def _build_repair_submit_openapi_extra() -> dict[str, Any]:
     must stay in lockstep with the Pydantic model — so we read them out of
     `model_json_schema()` rather than hard-coding them a second time.
     """
-    base_schema = RepairRequestCreate.model_json_schema(
-        ref_template="#/components/schemas/{model}"
-    )
+    base_schema = RepairRequestCreate.model_json_schema(ref_template="#/components/schemas/{model}")
     multipart_properties = dict(base_schema.get("properties", {}))
     multipart_properties["images"] = {
         "type": "array",
@@ -177,8 +227,11 @@ def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
     )
 
 
-def _validation_error(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
+def _validation_error(message: str, *, code: str = "validation_error") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"code": code, "message": message},
+    )
 
 
 def _repair_create_from_mapping(raw_payload: object) -> RepairRequestCreate:
@@ -241,9 +294,7 @@ def _ensure_request_version(repair_request: RepairRequest, version: int) -> None
 
 def _ensure_asset_version_match(asset: Asset, expected_version: int | None) -> None:
     if expected_version is not None and asset.version != expected_version:
-        raise _conflict(
-            "Asset was modified by another user. Please refresh and try again."
-        )
+        raise _conflict(_ASSET_VERSION_CONFLICT_MESSAGE)
 
 
 def _ensure_asset_status(
@@ -269,9 +320,7 @@ def _ensure_asset_status(
             repair_request.id,
             asset.id,
         )
-        raise _conflict(
-            "Associated asset has been deleted; repair request cannot proceed."
-        )
+        raise _conflict("Associated asset has been deleted; repair request cannot proceed.")
     if asset.status is not expected_status:
         raise _conflict(message, code="invalid_transition")
     return cast(Asset, asset)
@@ -419,9 +468,7 @@ def _validate_images(images: list[SubmittedImage]) -> None:
         raise _validation_error(f"At most {_MAX_IMAGE_COUNT} images may be uploaded.")
     for image in images:
         if image.content_type not in _ALLOWED_IMAGE_TYPES:
-            raise _validation_error(
-                f"Image {image.filename!r} must be JPEG or PNG."
-            )
+            raise _validation_error(f"Image {image.filename!r} must be JPEG or PNG.")
         if not _content_matches_declared_type(image.content, image.content_type):
             raise _validation_error(
                 f"Image {image.filename!r} content does not match its declared type."
@@ -495,9 +542,7 @@ def _parse_form_urlencoded(body: bytes) -> dict[str, str]:
     if duplicates:
         # Every documented field is scalar; "last wins" would silently
         # discard data. Reject up front so the client sees the bug.
-        raise _validation_error(
-            f"Form fields appear multiple times: {sorted(duplicates)}."
-        )
+        raise _validation_error(f"Form fields appear multiple times: {sorted(duplicates)}.")
     return {key: values[0] if values else "" for key, values in parsed.items()}
 
 
@@ -505,9 +550,7 @@ def _unsupported_media_type(content_type: str) -> HTTPException:
     # Cap the echoed content-type so a malicious client can't bloat the
     # response or smuggle CR/LF into log destinations that render as text.
     safe_content_type = (
-        (content_type[:120].replace("\r", "").replace("\n", ""))
-        if content_type
-        else "<missing>"
+        (content_type[:120].replace("\r", "").replace("\n", "")) if content_type else "<missing>"
     )
     return HTTPException(
         status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -572,20 +615,22 @@ def list_repair_requests(
         sort_column = _SORT_COLUMNS.get(sort_field)
         if sort_column is None:
             allowed = ", ".join(sorted(_SORT_COLUMNS))
-            raise _validation_error(
-                f"Unsupported sort field {sort_field!r}. Allowed: {allowed}."
-            )
+            raise _validation_error(f"Unsupported sort field {sort_field!r}. Allowed: {allowed}.")
         order_by = sort_column.desc() if sort_desc else sort_column.asc()
 
         total = db.scalar(select(func.count()).select_from(RepairRequest).where(*filters)) or 0
-        requests = db.scalars(
-            select(RepairRequest)
-            .options(*_repair_options())
-            .where(*filters)
-            .order_by(order_by)
-            .offset((page - 1) * per_page)
-            .limit(per_page)
-        ).unique().all()
+        requests = (
+            db.scalars(
+                select(RepairRequest)
+                .options(*_repair_options())
+                .where(*filters)
+                .order_by(order_by)
+                .offset((page - 1) * per_page)
+                .limit(per_page)
+            )
+            .unique()
+            .all()
+        )
         return PaginatedListResponse(
             data=[RepairRequestRead.model_validate(item) for item in requests],
             meta=PaginationMeta(total=total, page=page, per_page=per_page),
@@ -612,10 +657,7 @@ def get_repair_request(
 ) -> DataResponse[RepairRequestRead]:
     try:
         repair_request = _get_repair_request(db, repair_request_id)
-        if (
-            current_user.role is UserRole.HOLDER
-            and repair_request.requester_id != current_user.id
-        ):
+        if current_user.role is UserRole.HOLDER and repair_request.requester_id != current_user.id:
             raise _forbidden("You do not have access to this repair request.")
         return DataResponse(data=RepairRequestRead.model_validate(repair_request))
     except HTTPException:
@@ -849,6 +891,140 @@ def complete_repair_request(
         raise
 
 
+def _load_asset_for_submit(
+    db: Session, payload: RepairRequestCreate, current_user: User
+) -> Asset:
+    asset = db.scalar(
+        select(Asset).where(Asset.id == payload.asset_id, Asset.deleted_at.is_(None))
+    )
+    if asset is None:
+        raise _not_found("Asset not found.")
+    if asset.responsible_person_id != current_user.id:
+        raise _forbidden("Requester is not assigned to this asset.")
+    if payload.version is not None and asset.version != payload.version:
+        raise _conflict(_ASSET_VERSION_CONFLICT_MESSAGE)
+    if asset.status is not AssetStatus.IN_USE:
+        raise _conflict(
+            "Repair request is only allowed for assets in use.",
+            code="invalid_transition",
+        )
+
+    active_count = db.scalar(
+        select(func.count())
+        .select_from(RepairRequest)
+        .where(
+            RepairRequest.asset_id == asset.id,
+            RepairRequest.deleted_at.is_(None),
+            RepairRequest.status.in_(_ACTIVE_REPAIR_STATUSES),
+        )
+    )
+    if active_count:
+        raise _conflict(
+            "Repair request already exists for this asset.",
+            code="duplicate_request",
+        )
+    return asset
+
+
+def _safe_cleanup_attempt(storage: ImageStorage, keys: list[str], attempt: int) -> None:
+    try:
+        storage.cleanup(keys)
+    except Exception:
+        logger.exception("Failed to clean up images after attempt %s failure", attempt)
+
+
+def _build_repair_request_once(
+    db: Session,
+    asset: Asset,
+    current_user: User,
+    payload: RepairRequestCreate,
+    images: list[SubmittedImage],
+    storage: ImageStorage,
+    response: Response,
+    attempt_keys: list[str],
+) -> DataResponse[RepairRequestRead]:
+    repair_request = RepairRequest(
+        asset_id=asset.id,
+        repair_id=_next_repair_id(db),
+        requester_id=current_user.id,
+        status=RepairRequestStatus.PENDING_REVIEW,
+        fault_description=payload.fault_description,
+    )
+    repair_request.asset = asset
+    repair_request.requester = current_user
+    from_status = asset.status
+    asset.status = AssetStatus.PENDING_REPAIR
+    db.add(repair_request)
+    db.flush()
+    # Audit row needs repair_request.id, so it sits between the
+    # flush that assigns the PK and the flush that lays down image rows.
+    record_asset_action(
+        db,
+        asset=asset,
+        actor=current_user,
+        action=AssetAction.SUBMIT_REPAIR,
+        from_status=from_status,
+        to_status=AssetStatus.PENDING_REPAIR,
+        metadata={
+            "repair_request_id": repair_request.id,
+            "fault_description": payload.fault_description,
+        },
+    )
+    _persist_images(repair_request, images, storage, attempt_keys)
+    db.flush()
+    response.headers["Location"] = f"/api/v1/repair-requests/{repair_request.id}"
+    return DataResponse(data=RepairRequestRead.model_validate(repair_request))
+
+
+def _create_repair_request_with_retry(
+    db: Session,
+    asset: Asset,
+    current_user: User,
+    payload: RepairRequestCreate,
+    images: list[SubmittedImage],
+    storage: ImageStorage,
+    response: Response,
+    saved_keys: list[str],
+) -> DataResponse[RepairRequestRead]:
+    last_repair_id_error: IntegrityError | None = None
+    for attempt in range(1, _REPAIR_ID_CREATE_ATTEMPTS + 1):
+        attempt_keys: list[str] = []
+        try:
+            result = _build_repair_request_once(
+                db, asset, current_user, payload, images, storage, response, attempt_keys
+            )
+            db.commit()
+            saved_keys.extend(attempt_keys)
+            return result
+        except IntegrityError as exc:
+            db.rollback()
+            _safe_cleanup_attempt(storage, attempt_keys, attempt)
+            if not _is_repair_id_uniqueness_violation(exc):
+                raise _conflict(
+                    "Repair request could not be submitted due to a conflicting state."
+                ) from exc
+            last_repair_id_error = exc
+            logger.warning(
+                "repair_id race on attempt %s/%s: %s",
+                attempt,
+                _REPAIR_ID_CREATE_ATTEMPTS,
+                exc,
+            )
+        except Exception:
+            db.rollback()
+            _safe_cleanup_attempt(storage, attempt_keys, attempt)
+            raise
+
+    logger.error(
+        "submit_repair_request exhausted %s retries; repair_id collision persists",
+        _REPAIR_ID_CREATE_ATTEMPTS,
+    )
+    raise _conflict(
+        "Repair id collision; please retry submitting the request.",
+        code="repair_id_conflict",
+    ) from last_repair_id_error
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
@@ -867,66 +1043,10 @@ async def submit_repair_request(
     committed = False
     try:
         payload, images = await _repair_payload_from_request(request)
-        asset = db.scalar(
-            select(Asset).where(Asset.id == payload.asset_id, Asset.deleted_at.is_(None))
+        asset = _load_asset_for_submit(db, payload, current_user)
+        result = _create_repair_request_with_retry(
+            db, asset, current_user, payload, images, storage, response, saved_keys
         )
-        if asset is None:
-            raise _not_found("Asset not found.")
-        if asset.responsible_person_id != current_user.id:
-            raise _forbidden("Requester is not assigned to this asset.")
-        _ensure_asset_version_match(asset, payload.version)
-        if asset.status is not AssetStatus.IN_USE:
-            raise _conflict(
-                "Repair request is only allowed for assets in use.",
-                code="invalid_transition",
-            )
-
-        active_count = db.scalar(
-            select(func.count())
-            .select_from(RepairRequest)
-            .where(
-                RepairRequest.asset_id == asset.id,
-                RepairRequest.deleted_at.is_(None),
-                RepairRequest.status.in_(_ACTIVE_REPAIR_STATUSES),
-            )
-        )
-        if active_count:
-            raise _conflict(
-                "Repair request already exists for this asset.",
-                code="duplicate_request",
-            )
-
-        repair_request = RepairRequest(
-            asset_id=asset.id,
-            requester_id=current_user.id,
-            status=RepairRequestStatus.PENDING_REVIEW,
-            fault_description=payload.fault_description,
-        )
-        repair_request.asset = asset
-        repair_request.requester = current_user
-        from_status = asset.status
-        asset.status = AssetStatus.PENDING_REPAIR
-        db.add(repair_request)
-        db.flush()
-        # Audit row needs repair_request.id, so it sits between the flush
-        # that assigns the PK and the flush that lays down image rows.
-        record_asset_action(
-            db,
-            asset=asset,
-            actor=current_user,
-            action=AssetAction.SUBMIT_REPAIR,
-            from_status=from_status,
-            to_status=AssetStatus.PENDING_REPAIR,
-            metadata={
-                "repair_request_id": repair_request.id,
-                "fault_description": payload.fault_description,
-            },
-        )
-        _persist_images(repair_request, images, storage, saved_keys)
-        db.flush()
-        response.headers["Location"] = f"/api/v1/repair-requests/{repair_request.id}"
-        result = DataResponse(data=RepairRequestRead.model_validate(repair_request))
-        db.commit()
         committed = True
         return result
     except HTTPException:
@@ -937,15 +1057,7 @@ async def submit_repair_request(
     except StaleDataError as exc:
         db.rollback()
         logger.warning("Repair request submit conflict: %s", exc)
-        raise _conflict(
-            "Asset was modified by another user. Please refresh and try again."
-        ) from exc
-    except IntegrityError as exc:
-        db.rollback()
-        logger.warning("Repair request submit constraint error: %s", exc)
-        raise _conflict(
-            "Repair request could not be submitted due to a conflicting state."
-        ) from exc
+        raise _conflict(_ASSET_VERSION_CONFLICT_MESSAGE) from exc
     except (ImageStorageError, OSError) as exc:
         db.rollback()
         logger.error("Failed to persist repair-request image: %s", exc, exc_info=True)

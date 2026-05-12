@@ -99,6 +99,7 @@ class RepairRequestComplete(APIModel):
 
 class RepairRequestRead(APIModel):
     id: str
+    repair_id: str
     asset_id: str
     asset: RepairAssetRead
     requester_id: str

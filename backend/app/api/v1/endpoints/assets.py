@@ -59,9 +59,7 @@ _ACTIVE_REPAIR_STATUSES = {
     RepairRequestStatus.PENDING_REVIEW,
     RepairRequestStatus.UNDER_REPAIR,
 }
-_STALE_VERSION_MESSAGE = (
-    "Resource was modified by another user. Please refresh and try again."
-)
+_STALE_VERSION_MESSAGE = "Resource was modified by another user. Please refresh and try again."
 
 
 def _safe_log(value: object) -> str:
@@ -116,8 +114,11 @@ def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
     )
 
 
-def _validation_error(message: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=message)
+def _validation_error(message: str, *, code: str = "validation_error") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"code": code, "message": message},
+    )
 
 
 def _asset_from_payload(payload: AssetCreate, asset_code: str) -> Asset:
@@ -181,9 +182,7 @@ def _asset_order(sort: str) -> ColumnElement[object]:
     sort_column = _SORT_COLUMNS.get(sort_field)
     if sort_column is None:
         allowed = ", ".join(sorted(_SORT_COLUMNS))
-        raise _validation_error(
-            f"Unsupported sort field {sort_field!r}. Allowed: {allowed}."
-        )
+        raise _validation_error(f"Unsupported sort field {sort_field!r}. Allowed: {allowed}.")
     return sort_column.desc() if sort_desc else sort_column.asc()
 
 
@@ -486,9 +485,7 @@ def update_asset(
     except StaleDataError as exc:
         db.rollback()
         logger.warning("Asset update conflict for %s: %s", asset_id, exc)
-        raise _conflict(
-            _STALE_VERSION_MESSAGE
-        ) from exc
+        raise _conflict(_STALE_VERSION_MESSAGE) from exc
     except IntegrityError as exc:
         db.rollback()
         logger.warning("Invalid asset update for %s: %s", asset_id, exc)
@@ -556,25 +553,23 @@ def assign_asset(
             )
         )
         if target is None:
-            raise _validation_error(
-                "responsible_person_id must reference an active holder."
-            )
+            raise _validation_error("responsible_person_id must reference an active holder.")
 
         if asset.status is not AssetStatus.IN_STOCK:
             raise _conflict("Asset must be in_stock to assign.", code="invalid_transition")
         if asset.responsible_person_id is not None:
-            raise _conflict(
-                "Asset already has a responsible person.", code="invalid_transition"
-            )
+            raise _conflict("Asset already has a responsible person.", code="invalid_transition")
         if asset.version != payload.version:
-            raise _conflict(
-                _STALE_VERSION_MESSAGE
-            )
+            raise _conflict(_STALE_VERSION_MESSAGE)
 
         from_status = asset.status
         asset.status = AssetStatus.IN_USE
         asset.responsible_person_id = target.id
         asset.responsible_person = target
+        asset.assignment_date = payload.assignment_date
+        # Reset unassignment_date so the (assignment_date, unassignment_date)
+        # pair only ever describes the most recent assignment window.
+        asset.unassignment_date = None
         record_asset_action(
             db,
             asset=asset,
@@ -595,9 +590,7 @@ def assign_asset(
     except StaleDataError as exc:
         db.rollback()
         logger.warning("Asset assign conflict for %s: %s", _safe_log(asset_id), exc)
-        raise _conflict(
-            _STALE_VERSION_MESSAGE
-        ) from exc
+        raise _conflict(_STALE_VERSION_MESSAGE) from exc
     except IntegrityError as exc:
         db.rollback()
         logger.warning("Invalid asset assign for %s: %s", _safe_log(asset_id), exc)
@@ -630,10 +623,16 @@ def unassign_asset(
                 "Cannot unassign asset with an active repair request.",
                 code="invalid_transition",
             )
-        if asset.version != payload.version:
-            raise _conflict(
-                _STALE_VERSION_MESSAGE
+        if asset.assignment_date is not None and payload.unassignment_date < asset.assignment_date:
+            # Pre-existing rows assigned before this column landed have
+            # assignment_date = NULL; only enforce ordering when we have a
+            # real anchor to compare against.
+            raise _validation_error(
+                "unassignment_date must not be earlier than assignment_date.",
+                code="invalid_unassignment_date",
             )
+        if asset.version != payload.version:
+            raise _conflict(_STALE_VERSION_MESSAGE)
 
         logger.info(
             "Asset %s unassigned by %s. reason=%r",
@@ -647,6 +646,10 @@ def unassign_asset(
         asset.status = AssetStatus.IN_STOCK
         asset.responsible_person_id = None
         asset.responsible_person = None
+        # Per the API spec: assignment_date is preserved on unassign so the
+        # pair captures the most recent assignment window. The next assign
+        # will overwrite assignment_date and clear unassignment_date.
+        asset.unassignment_date = payload.unassignment_date
         record_asset_action(
             db,
             asset=asset,
@@ -667,9 +670,7 @@ def unassign_asset(
     except StaleDataError as exc:
         db.rollback()
         logger.warning("Asset unassign conflict for %s: %s", _safe_log(asset_id), exc)
-        raise _conflict(
-            _STALE_VERSION_MESSAGE
-        ) from exc
+        raise _conflict(_STALE_VERSION_MESSAGE) from exc
     except IntegrityError as exc:
         db.rollback()
         logger.warning("Invalid asset unassign for %s: %s", _safe_log(asset_id), exc)
@@ -706,9 +707,7 @@ def dispose_asset(
                 code="invalid_transition",
             )
         if asset.version != payload.version:
-            raise _conflict(
-                _STALE_VERSION_MESSAGE
-            )
+            raise _conflict(_STALE_VERSION_MESSAGE)
 
         from_status = asset.status
         asset.status = AssetStatus.DISPOSED
@@ -730,9 +729,7 @@ def dispose_asset(
     except StaleDataError as exc:
         db.rollback()
         logger.warning("Asset dispose conflict for %s: %s", _safe_log(asset_id), exc)
-        raise _conflict(
-            _STALE_VERSION_MESSAGE
-        ) from exc
+        raise _conflict(_STALE_VERSION_MESSAGE) from exc
     except IntegrityError as exc:
         db.rollback()
         logger.warning("Invalid asset dispose for %s: %s", _safe_log(asset_id), exc)

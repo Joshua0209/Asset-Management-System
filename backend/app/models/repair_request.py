@@ -27,6 +27,9 @@ class RepairRequest(TimestampVersionMixin, Base):
         primary_key=True,
         default=lambda: str(uuid.uuid4()),
     )
+    # Human-readable, monotonic-within-year display id (`REP-YYYY-NNNNN`).
+    # Populated by the submit endpoint; mirrors `Asset.asset_code`.
+    repair_id: Mapped[str] = mapped_column(String(32), unique=True)
     asset_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("assets.id", ondelete="CASCADE"),

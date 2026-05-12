@@ -15,6 +15,7 @@ def _today_utc() -> date:
     """Return today's date in UTC to match the project's ISO-8601-UTC convention."""
     return datetime.now(UTC).date()
 
+
 AssetCategory = Literal[
     "phone",
     "computer",
@@ -94,14 +95,31 @@ class AssetAssignRequest(APIModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     responsible_person_id: UUIDString
+    assignment_date: date
     version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _validate_assignment_date(self) -> AssetAssignRequest:
+        if self.assignment_date > _today_utc():
+            raise ValueError("assignment_date must not be in the future")
+        return self
 
 
 class AssetUnassignRequest(APIModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     reason: str = Field(min_length=1, max_length=500)
+    unassignment_date: date
     version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _validate_unassignment_date(self) -> AssetUnassignRequest:
+        # Cross-field check against the asset's stored assignment_date is the
+        # endpoint's job (this validator only knows the payload). Future-date
+        # rejection lives here so it surfaces as a regular schema error.
+        if self.unassignment_date > _today_utc():
+            raise ValueError("unassignment_date must not be in the future")
+        return self
 
 
 class AssetDisposeRequest(APIModel):
@@ -131,6 +149,8 @@ class AssetRead(APIModel):
     department: str
     activation_date: date | None
     warranty_expiry: date | None
+    assignment_date: date | None
+    unassignment_date: date | None
     status: AssetStatus
     responsible_person_id: str | None
     responsible_person: AssetPersonRead | None

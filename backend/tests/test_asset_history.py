@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.v1.endpoints.repair_requests import _next_repair_id
 from app.models.asset import Asset, AssetStatus
 from app.models.asset_action_history import (
     AssetAction,
@@ -61,6 +62,7 @@ def _make_repair_request(
 ) -> RepairRequest:
     rr = RepairRequest(
         asset_id=asset.id,
+        repair_id=_next_repair_id(session),
         requester_id=requester.id,
         status=status,
         fault_description="Screen flickers.",
@@ -256,7 +258,11 @@ class TestTransitionsRecordHistory:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": holder.id, "version": asset.version},
+            json={
+                "responsible_person_id": holder.id,
+                "version": asset.version,
+                "assignment_date": "2026-05-01",
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 200, response.text
@@ -288,7 +294,11 @@ class TestTransitionsRecordHistory:
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "End of project", "version": asset.version},
+            json={
+                "reason": "End of project",
+                "version": asset.version,
+                "unassignment_date": "2026-05-06",
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 200, response.text
@@ -503,13 +513,21 @@ class TestHistoryEndpoint:
         # Drive a 3-event history: assign → unassign → dispose
         client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": holder.id, "version": asset.version},
+            json={
+                "responsible_person_id": holder.id,
+                "version": asset.version,
+                "assignment_date": "2026-05-01",
+            },
             headers=auth_headers(manager),
         )
         db_session.refresh(asset)
         client.post(
             f"/api/v1/assets/{asset.id}/unassign",
-            json={"reason": "Returned", "version": asset.version},
+            json={
+                "reason": "Returned",
+                "version": asset.version,
+                "unassignment_date": "2026-05-06",
+            },
             headers=auth_headers(manager),
         )
         db_session.refresh(asset)
@@ -695,6 +713,7 @@ class TestAtomicityOnHistoryFailure:
                     json={
                         "responsible_person_id": holder.id,
                         "version": starting_version,
+                        "assignment_date": "2026-05-01",
                     },
                     headers=auth_headers(manager),
                 )
@@ -1128,14 +1147,22 @@ class TestConcurrentAssign:
 
         ok = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": holder.id, "version": starting_version},
+            json={
+                "responsible_person_id": holder.id,
+                "version": starting_version,
+                "assignment_date": "2026-05-01",
+            },
             headers=auth_headers(manager_a),
         )
         assert ok.status_code == 200
 
         conflict = client.post(
             f"/api/v1/assets/{asset.id}/assign",
-            json={"responsible_person_id": holder.id, "version": starting_version},
+            json={
+                "responsible_person_id": holder.id,
+                "version": starting_version,
+                "assignment_date": "2026-05-01",
+            },
             headers=auth_headers(manager_b),
         )
         assert conflict.status_code == 409
