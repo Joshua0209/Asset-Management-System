@@ -168,6 +168,54 @@ def test_key_func_xforwarded_for_takes_precedence_over_client_host() -> None:
     assert get_rate_limit_key(request) == "198.51.100.42"
 
 
+@pytest.mark.parametrize("exc_cls", [RuntimeError, ValueError, TypeError])
+def test_key_func_unexpected_decode_error_falls_back_to_ip(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    exc_cls: type[Exception],
+) -> None:
+    """Non-InvalidTokenError exceptions from decode_access_token must NOT 500.
+
+    Regression guard for the ``except Exception`` arm in ``get_rate_limit_key``
+    (rate_limit.py). key_func runs in middleware on every request — a future
+    refactor that adds a new exception type to ``decode_access_token`` and
+    fails to update the InvalidTokenError mapping would otherwise propagate
+    500s out of the limiter on every request. Contract is:
+
+    1. Any non-InvalidTokenError still resolves to the IP bucket (no raise).
+    2. The unexpected exception is logged at ERROR (via ``logger.exception``)
+       so it shows up in observability — never silent.
+
+    Patches the *consumption-site* binding (``app.core.rate_limit.decode_access_token``);
+    patching ``app.core.security`` directly would not affect the already-bound
+    name inside rate_limit.py.
+    """
+    from unittest.mock import MagicMock
+
+    from app.core import rate_limit as rl
+
+    def _boom(_token: str) -> None:
+        raise exc_cls("boom")
+
+    monkeypatch.setattr(rl, "decode_access_token", _boom)
+
+    request = MagicMock()
+    request.headers = {"authorization": "Bearer any-token"}
+    request.client.host = "10.0.0.1"
+
+    with caplog.at_level("ERROR", logger="app.core.rate_limit"):
+        assert rl.get_rate_limit_key(request) == "10.0.0.1"
+
+    assert any(
+        "Unexpected error decoding bearer token" in r.message
+        and r.levelname == "ERROR"
+        for r in caplog.records
+    ), (
+        "expected logger.exception(...) on non-InvalidTokenError; "
+        f"got records: {[(r.levelname, r.message) for r in caplog.records]}"
+    )
+
+
 def test_fresh_limiter_starts_at_full_quota(rl_client: TestClient) -> None:
     """A fresh Limiter instance is unaffected by a sibling's exhausted bucket.
 
