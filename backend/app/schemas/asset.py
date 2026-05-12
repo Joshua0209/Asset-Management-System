@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
@@ -165,6 +165,85 @@ class ActorRef(APIModel):
     name: str
 
 
+# Per-action metadata variants. Each carries a Literal discriminator so the
+# `metadata` field on AssetActionHistoryRead becomes a Pydantic v2 tagged
+# union: OpenAPI emits `oneOf` + `discriminator: action`, which TypeScript
+# generators turn into a real discriminated union (`switch (event.action)`
+# is exhaustive, no `as any` casts in the timeline UI).
+#
+# `extra="forbid"` is intentional — a typo in a future writer (or a renamed
+# field that didn't get propagated here) raises ValidationError at the schema
+# boundary instead of silently dropping data. The writers don't change; they
+# already pass dicts matching these shapes. The redundant `action` key in
+# each variant is injected from the parent in `_inject_action_into_metadata`
+# below, so writer call sites stay untouched.
+
+
+class _MetadataVariant(APIModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class AssignMetadata(_MetadataVariant):
+    action: Literal[AssetAction.ASSIGN] = AssetAction.ASSIGN
+    responsible_person_id: UUIDString
+    responsible_person_name: str
+
+
+class UnassignMetadata(_MetadataVariant):
+    action: Literal[AssetAction.UNASSIGN] = AssetAction.UNASSIGN
+    reason: str
+    # Defensive `| None`: FSM precondition (status=IN_USE) implies a
+    # responsible_person is set, but the writer at endpoints/assets.py
+    # snapshots `asset.responsible_person_id` directly — if that ever
+    # desyncs from status, we'd write None rather than crash.
+    previous_responsible_person_id: UUIDString | None = None
+
+
+class DisposeMetadata(_MetadataVariant):
+    action: Literal[AssetAction.DISPOSE] = AssetAction.DISPOSE
+    disposal_reason: str
+
+
+class SubmitRepairMetadata(_MetadataVariant):
+    action: Literal[AssetAction.SUBMIT_REPAIR] = AssetAction.SUBMIT_REPAIR
+    repair_request_id: UUIDString
+    fault_description: str
+
+
+class ApproveRepairMetadata(_MetadataVariant):
+    action: Literal[AssetAction.APPROVE_REPAIR] = AssetAction.APPROVE_REPAIR
+    repair_request_id: UUIDString
+
+
+class RejectRepairMetadata(_MetadataVariant):
+    action: Literal[AssetAction.REJECT_REPAIR] = AssetAction.REJECT_REPAIR
+    repair_request_id: UUIDString
+    rejection_reason: str
+
+
+class CompleteRepairMetadata(_MetadataVariant):
+    action: Literal[AssetAction.COMPLETE_REPAIR] = AssetAction.COMPLETE_REPAIR
+    repair_request_id: UUIDString
+    # String-encoded Decimal so the JSON column encodes deterministically
+    # without MySQL JSON precision drift. See the writer at
+    # backend/app/api/v1/endpoints/repair_requests.py inside
+    # complete_repair_request for the matching `str(payload.repair_cost)`.
+    repair_cost: str
+    repair_vendor: str
+
+
+AssetActionHistoryMetadata = Annotated[
+    AssignMetadata
+    | UnassignMetadata
+    | DisposeMetadata
+    | SubmitRepairMetadata
+    | ApproveRepairMetadata
+    | RejectRepairMetadata
+    | CompleteRepairMetadata,
+    Field(discriminator="action"),
+]
+
+
 class AssetActionHistoryRead(APIModel):
     # `from_attributes=True` (inherited via APIModel) populates by attr name,
     # so the SQLAlchemy attribute `event_metadata` maps to the wire field
@@ -181,9 +260,46 @@ class AssetActionHistoryRead(APIModel):
     from_status: AssetStatus
     to_status: AssetStatus
     actor: ActorRef | None
-    metadata: dict[str, Any] | None = Field(
+    metadata: AssetActionHistoryMetadata | None = Field(
         default=None,
         validation_alias="event_metadata",
         serialization_alias="metadata",
     )
     created_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _inject_action_into_metadata(cls, data: Any) -> Any:
+        # The DB JSON column doesn't store `action` inside the metadata blob
+        # — writers pass shape-only dicts. Copy the sibling `action` onto a
+        # shallow clone of the metadata dict so the discriminated union has
+        # its discriminator. Handles both dict input (tests/API bodies) and
+        # ORM input (from_attributes path through model_validate).
+        if data is None:
+            return data
+        if isinstance(data, dict):
+            action = data.get("action")
+            if action is None:
+                return data
+            for key in ("metadata", "event_metadata"):
+                md = data.get(key)
+                if isinstance(md, dict) and "action" not in md:
+                    return {**data, key: {**md, "action": action}}
+            return data
+        # ORM path: rebuild as a dict so we can mutate the metadata blob
+        # without touching the SQLAlchemy row. Nested ActorRef still
+        # resolves through `from_attributes` because that flag is inherited
+        # via APIModel — Pydantic re-validates the User object recursively.
+        action = getattr(data, "action", None)
+        metadata = getattr(data, "event_metadata", None)
+        if action is None or not isinstance(metadata, dict) or "action" in metadata:
+            return data
+        return {
+            "id": getattr(data, "id", None),
+            "action": action,
+            "from_status": getattr(data, "from_status", None),
+            "to_status": getattr(data, "to_status", None),
+            "actor": getattr(data, "actor", None),
+            "event_metadata": {**metadata, "action": action},
+            "created_at": getattr(data, "created_at", None),
+        }

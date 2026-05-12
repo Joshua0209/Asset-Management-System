@@ -1065,8 +1065,10 @@ class TestPaginationEdges:
 class TestSchemaAliasing:
     def test_validation_alias_accepts_event_metadata_attr_name(self) -> None:
         # Round-trip via from_attributes: ORM attr name `event_metadata`
-        # populates the wire field aliased as `metadata`.
-        from app.schemas.asset import AssetActionHistoryRead
+        # populates the wire field aliased as `metadata`. The payload must
+        # match the DISPOSE variant of the discriminated union — the alias
+        # plumbing is what's under test here, not the shape validation.
+        from app.schemas.asset import AssetActionHistoryRead, DisposeMetadata
 
         history = AssetActionHistory(
             id="h1",
@@ -1075,15 +1077,223 @@ class TestSchemaAliasing:
             action=AssetAction.DISPOSE,
             from_status="in_stock",
             to_status="disposed",
-            event_metadata={"foo": "bar"},
+            event_metadata={"disposal_reason": "End of life"},
             created_at=datetime.now(UTC),
         )
         schema = AssetActionHistoryRead.model_validate(history)
-        assert schema.metadata == {"foo": "bar"}
+        assert isinstance(schema.metadata, DisposeMetadata)
+        assert schema.metadata.disposal_reason == "End of life"
         # Wire-format uses the serialization alias.
         dumped = schema.model_dump(by_alias=True)
         assert "metadata" in dumped
         assert "event_metadata" not in dumped
+
+
+class TestMetadataDiscriminatedUnion:
+    """Each AssetAction has a per-action metadata schema; the union is
+    discriminated by the sibling `action` field. Mismatched shapes raise
+    ValidationError at the schema boundary, so a typo in a future writer
+    (or a renamed field that didn't propagate to the schema) is caught
+    statically rather than silently rendered as `Record<string, any>`."""
+
+    def _build_history(
+        self, action: AssetAction, metadata: dict[str, Any] | None
+    ) -> AssetActionHistory:
+        return AssetActionHistory(
+            id="h1",
+            asset_id="a1",
+            actor_id=None,
+            action=action,
+            from_status="in_stock",
+            to_status="in_use",
+            event_metadata=metadata,
+            created_at=datetime.now(UTC),
+        )
+
+    def test_assign_payload_validates(self) -> None:
+        from app.schemas.asset import AssetActionHistoryRead, AssignMetadata
+
+        actor_id = "11111111-1111-1111-1111-111111111111"
+        history = self._build_history(
+            AssetAction.ASSIGN,
+            {
+                "responsible_person_id": actor_id,
+                "responsible_person_name": "Alice",
+            },
+        )
+        schema = AssetActionHistoryRead.model_validate(history)
+        assert isinstance(schema.metadata, AssignMetadata)
+        assert schema.metadata.responsible_person_id == actor_id
+        assert schema.metadata.responsible_person_name == "Alice"
+
+    def test_unassign_payload_validates(self) -> None:
+        from app.schemas.asset import AssetActionHistoryRead, UnassignMetadata
+
+        prev_id = "22222222-2222-2222-2222-222222222222"
+        history = self._build_history(
+            AssetAction.UNASSIGN,
+            {"reason": "Returned", "previous_responsible_person_id": prev_id},
+        )
+        schema = AssetActionHistoryRead.model_validate(history)
+        assert isinstance(schema.metadata, UnassignMetadata)
+        assert schema.metadata.reason == "Returned"
+        assert schema.metadata.previous_responsible_person_id == prev_id
+
+    def test_dispose_payload_validates(self) -> None:
+        from app.schemas.asset import AssetActionHistoryRead, DisposeMetadata
+
+        history = self._build_history(
+            AssetAction.DISPOSE, {"disposal_reason": "Damaged"}
+        )
+        schema = AssetActionHistoryRead.model_validate(history)
+        assert isinstance(schema.metadata, DisposeMetadata)
+        assert schema.metadata.disposal_reason == "Damaged"
+
+    def test_submit_repair_payload_validates(self) -> None:
+        from app.schemas.asset import AssetActionHistoryRead, SubmitRepairMetadata
+
+        rr_id = "33333333-3333-3333-3333-333333333333"
+        history = self._build_history(
+            AssetAction.SUBMIT_REPAIR,
+            {"repair_request_id": rr_id, "fault_description": "Cracked screen"},
+        )
+        schema = AssetActionHistoryRead.model_validate(history)
+        assert isinstance(schema.metadata, SubmitRepairMetadata)
+        assert schema.metadata.repair_request_id == rr_id
+        assert schema.metadata.fault_description == "Cracked screen"
+
+    def test_approve_repair_payload_validates(self) -> None:
+        from app.schemas.asset import (
+            ApproveRepairMetadata,
+            AssetActionHistoryRead,
+        )
+
+        rr_id = "44444444-4444-4444-4444-444444444444"
+        history = self._build_history(
+            AssetAction.APPROVE_REPAIR, {"repair_request_id": rr_id}
+        )
+        schema = AssetActionHistoryRead.model_validate(history)
+        assert isinstance(schema.metadata, ApproveRepairMetadata)
+        assert schema.metadata.repair_request_id == rr_id
+
+    def test_reject_repair_payload_validates(self) -> None:
+        from app.schemas.asset import AssetActionHistoryRead, RejectRepairMetadata
+
+        rr_id = "55555555-5555-5555-5555-555555555555"
+        history = self._build_history(
+            AssetAction.REJECT_REPAIR,
+            {"repair_request_id": rr_id, "rejection_reason": "Out of scope"},
+        )
+        schema = AssetActionHistoryRead.model_validate(history)
+        assert isinstance(schema.metadata, RejectRepairMetadata)
+        assert schema.metadata.repair_request_id == rr_id
+        assert schema.metadata.rejection_reason == "Out of scope"
+
+    def test_complete_repair_payload_validates(self) -> None:
+        from app.schemas.asset import (
+            AssetActionHistoryRead,
+            CompleteRepairMetadata,
+        )
+
+        rr_id = "66666666-6666-6666-6666-666666666666"
+        history = self._build_history(
+            AssetAction.COMPLETE_REPAIR,
+            {
+                "repair_request_id": rr_id,
+                "repair_cost": "1234.56",
+                "repair_vendor": "Acme",
+            },
+        )
+        schema = AssetActionHistoryRead.model_validate(history)
+        assert isinstance(schema.metadata, CompleteRepairMetadata)
+        assert schema.metadata.repair_cost == "1234.56"
+        assert schema.metadata.repair_vendor == "Acme"
+
+    def test_mismatched_shape_raises_validation_error(self) -> None:
+        # action=DISPOSE but the payload is an ASSIGN shape — the
+        # discriminator drives validation against DisposeMetadata, which
+        # rejects the wrong keys.
+        from pydantic import ValidationError
+
+        from app.schemas.asset import AssetActionHistoryRead
+
+        history = self._build_history(
+            AssetAction.DISPOSE,
+            {"responsible_person_id": "x", "responsible_person_name": "y"},
+        )
+        with pytest.raises(ValidationError):
+            AssetActionHistoryRead.model_validate(history)
+
+    def test_missing_required_field_raises_validation_error(self) -> None:
+        # ASSIGN requires both responsible_person_id and responsible_person_name.
+        from pydantic import ValidationError
+
+        from app.schemas.asset import AssetActionHistoryRead
+
+        history = self._build_history(
+            AssetAction.ASSIGN,
+            {"responsible_person_id": "77777777-7777-7777-7777-777777777777"},
+        )
+        with pytest.raises(ValidationError):
+            AssetActionHistoryRead.model_validate(history)
+
+    def test_extra_field_raises_validation_error(self) -> None:
+        # extra="forbid" — adding a field that didn't make it into the
+        # schema should fail loudly, not silently drop.
+        from pydantic import ValidationError
+
+        from app.schemas.asset import AssetActionHistoryRead
+
+        history = self._build_history(
+            AssetAction.DISPOSE,
+            {"disposal_reason": "ok", "stray_field": "should not be here"},
+        )
+        with pytest.raises(ValidationError):
+            AssetActionHistoryRead.model_validate(history)
+
+    def test_null_metadata_is_allowed(self) -> None:
+        # Historic rows / future actions with no payload remain valid.
+        from app.schemas.asset import AssetActionHistoryRead
+
+        history = self._build_history(AssetAction.DISPOSE, None)
+        schema = AssetActionHistoryRead.model_validate(history)
+        assert schema.metadata is None
+
+
+class TestMetadataOpenAPISchema:
+    """Pydantic v2 emits `oneOf` + `discriminator` for tagged unions; this
+    is what TypeScript generators consume to produce a real discriminated
+    union on the client. If a future refactor flattens the union or drops
+    the discriminator, the generated TS types regress to `Record<string,
+    any>` — and that regression slips past `tsc --strict`."""
+
+    def test_openapi_metadata_is_oneof_with_discriminator(self) -> None:
+        from app.main import app
+
+        spec = app.openapi()
+        schemas = spec["components"]["schemas"]
+        history_read = schemas["AssetActionHistoryRead"]
+        metadata_prop = history_read["properties"]["metadata"]
+
+        # `oneOf` lives behind the anyOf-with-null wrapper for `T | None`.
+        union_node = (
+            metadata_prop
+            if "oneOf" in metadata_prop
+            else next(
+                (
+                    branch
+                    for branch in metadata_prop.get("anyOf", [])
+                    if "oneOf" in branch
+                ),
+                None,
+            )
+        )
+        assert union_node is not None, metadata_prop
+        assert union_node.get("discriminator", {}).get("propertyName") == "action"
+        # All seven AssetAction values must appear as discriminator mappings.
+        mapping = union_node["discriminator"]["mapping"]
+        expected = {a.value for a in AssetAction}
+        assert set(mapping.keys()) == expected
 
 
 class TestHistoryEndpoint503Path:
