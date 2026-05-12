@@ -90,7 +90,27 @@ The mitigation has two layers and both are required for a hardened production de
 
 2. **Application-layer fallback (`backend/app/core/rate_limit.py`).** `_client_ip()` reads the `X-Forwarded-For` header explicitly (correct hyphen-cased form, leftmost IP) before falling back to `request.client.host`. This is defense-in-depth: even if step 1 is mis-configured the bucket key will still vary per client. It is *not* a substitute for step 1 — without uvicorn's trust gate, XFF is forgeable.
 
-**Verification after rollout:** `curl -H 'X-Forwarded-For: 1.2.3.4' https://<api>/health` from outside the VPC should NOT shift the bucket key (i.e. response headers should keep the same `X-RateLimit-Remaining` for repeated calls with the same source IP regardless of the spoofed XFF). If repeated calls drain the quota normally, step 1 is working.
+**Verification after rollout.** Run during a rollout window (not peak hours — the check burns ~5 slots of the anonymous bucket on whatever the runner's NAT IP resolves to). Run from a host **outside the VPC** so traffic actually traverses the ALB; running from a jumpbox inside the VPC bypassing the ALB tells you nothing because no XFF header is added.
+
+Use a rate-limited endpoint so you can read `X-RateLimit-Remaining`. **Do not use `/health`** — it is `@limiter.exempt` (`app/main.py`) and emits no `X-RateLimit-*` headers, so the check would silently always "pass". `POST /api/v1/auth/login` with a bogus body is the canonical probe: it returns 401 but the request still flows through `SlowAPIMiddleware`, which attaches the headers we need.
+
+```bash
+# 5 requests from the same source IP, each claiming a different XFF.
+for i in 1 2 3 4 5; do
+  curl -is -X POST -H "Content-Type: application/json" \
+    -H "X-Forwarded-For: 198.51.100.${i}" \
+    -d '{"email":"verify@invalid","password":"x"}' \
+    https://<api>/api/v1/auth/login | grep -i x-ratelimit-remaining
+done
+```
+
+Interpretation:
+
+| Observation | Meaning |
+|---|---|
+| `Remaining` decrements monotonically (e.g. `29 → 28 → 27 → 26 → 25`) | ✅ Trust gate working. uvicorn ignored the spoofed XFF; all 5 hit the same real-IP bucket. |
+| `Remaining` stays flat (e.g. `29` every time) | ❌ Trust gate failing. uvicorn trusted the spoofed XFF; each request landed in a distinct bucket. **Do not serve real traffic** — fix `--forwarded-allow-ips` and re-deploy first. |
+| No `X-RateLimit-*` header at all | ❌ Likely hit an exempt endpoint or the limiter is disabled. Re-check `RATE_LIMIT_ENABLED=true` and that the URL points at `/api/v1/auth/login` (not `/health`). |
 
 ### Env-var matrix
 
