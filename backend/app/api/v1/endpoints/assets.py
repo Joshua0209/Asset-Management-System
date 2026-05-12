@@ -623,6 +623,8 @@ def unassign_asset(
                 "Cannot unassign asset with an active repair request.",
                 code="invalid_transition",
             )
+        if asset.version != payload.version:
+            raise _conflict(_STALE_VERSION_MESSAGE)
         if asset.assignment_date is not None and payload.unassignment_date < asset.assignment_date:
             # Pre-existing rows assigned before this column landed have
             # assignment_date = NULL; only enforce ordering when we have a
@@ -631,8 +633,6 @@ def unassign_asset(
                 "unassignment_date must not be earlier than assignment_date.",
                 code="invalid_unassignment_date",
             )
-        if asset.version != payload.version:
-            raise _conflict(_STALE_VERSION_MESSAGE)
 
         logger.info(
             "Asset %s unassigned by %s. reason=%r",
