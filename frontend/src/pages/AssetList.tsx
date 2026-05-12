@@ -49,7 +49,10 @@ const AssetList: React.FC = () => {
     [assetForm, t],
   );
 
-  const formatApiError = (apiError: ApiError): string => getApiErrorMessage(apiError, t);
+  const formatApiError = React.useCallback(
+    (apiError: ApiError): string => getApiErrorMessage(apiError, t),
+    [t],
+  );
 
   const isManager = user?.role === 'manager';
 
@@ -100,7 +103,7 @@ const AssetList: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [page, pageSize, t, user]);
+  }, [page, pageSize, t, user, formatApiError]);
 
   const reloadCurrentPage = async () => {
     if (!user) {

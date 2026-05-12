@@ -87,7 +87,10 @@ const ReviewDetail: React.FC = () => {
     positiveKey: 'validation.repairCostPositive',
   });
 
-  const formatApiError = (apiError: ApiError): string => getApiErrorMessage(apiError, t);
+  const formatApiError = React.useCallback(
+    (apiError: ApiError): string => getApiErrorMessage(apiError, t),
+    [t],
+  );
 
   const formatDateTime = (value: string | null | undefined): string => {
     if (!value) {
@@ -101,7 +104,7 @@ const ReviewDetail: React.FC = () => {
     value: string | number | null | undefined,
   ): string => (value === null || value === undefined || value === '' ? '-' : `TWD ${value}`);
 
-  const loadRequest = async () => {
+  const loadRequest = React.useCallback(async () => {
     if (!id) {
       setRequest(null);
       setError(t('errors.notFound'));
@@ -125,11 +128,11 @@ const ReviewDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formatApiError, id, t]);
 
   useEffect(() => {
     void loadRequest();
-  }, [id]);
+  }, [loadRequest]);
 
   const openApproveModal = () => {
     if (!request) {

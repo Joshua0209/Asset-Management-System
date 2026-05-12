@@ -39,9 +39,12 @@ const Reviews: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const formatApiError = (apiError: ApiError): string => getApiErrorMessage(apiError, t);
+  const formatApiError = React.useCallback(
+    (apiError: ApiError): string => getApiErrorMessage(apiError, t),
+    [t],
+  );
 
-  const loadRequests = async () => {
+  const loadRequests = React.useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -64,11 +67,11 @@ const Reviews: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formatApiError, page, pageSize, statusFilter, t]);
 
   useEffect(() => {
     void loadRequests();
-  }, [page, pageSize, statusFilter]);
+  }, [loadRequests]);
 
   const columns: TableColumnsType<RepairRequestRecord> = [
     {
