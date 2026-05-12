@@ -2247,3 +2247,50 @@ class TestRepairIdField:
             _next_repair_id(db_session)
 
         assert exc_info.value.status_code == 500
+
+
+class TestRepairIdRetry:
+    """submit_repair_request must retry on repair_id collision like register_asset."""
+
+    def test_submit_succeeds_after_repair_id_collision_on_first_attempt(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        from unittest.mock import patch
+
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        # side_effect: first two calls produce a colliding id, third produces
+        # a fresh one. Without a retry loop the request fails on the first
+        # collision instead of succeeding on the third call.
+        ids = iter(["REP-2026-DUPE", "REP-2026-DUPE", "REP-2026-FRESH"])
+
+        with patch(
+            "app.api.v1.endpoints.repair_requests._next_repair_id",
+            side_effect=lambda db, today=None: next(ids),
+        ):
+            # Prime the DB with the colliding id so the first two attempts
+            # hit an IntegrityError.
+            db_session.add(
+                RepairRequest(
+                    asset_id=asset.id,
+                    repair_id="REP-2026-DUPE",
+                    requester_id=holder.id,
+                    status=RepairRequestStatus.COMPLETED,
+                    fault_description="pre-existing collision fixture",
+                )
+            )
+            db_session.commit()
+
+            response = client.post(
+                "/api/v1/repair-requests",
+                json={"asset_id": asset.id, "fault_description": "New fault."},
+                headers=auth_headers(holder),
+            )
+
+        assert response.status_code == 201
+        assert response.json()["data"]["repair_id"] == "REP-2026-FRESH"
