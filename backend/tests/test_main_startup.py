@@ -22,7 +22,7 @@ def test_invariant_passes_when_workers_is_one() -> None:
     from app.core.config import Settings
     from app.main import _enforce_single_worker_invariant
 
-    settings = Settings(  # type: ignore[call-arg]
+    settings = Settings(
         database_url="sqlite:///:memory:",
         jwt_secret="x" * 32,  # noqa: S106
         rate_limit_enabled=True,
@@ -42,7 +42,7 @@ def test_invariant_passes_when_workers_unset() -> None:
     from app.core.config import Settings
     from app.main import _enforce_single_worker_invariant
 
-    settings = Settings(  # type: ignore[call-arg]
+    settings = Settings(
         database_url="sqlite:///:memory:",
         jwt_secret="x" * 32,  # noqa: S106
         rate_limit_enabled=True,
@@ -64,7 +64,7 @@ def test_invariant_hard_fails_when_workers_gt_one_and_limits_enabled(
     from app.core.config import Settings
     from app.main import _enforce_single_worker_invariant
 
-    settings = Settings(  # type: ignore[call-arg]
+    settings = Settings(
         database_url="sqlite:///:memory:",
         jwt_secret="x" * 32,  # noqa: S106
         rate_limit_enabled=True,
@@ -90,7 +90,7 @@ def test_invariant_silent_when_rate_limit_disabled_even_with_many_workers() -> N
     from app.core.config import Settings
     from app.main import _enforce_single_worker_invariant
 
-    settings = Settings(  # type: ignore[call-arg]
+    settings = Settings(
         database_url="sqlite:///:memory:",
         jwt_secret="x" * 32,  # noqa: S106
         rate_limit_enabled=False,
@@ -111,7 +111,7 @@ def test_invariant_tolerates_malformed_web_concurrency() -> None:
     from app.core.config import Settings
     from app.main import _enforce_single_worker_invariant
 
-    settings = Settings(  # type: ignore[call-arg]
+    settings = Settings(
         database_url="sqlite:///:memory:",
         jwt_secret="x" * 32,  # noqa: S106
         rate_limit_enabled=True,

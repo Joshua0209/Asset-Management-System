@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -39,6 +40,60 @@ if not settings.rate_limit_enabled:
         "leave it true to avoid credential-stuffing exposure on "
         "/auth/login + /auth/register."
     )
+
+
+def _enforce_single_worker_invariant(
+    settings_obj: "object", web_concurrency_raw: str | None
+) -> None:
+    """Refuse to boot when multi-worker would silently relax rate limits.
+
+    Per ``docs/system-design/08-deployment-operations.md`` §"API Hardening:
+    Rate Limiting", Phase 2 mandates ``--workers 1`` until Phase 3 introduces
+    Redis-backed shared storage. Slowapi's ``MemoryStorage`` is per-process,
+    so N workers means a user's effective per-minute cap is N× the configured
+    value — credential-stuffing protection on ``/auth/login`` is silently
+    defeated. We refuse to start rather than serve traffic with that hole.
+
+    Detection scope (known gap):
+    * ``WEB_CONCURRENCY`` is the gunicorn / ``tiangolo/uvicorn-gunicorn-fastapi``
+      convention. Most Phase 2 ECS task definitions will hit this path.
+    * ``uvicorn --workers N`` CLI flag is NOT readable from inside the app
+      (uvicorn does not export it to the process environment). The runbook in
+      ``08-deployment-operations.md`` carries the verbal "use --workers 1"
+      mandate; this function backstops the env-var shape only.
+
+    Malformed values (``""``, ``"auto"``, non-numeric) degrade to single-worker
+    rather than raising ``ValueError`` — a confusing crash for an operator who
+    set a stray value is worse than treating it as "unset".
+    """
+    if not getattr(settings_obj, "rate_limit_enabled", True):
+        # Rate limiting off → the N-worker concern is moot. The existing
+        # WARN above already flags the disabled state loudly.
+        return
+    if web_concurrency_raw is None:
+        return
+    try:
+        workers = int(web_concurrency_raw.strip())
+    except (ValueError, AttributeError):
+        # Garbled env value → treat as unset. Operator gets no false alarm,
+        # and the surrounding gunicorn/uvicorn layer will surface the bad
+        # value on its own when it tries to spawn processes.
+        return
+    if workers <= 1:
+        return
+    raise RuntimeError(
+        f"WEB_CONCURRENCY={workers} but rate-limit storage is in-process "
+        "MemoryStorage. Effective per-user/per-IP cap is "
+        f"{workers}x the configured value, which silently defeats "
+        "credential-stuffing protection on /auth/login. Per "
+        "docs/system-design/08-deployment-operations.md, keep --workers 1 "
+        "until Phase 3 introduces Redis-backed shared storage. Set "
+        "WEB_CONCURRENCY=1 (or unset) to boot. To intentionally bypass "
+        "for load tests, set RATE_LIMIT_ENABLED=false."
+    )
+
+
+_enforce_single_worker_invariant(settings, os.environ.get("WEB_CONCURRENCY"))
 
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
 # request time and emits the X-RateLimit-* headers.
