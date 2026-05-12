@@ -9,10 +9,12 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.v1.endpoints.repair_requests import _next_repair_id
 from app.main import app
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_request import RepairRequest, RepairRequestStatus
@@ -2224,19 +2226,19 @@ class TestRepairIdField:
     def test_next_repair_id_raises_500_when_sequence_exhausted(
         self,
         db_session: Session,
+        make_user: Callable[..., User],
     ) -> None:
         # Seed a repair_request at the year boundary (sequence 99999).
         # The next call to _next_repair_id should raise 500, not silently
         # produce a 6-digit id that breaks lexicographic ordering.
-        from fastapi import HTTPException
-
-        from app.api.v1.endpoints.repair_requests import _next_repair_id
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
 
         db_session.add(
             RepairRequest(
-                asset_id="00000000-0000-0000-0000-000000000001",
+                asset_id=asset.id,
                 repair_id="REP-2026-99999",
-                requester_id="00000000-0000-0000-0000-000000000002",
+                requester_id=holder.id,
                 status=RepairRequestStatus.PENDING_REVIEW,
                 fault_description="boundary fixture",
             )
@@ -2252,7 +2254,7 @@ class TestRepairIdField:
 class TestRepairIdRetry:
     """submit_repair_request must retry on repair_id collision like register_asset."""
 
-    def test_submit_succeeds_after_repair_id_collision_on_first_attempt(
+    def test_submit_succeeds_after_repair_id_collisions_within_retry_budget(
         self,
         client: TestClient,
         db_session: Session,
