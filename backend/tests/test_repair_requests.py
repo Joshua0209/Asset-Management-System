@@ -2293,6 +2293,43 @@ class TestRepairIdRetry:
         assert response.status_code == 201
         assert response.json()["data"]["repair_id"] == "REP-2026-FRESH"
 
+    def test_submit_returns_repair_id_conflict_when_retries_exhausted(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # When every attempt within _REPAIR_ID_CREATE_ATTEMPTS hits a
+        # uniqueness collision, the endpoint should give up and surface
+        # 409 repair_id_conflict so the client can retry.
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+
+        db_session.add(
+            RepairRequest(
+                asset_id=asset.id,
+                repair_id="REP-2026-STUCK",
+                requester_id=holder.id,
+                status=RepairRequestStatus.COMPLETED,
+                fault_description="pre-existing collision fixture",
+            )
+        )
+        db_session.commit()
+
+        with patch(
+            "app.api.v1.endpoints.repair_requests._next_repair_id",
+            return_value="REP-2026-STUCK",
+        ):
+            response = client.post(
+                "/api/v1/repair-requests",
+                json={"asset_id": asset.id, "fault_description": "New fault."},
+                headers=auth_headers(holder),
+            )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "repair_id_conflict"
+
     def test_cleanup_failure_during_collision_does_not_abort_retry(
         self,
         client: TestClient,
