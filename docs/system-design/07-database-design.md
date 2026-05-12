@@ -140,7 +140,12 @@ CREATE INDEX idx_assets_dept_loc ON assets(department, location);
 CREATE INDEX idx_assets_category_status ON assets(category, status);
 CREATE INDEX idx_repair_status_date ON repair_requests(status, created_at);
 
--- Phase 3: Tenant-prefixed indexes (future — single-tenant until Phase 3 rollout)
+-- Phase 3: Tenant-prefixed indexes
+-- DO NOT RUN against the current schema: the assets, repair_requests, and
+-- asset_action_histories tables do not have a tenant_id column today. The
+-- statements below are illustrative of the shape the Phase 3 migration will
+-- emit once multi-tenancy lands and tenant_id has been added. Executing them
+-- as-is will fail with "Unknown column 'tenant_id'".
 CREATE INDEX idx_assets_tenant_search ON assets(tenant_id, category, status);
 CREATE INDEX idx_assets_tenant_person ON assets(tenant_id, responsible_person_id);
 CREATE INDEX idx_repair_tenant_status ON repair_requests(tenant_id, status, created_at);
