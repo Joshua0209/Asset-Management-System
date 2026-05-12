@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-if (typeof globalThis.window !== 'undefined') {
+if (globalThis.window !== undefined) {
   (globalThis.window as Window & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 }
 
