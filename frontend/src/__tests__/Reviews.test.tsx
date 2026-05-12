@@ -1,9 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import Reviews from "../pages/Reviews";
 import i18n from "../i18n";
+import { getModalField, getOpenModalContent } from "./test-helpers";
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
@@ -75,15 +76,11 @@ describe("Reviews", () => {
     mockRejectRepairRequest.mockResolvedValue({} as never);
     mockUpdateRepairRequestDetails.mockResolvedValue({} as never);
     mockCompleteRepairRequest.mockResolvedValue({} as never);
-    await act(async () => {
-      await i18n.changeLanguage("en");
-    });
+    await i18n.changeLanguage("en");
   });
 
   it("renders repair list and status badge", async () => {
-    await act(async () => {
-      render(<Reviews />);
-    });
+    render(<Reviews />);
 
     await waitFor(() => {
       expect(mockListRepairRequests).toHaveBeenCalledWith({
@@ -101,9 +98,7 @@ describe("Reviews", () => {
   it("applies status filter and reloads list", async () => {
     const user = userEvent.setup({ delay: null });
 
-    await act(async () => {
-      render(<Reviews />);
-    });
+    render(<Reviews />);
 
     await waitFor(() => {
       expect(screen.getByText("AST-1")).toBeInTheDocument();
@@ -112,12 +107,8 @@ describe("Reviews", () => {
     mockListRepairRequests.mockResolvedValueOnce(buildResponse("under_repair"));
 
     const [statusFilterCombobox] = screen.getAllByRole("combobox");
-    await act(async () => {
-      await user.click(statusFilterCombobox);
-    });
-    await act(async () => {
-      await user.click(screen.getByText("Under Repair"));
-    });
+    await user.click(statusFilterCombobox);
+    await user.click(screen.getByText("Under Repair"));
 
     await waitFor(() => {
       expect(mockListRepairRequests).toHaveBeenLastCalledWith({
@@ -134,24 +125,24 @@ describe("Reviews", () => {
       .mockResolvedValueOnce(buildResponse("pending_review"))
       .mockResolvedValueOnce(buildResponse("under_repair"));
 
-    await act(async () => {
-      render(<Reviews />);
+    render(<Reviews />);
+
+    await waitFor(() => expect(screen.getByText("AST-1")).toBeInTheDocument());
+
+    const row = screen.getByText("AST-1").closest("tr");
+    expect(row).not.toBeNull();
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Approve Repair Request")).toBeInTheDocument();
     });
 
-    await waitFor(() => expect(screen.getByText("Approve")).toBeInTheDocument());
-
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Approve" }));
-    });
-
-    await act(async () => {
-      await user.type(screen.getByLabelText("Repair Plan"), "Replace panel");
-      await user.type(screen.getByLabelText("Repair Vendor"), "Vendor A");
-      await user.type(screen.getByLabelText("Repair Cost"), "2200");
-      await user.type(screen.getByLabelText("Planned Date"), "2026-04-25");
-      const approveButtons = screen.getAllByRole("button", { name: "Approve" });
-      await user.click(approveButtons[approveButtons.length - 1]);
-    });
+    const approveModal = getOpenModalContent();
+    await user.type(getModalField(approveModal, "#repair_plan"), "Replace panel");
+    await user.type(getModalField(approveModal, "#repair_vendor"), "Vendor A");
+    await user.type(getModalField(approveModal, "#repair_cost"), "2200");
+    await user.type(getModalField(approveModal, "#planned_date"), "2026-04-25");
+    await user.click(within(approveModal).getByRole("button", { name: "Approve" }));
 
     await waitFor(() => {
       expect(mockApproveRepairRequest).toHaveBeenCalledWith("rr-1", {
@@ -170,21 +161,19 @@ describe("Reviews", () => {
       .mockResolvedValueOnce(buildResponse("pending_review"))
       .mockResolvedValueOnce(buildResponse("pending_review"));
 
-    await act(async () => {
-      render(<Reviews />);
-    });
+    render(<Reviews />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument());
 
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Reject" }));
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Reject Repair Request")).toBeInTheDocument();
     });
 
-    await act(async () => {
-      await user.type(screen.getByLabelText("Rejection Reason"), "Not reproducible");
-      const rejectButtons = screen.getAllByRole("button", { name: "Reject" });
-      await user.click(rejectButtons[rejectButtons.length - 1]);
-    });
+    const rejectModal = getOpenModalContent();
+    await user.type(getModalField(rejectModal, "#rejection_reason"), "Not reproducible");
+    await user.click(within(rejectModal).getByRole("button", { name: "Reject" }));
 
     await waitFor(() => {
       expect(mockRejectRepairRequest).toHaveBeenCalledWith("rr-1", {
@@ -201,25 +190,24 @@ describe("Reviews", () => {
       .mockResolvedValueOnce(buildResponse("under_repair"))
       .mockResolvedValueOnce(buildResponse("under_repair"));
 
-    await act(async () => {
-      render(<Reviews />);
-    });
+    render(<Reviews />);
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Update Details" })).toBeInTheDocument(),
     );
 
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Update Details" }));
+    await user.click(screen.getByRole("button", { name: "Update Details" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Update Repair Details")).toBeInTheDocument();
     });
 
-    await act(async () => {
-      await user.type(screen.getByLabelText("Fault Content"), "Connector issue");
-      await user.type(screen.getByLabelText("Repair Plan"), "Reseat connector");
-      await user.type(screen.getByLabelText("Repair Cost"), "1500");
-      await user.type(screen.getByLabelText("Repair Vendor"), "Vendor B");
-      await user.click(screen.getByRole("button", { name: "Save" }));
-    });
+    const detailsModal = getOpenModalContent();
+    await user.type(getModalField(detailsModal, "#fault_content"), "Connector issue");
+    await user.type(getModalField(detailsModal, "#repair_plan"), "Reseat connector");
+    await user.type(getModalField(detailsModal, "#repair_cost"), "1500");
+    await user.type(getModalField(detailsModal, "#repair_vendor"), "Vendor B");
+    await user.click(within(detailsModal).getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(mockUpdateRepairRequestDetails).toHaveBeenCalledWith(
@@ -231,19 +219,21 @@ describe("Reviews", () => {
       );
     });
 
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Complete" }));
+    const row = screen.getByText("AST-1").closest("tr");
+    expect(row).not.toBeNull();
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "Complete" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Repair")).toBeInTheDocument();
     });
 
-    await act(async () => {
-      await user.type(screen.getByLabelText("Repair Date"), "2026-04-28");
-      await user.type(screen.getByLabelText("Fault Content"), "Resolved");
-      await user.type(screen.getByLabelText("Repair Plan"), "Replaced part");
-      await user.type(screen.getByLabelText("Repair Cost"), "1800");
-      await user.type(screen.getByLabelText("Repair Vendor"), "Vendor C");
-      const completeButtons = screen.getAllByRole("button", { name: "Complete" });
-      await user.click(completeButtons[completeButtons.length - 1]);
-    });
+    const completeModal = getOpenModalContent();
+    await user.type(getModalField(completeModal, "#repair_date"), "2026-04-28");
+    await user.type(getModalField(completeModal, "#fault_content"), "Resolved");
+    await user.type(getModalField(completeModal, "#repair_plan"), "Replaced part");
+    await user.type(getModalField(completeModal, "#repair_cost"), "1800");
+    await user.type(getModalField(completeModal, "#repair_vendor"), "Vendor C");
+    await user.click(within(completeModal).getByRole("button", { name: "Complete" }));
 
     await waitFor(() => {
       expect(mockCompleteRepairRequest).toHaveBeenCalledWith(

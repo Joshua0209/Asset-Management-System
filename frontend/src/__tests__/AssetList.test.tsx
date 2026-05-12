@@ -1,9 +1,19 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import AssetList from "../pages/AssetList";
 import i18n from "../i18n";
+
+const mockNavigate = vi.fn();
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 vi.mock("../auth/AuthContext", () => ({
   useAuth: vi.fn(),
@@ -17,13 +27,6 @@ vi.mock("../api", async () => {
       listAssets: vi.fn(),
       listMyAssets: vi.fn(),
       createAsset: vi.fn(),
-      updateAsset: vi.fn(),
-      assignAsset: vi.fn(),
-      unassignAsset: vi.fn(),
-      disposeAsset: vi.fn(),
-    },
-    usersApi: {
-      listUsers: vi.fn(),
     },
   };
 });
@@ -35,10 +38,6 @@ const mockUseAuth = vi.mocked(authModule.useAuth);
 const mockListAssets = vi.mocked(apiModule.assetsApi.listAssets);
 const mockListMyAssets = vi.mocked(apiModule.assetsApi.listMyAssets);
 const mockCreateAsset = vi.mocked(apiModule.assetsApi.createAsset);
-const mockUpdateAsset = vi.mocked(apiModule.assetsApi.updateAsset);
-const mockUnassignAsset = vi.mocked(apiModule.assetsApi.unassignAsset);
-const mockDisposeAsset = vi.mocked(apiModule.assetsApi.disposeAsset);
-const mockListUsers = vi.mocked(apiModule.usersApi.listUsers);
 
 const managerUser = {
   id: "manager-1",
@@ -64,25 +63,17 @@ function authAs(user: typeof managerUser | typeof holderUser) {
   });
 }
 
-async function renderAsManagerWith(
-  ...responses: ReturnType<typeof buildResponse>[]
-) {
+async function renderAsManagerWith(...responses: ReturnType<typeof buildResponse>[]) {
   authAs(managerUser);
   responses.forEach((r) => mockListAssets.mockResolvedValueOnce(r));
   const user = userEvent.setup({ delay: null });
-  await act(async () => {
-    render(<AssetList />);
-  });
-  await waitFor(() =>
-    expect(screen.getByText(responses[0].data[0].name)).toBeInTheDocument(),
-  );
+  render(<AssetList />);
+  await waitFor(() => expect(screen.getByText(responses[0].data[0].name)).toBeInTheDocument());
   return user;
 }
 
 async function openCreateForm(user: ReturnType<typeof userEvent.setup>) {
-  await act(async () => {
-    await user.click(screen.getByRole("button", { name: "Register Asset" }));
-  });
+  await user.click(screen.getByRole("button", { name: "Register Asset" }));
 }
 
 async function fillRequiredCreateFields(
@@ -98,7 +89,7 @@ async function fillRequiredCreateFields(
   await user.type(screen.getByLabelText("Name"), overrides.name);
   await user.type(screen.getByLabelText("Model"), overrides.model);
   await user.click(screen.getByLabelText("Category"));
-  await user.click(screen.getByText("computer"));
+  await user.click(screen.getAllByRole("option", { name: "computer" })[0]);
   await user.type(screen.getByLabelText("Supplier"), "Acme");
   await user.type(screen.getByLabelText("Purchase Date"), "2026-01-10");
   await user.type(screen.getByLabelText("Purchase Amount"), overrides.purchaseAmount);
@@ -158,36 +149,17 @@ describe("AssetList", () => {
   beforeEach(async () => {
     mockListAssets.mockReset();
     mockListMyAssets.mockReset();
-    mockUpdateAsset.mockReset();
     mockCreateAsset.mockReset();
-    mockUnassignAsset.mockReset();
-    mockDisposeAsset.mockReset();
-    mockListUsers.mockReset();
+    mockNavigate.mockReset();
     mockCreateAsset.mockResolvedValue({} as never);
-    mockUpdateAsset.mockResolvedValue(undefined as never);
-    mockUnassignAsset.mockResolvedValue(undefined as never);
-    mockDisposeAsset.mockResolvedValue(undefined as never);
-    mockListUsers.mockResolvedValue({
-      data: [],
-      meta: {
-        total: 0,
-        page: 1,
-        per_page: 20,
-        total_pages: 0,
-      },
-    });
-    await act(async () => {
-      await i18n.changeLanguage("en");
-    });
+    await i18n.changeLanguage("en");
   });
 
   it("loads all assets for manager without role switch controls", async () => {
     authAs(managerUser);
     mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 10));
 
-    await act(async () => {
-      render(<AssetList />);
-    });
+    render(<AssetList />);
 
     await waitFor(() => {
       expect(mockListAssets).toHaveBeenCalledWith({ page: 1, perPage: 5 });
@@ -208,17 +180,13 @@ describe("AssetList", () => {
       .mockResolvedValueOnce(buildResponse("AST-2026-00006", "Field Laptop", 10));
 
     const user = userEvent.setup({ delay: null });
-    await act(async () => {
-      render(<AssetList />);
-    });
+    render(<AssetList />);
 
     await waitFor(() => {
       expect(screen.getByText("AST-2026-00001")).toBeInTheDocument();
     });
 
-    await act(async () => {
-      await user.click(screen.getByTitle("2"));
-    });
+    await user.click(screen.getByTitle("2"));
 
     await waitFor(() => {
       expect(mockListAssets).toHaveBeenLastCalledWith({ page: 2, perPage: 5 });
@@ -230,9 +198,7 @@ describe("AssetList", () => {
     authAs(holderUser);
     mockListMyAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
 
-    await act(async () => {
-      render(<AssetList />);
-    });
+    render(<AssetList />);
 
     await waitFor(() => {
       expect(mockListMyAssets).toHaveBeenCalledWith({ page: 1, perPage: 5 });
@@ -242,116 +208,29 @@ describe("AssetList", () => {
     expect(screen.getByText("AST-2026-00001")).toBeInTheDocument();
   });
 
-  it("opens detail modal and shows extended asset fields", async () => {
+  it("navigates to the asset detail page when clicking detail", async () => {
     authAs(managerUser);
     mockListAssets.mockResolvedValueOnce(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
 
     const user = userEvent.setup({ delay: null });
-    await act(async () => {
-      render(<AssetList />);
-    });
-
-    await act(async () => {
-      await user.click(screen.getAllByRole("button", { name: "Detail" })[0]);
-    });
+    render(<AssetList />);
 
     await waitFor(() => {
-      expect(screen.getByText("Asset Detail - AST-2026-00001")).toBeInTheDocument();
+      expect(screen.getByText("AST-2026-00001")).toBeInTheDocument();
     });
+    await user.click(screen.getByRole("button", { name: "Detail" }));
 
-    expect(screen.getByText("Alice Chen")).toBeInTheDocument();
-    expect(screen.getByText("Dell Latitude 7440")).toBeInTheDocument();
-    expect(screen.getByText("Intel Core i7, 16GB RAM, 512GB SSD")).toBeInTheDocument();
-    expect(screen.getByText("Dell")).toBeInTheDocument();
-  });
-
-  it("edits an asset and submits update via API", async () => {
-    const user = await renderAsManagerWith(
-      buildResponse("AST-2026-00001", "Business Laptop 13", 1, "in_use"),
-      buildResponse("AST-2026-00001", "Updated Laptop", 1, "in_use"),
-    );
-
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Edit" }));
-    });
-
-    const nameInput = screen.getByLabelText("Name");
-    await act(async () => {
-      await user.clear(nameInput);
-      await user.type(nameInput, "Updated Laptop");
-      await user.click(screen.getByRole("button", { name: "Save" }));
-    });
-
-    await waitFor(() => {
-      expect(mockUpdateAsset).toHaveBeenCalledWith(
-        "AST-2026-00001-id",
-        expect.objectContaining({
-          name: "Updated Laptop",
-          version: 1,
-        }),
-      );
-    });
-  });
-
-  it("unassigns an in-use asset through manager action", async () => {
-    const user = await renderAsManagerWith(
-      buildResponse("AST-2026-00001", "Business Laptop 13", 1, "in_use"),
-      buildResponse("AST-2026-00001", "Business Laptop 13", 1, "in_stock"),
-    );
-
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Unassign" }));
-    });
-
-    const reasonInput = screen.getByLabelText("Unassign Reason");
-    await act(async () => {
-      await user.type(reasonInput, "Reclaim for reallocation");
-      await user.click(screen.getByRole("button", { name: "Confirm" }));
-    });
-
-    await waitFor(() => {
-      expect(mockUnassignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
-        reason: "Reclaim for reallocation",
-        version: 1,
-      });
-    });
-  });
-
-  it("disposes an in-stock asset through manager action", async () => {
-    const user = await renderAsManagerWith(
-      buildResponse("AST-2026-00099", "Spare Tablet", 1, "in_stock"),
-      buildResponse("AST-2026-00099", "Spare Tablet", 1, "disposed"),
-    );
-
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Dispose" }));
-    });
-
-    await act(async () => {
-      await user.type(screen.getByLabelText("Disposal Reason"), "End of life");
-      await user.click(screen.getByRole("button", { name: "Confirm" }));
-    });
-
-    await waitFor(() => {
-      expect(mockDisposeAsset).toHaveBeenCalledWith("AST-2026-00099-id", {
-        disposal_reason: "End of life",
-        version: 1,
-      });
-    });
+    expect(mockNavigate).toHaveBeenCalledWith("/assets/AST-2026-00001-id");
   });
 
   it("blocks create when purchase amount is negative", async () => {
-    const user = await renderAsManagerWith(
-      buildResponse("AST-2026-00001", "Business Laptop 13", 1),
-    );
+    const user = await renderAsManagerWith(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
     await openCreateForm(user);
 
-    await act(async () => {
-      await fillRequiredCreateFields(user, {
-        name: "Invalid Asset",
-        model: "X-100",
-        purchaseAmount: "-1",
-      });
+    await fillRequiredCreateFields(user, {
+      name: "Invalid Asset",
+      model: "X-100",
+      purchaseAmount: "-1",
     });
 
     await waitFor(() => {
@@ -365,25 +244,19 @@ describe("AssetList", () => {
   });
 
   it("blocks create when warranty expiry is before activation date", async () => {
-    const user = await renderAsManagerWith(
-      buildResponse("AST-2026-00001", "Business Laptop 13", 1),
-    );
+    const user = await renderAsManagerWith(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
     await openCreateForm(user);
 
-    await act(async () => {
-      await fillRequiredCreateFields(user, {
-        name: "Warranty Invalid Asset",
-        model: "WX-1",
-        purchaseAmount: "1000.00",
-        activationDate: "2026-05-10",
-        warrantyExpiry: "2026-05-01",
-      });
+    await fillRequiredCreateFields(user, {
+      name: "Warranty Invalid Asset",
+      model: "WX-1",
+      purchaseAmount: "1000.00",
+      activationDate: "2026-05-10",
+      warrantyExpiry: "2026-05-01",
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Warranty expiry must be after activation date"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Warranty expiry must be after activation date")).toBeInTheDocument();
     });
     expect(mockCreateAsset).not.toHaveBeenCalled();
   });

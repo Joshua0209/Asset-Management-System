@@ -31,7 +31,10 @@ function LocationProbe() {
 async function renderAt(path: string): Promise<void> {
   await act(async () => {
     render(
-      <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter
+        initialEntries={[path]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <LocationProbe />
         <AppRoutes />
       </MemoryRouter>,

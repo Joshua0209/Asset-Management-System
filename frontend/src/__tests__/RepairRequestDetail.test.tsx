@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import RepairRequestDetail from "../pages/RepairRequestDetail";
@@ -56,23 +56,22 @@ describe("RepairRequestDetail", () => {
     mockGetRepairRequestById.mockReset();
     mockApiClientGet.mockReset();
     mockApiClientGet.mockResolvedValue({ data: new Blob(["mock-image-data"], { type: "image/jpeg" }) });
-    await act(async () => {
-      await i18n.changeLanguage("en");
-    });
+    await i18n.changeLanguage("en");
   });
 
   it("renders repair request details and timeline", async () => {
     mockGetRepairRequestById.mockResolvedValueOnce(mockRequest as unknown as RepairRequestRecord);
 
-    await act(async () => {
-      render(
-        <MemoryRouter initialEntries={["/repairs/req-1"]}>
-          <Routes>
-            <Route path="/repairs/:id" element={<RepairRequestDetail />} />
-          </Routes>
-        </MemoryRouter>
-      );
-    });
+    render(
+      <MemoryRouter
+        initialEntries={["/repairs/req-1"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/repairs/:id" element={<RepairRequestDetail />} />
+        </Routes>
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Repair Request Details")).toBeInTheDocument();
@@ -105,15 +104,16 @@ describe("RepairRequestDetail", () => {
     };
     mockGetRepairRequestById.mockResolvedValueOnce(rejectedRequest as unknown as RepairRequestRecord);
 
-    await act(async () => {
-      render(
-        <MemoryRouter initialEntries={["/repairs/req-1"]}>
-          <Routes>
-            <Route path="/repairs/:id" element={<RepairRequestDetail />} />
-          </Routes>
-        </MemoryRouter>
-      );
-    });
+    render(
+      <MemoryRouter
+        initialEntries={["/repairs/req-1"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/repairs/:id" element={<RepairRequestDetail />} />
+        </Routes>
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getAllByText("Rejected").length).toBeGreaterThan(0);
@@ -126,15 +126,16 @@ describe("RepairRequestDetail", () => {
   it("shows error alert when fetch fails", async () => {
     mockGetRepairRequestById.mockRejectedValueOnce(new Error("Not found"));
 
-    await act(async () => {
-      render(
-        <MemoryRouter initialEntries={["/repairs/req-1"]}>
-          <Routes>
-            <Route path="/repairs/:id" element={<RepairRequestDetail />} />
-          </Routes>
-        </MemoryRouter>
-      );
-    });
+    render(
+      <MemoryRouter
+        initialEntries={["/repairs/req-1"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/repairs/:id" element={<RepairRequestDetail />} />
+        </Routes>
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Something went wrong. Please try again later.")).toBeInTheDocument();

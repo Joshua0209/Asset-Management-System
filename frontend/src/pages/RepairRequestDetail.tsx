@@ -74,9 +74,9 @@ const RepairRequestDetail: React.FC = () => {
 
   if (error || !request) {
     return (
-      <Space direction="vertical" style={{ width: '100%' }}>
+      <Space orientation="vertical" style={{ width: '100%' }}>
         <Breadcrumb items={[{ title: <Link to="/repairs">{t('repairRequestList.title')}</Link> }, { title: t('assetList.actions.detail') }]} />
-        <Alert message={error || t('errors.notFound')} type="error" showIcon />
+        <Alert title={error || t('errors.notFound')} type="error" showIcon />
       </Space>
     );
   }
@@ -84,37 +84,37 @@ const RepairRequestDetail: React.FC = () => {
   const getTimelineItems = () => {
     const items = [
       {
-        children: t('repairRequestList.status.pending_review'),
+        content: t('repairRequestList.status.pending_review'),
         color: 'blue',
-        dot: <ClockCircleOutlined />,
-        label: formatDate(request.created_at),
+        icon: <ClockCircleOutlined />,
+        title: formatDate(request.created_at),
       },
     ];
 
     if (request.status === 'under_repair' || request.status === 'completed') {
       items.push({
-        children: t('repairRequestList.status.under_repair'),
+        content: t('repairRequestList.status.under_repair'),
         color: 'orange',
-        dot: <ToolOutlined />,
-        label: request.updated_at ? formatDate(request.updated_at) : '',
+        icon: <ToolOutlined />,
+        title: request.updated_at ? formatDate(request.updated_at) : '',
       });
     }
 
     if (request.status === 'completed') {
       items.push({
-        children: t('repairRequestList.status.completed'),
+        content: t('repairRequestList.status.completed'),
         color: 'green',
-        dot: <CheckCircleOutlined />,
-        label: formatDate(request.completed_at),
+        icon: <CheckCircleOutlined />,
+        title: formatDate(request.completed_at),
       });
     }
 
     if (request.status === 'rejected') {
       items.push({
-        children: t('repairRequestList.status.rejected'),
+        content: t('repairRequestList.status.rejected'),
         color: 'red',
-        dot: <CloseCircleOutlined />,
-        label: formatDate(request.updated_at),
+        icon: <CloseCircleOutlined />,
+        title: formatDate(request.updated_at),
       });
     }
 
@@ -122,14 +122,14 @@ const RepairRequestDetail: React.FC = () => {
   };
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={16} style={{ width: '100%' }}>
       <Breadcrumb items={[{ title: <Link to="/repairs">{t('repairRequestList.title')}</Link> }, { title: t('assetList.actions.detail') }]} />
 
       <Typography.Title level={2}>{t('repairRequestDetail.title')}</Typography.Title>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={16}>
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Space orientation="vertical" size={16} style={{ width: '100%' }}>
             <Card title={t('repairRequestDetail.sections.basic')}>
               <Descriptions column={{ xs: 1, sm: 2 }}>
                 <Descriptions.Item label={t('repairRequestDetail.fields.status')}>
@@ -216,7 +216,7 @@ const RepairRequestDetail: React.FC = () => {
         <Col xs={24} lg={8}>
           <Card title={t('repairRequestDetail.statusTimeline')}>
             <Timeline
-              mode="left"
+              mode="start"
               items={getTimelineItems()}
             />
           </Card>

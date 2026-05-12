@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
@@ -30,9 +30,7 @@ const mockListMyAssets = vi.mocked(apiModule.assetsApi.listMyAssets);
 describe("MyAssetList", () => {
   beforeEach(async () => {
     mockListMyAssets.mockReset();
-    await act(async () => {
-      await i18n.changeLanguage("en");
-    });
+    await i18n.changeLanguage("en");
     mockUseAuth.mockReturnValue({
       user: holderUser,
       token: "token",
@@ -45,13 +43,11 @@ describe("MyAssetList", () => {
   it("loads only current holder assets for holder role", async () => {
     mockListMyAssets.mockResolvedValueOnce(buildAssetResponse("AST-2026-00001", "Business Laptop 13", 1));
 
-    await act(async () => {
-      render(
-        <MemoryRouter>
-          <MyAssetList />
-        </MemoryRouter>
-      );
-    });
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <MyAssetList />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(mockListMyAssets).toHaveBeenCalledWith({ page: 1, perPage: 5 });

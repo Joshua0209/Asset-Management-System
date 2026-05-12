@@ -89,7 +89,7 @@ const RepairRequestList: React.FC = () => {
       title: t('repairRequestList.columns.asset'),
       key: 'asset',
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.asset.name}</Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: '12px' }}>{record.asset.asset_code}</Typography.Text>
         </Space>
@@ -125,7 +125,7 @@ const RepairRequestList: React.FC = () => {
   ];
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={16} style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography.Title level={2} style={{ margin: 0 }}>
           {t('repairRequestList.title')}
@@ -139,9 +139,9 @@ const RepairRequestList: React.FC = () => {
         </Button>
       </div>
 
-      {error ? <Alert message={error} type="error" showIcon /> : null}
+      {error ? <Alert title={error} type="error" showIcon /> : null}
 
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table<RepairRequestRecord>
           rowKey="id"
           loading={loading}

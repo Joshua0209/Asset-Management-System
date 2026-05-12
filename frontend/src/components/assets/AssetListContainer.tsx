@@ -26,7 +26,7 @@ const AssetListContainer: React.FC<AssetListContainerProps> = ({
   const { t } = useTranslation();
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={16} style={{ width: '100%' }}>
       <Typography.Title level={2} style={{ marginBottom: 0 }}>
         {t('assetList.title')}
       </Typography.Title>
@@ -34,10 +34,10 @@ const AssetListContainer: React.FC<AssetListContainerProps> = ({
         {t('assetList.description')}
       </Typography.Paragraph>
 
-      {error ? <Alert message={error} type="error" showIcon /> : null}
+      {error ? <Alert title={error} type="error" showIcon /> : null}
 
       <Card>
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
           <Typography.Text type="secondary">
             {t('assetList.summary', { count: total })}
           </Typography.Text>

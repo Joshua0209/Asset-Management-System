@@ -176,11 +176,11 @@ const Reviews: React.FC = () => {
       });
       setApprovingRequest(null);
       await loadRequests();
-      api.success({ message: t('reviews.approveSuccess') });
+      api.success({ title: t('reviews.approveSuccess') });
     } catch (e) {
       if (e instanceof ApiError) {
         api.error({
-          message: t('reviews.actionFailedTitle'),
+          title: t('reviews.actionFailedTitle'),
           description: formatApiError(e),
         });
       }
@@ -203,11 +203,11 @@ const Reviews: React.FC = () => {
       });
       setRejectingRequest(null);
       await loadRequests();
-      api.success({ message: t('reviews.rejectSuccess') });
+      api.success({ title: t('reviews.rejectSuccess') });
     } catch (e) {
       if (e instanceof ApiError) {
         api.error({
-          message: t('reviews.actionFailedTitle'),
+          title: t('reviews.actionFailedTitle'),
           description: formatApiError(e),
         });
       }
@@ -234,11 +234,11 @@ const Reviews: React.FC = () => {
       });
       setEditingRequest(null);
       await loadRequests();
-      api.success({ message: t('reviews.detailsSuccess') });
+      api.success({ title: t('reviews.detailsSuccess') });
     } catch (e) {
       if (e instanceof ApiError) {
         api.error({
-          message: t('reviews.actionFailedTitle'),
+          title: t('reviews.actionFailedTitle'),
           description: formatApiError(e),
         });
       }
@@ -265,11 +265,11 @@ const Reviews: React.FC = () => {
       });
       setCompletingRequest(null);
       await loadRequests();
-      api.success({ message: t('reviews.completeSuccess') });
+      api.success({ title: t('reviews.completeSuccess') });
     } catch (e) {
       if (e instanceof ApiError) {
         api.error({
-          message: t('reviews.actionFailedTitle'),
+          title: t('reviews.actionFailedTitle'),
           description: formatApiError(e),
         });
       }
@@ -405,6 +405,7 @@ const Reviews: React.FC = () => {
         cancelText={t('common.button.cancel')}
         confirmLoading={isSubmitting}
         destroyOnHidden
+        forceRender
       >
         <Form form={approveForm} layout="vertical">
           <Form.Item
@@ -447,6 +448,7 @@ const Reviews: React.FC = () => {
         cancelText={t('common.button.cancel')}
         confirmLoading={isSubmitting}
         destroyOnHidden
+        forceRender
       >
         <Form form={rejectForm} layout="vertical">
           <Form.Item
@@ -468,6 +470,7 @@ const Reviews: React.FC = () => {
         cancelText={t('common.button.cancel')}
         confirmLoading={isSubmitting}
         destroyOnHidden
+        forceRender
       >
         <Form form={detailsForm} layout="vertical">
           <Form.Item name="repair_date" label={t('reviews.form.repairDate')}>
@@ -501,6 +504,7 @@ const Reviews: React.FC = () => {
         cancelText={t('common.button.cancel')}
         confirmLoading={isSubmitting}
         destroyOnHidden
+        forceRender
       >
         <Form form={completeForm} layout="vertical">
           <Form.Item
