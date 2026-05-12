@@ -1709,3 +1709,22 @@ class TestAssetTransition409ErrorCodes:
 
         assert response.status_code == 409
         assert response.json()["error"]["code"] == "conflict"
+
+    def test_update_returns_conflict_on_stale_version(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        response = client.patch(
+            f"/api/v1/assets/{asset.id}",
+            json={"location": "New Location", "version": asset.version + 1},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "conflict"

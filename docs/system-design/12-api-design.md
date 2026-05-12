@@ -150,8 +150,7 @@ HTTP/1.1 409 Conflict
 {
   "error": {
     "code": "conflict",
-    "message": "Resource was modified by another user. Please refresh and try again.",
-    "details": [{ "field": "version", "message": "Expected 3, but current is 4", "code": "version_mismatch" }]
+    "message": "Resource was modified by another user. Please refresh and try again."
   }
 }
 ```
@@ -521,7 +520,7 @@ POST /api/v1/assets
 - `status` set to `in_stock`
 - `responsible_person_id` is `null`
 - Audit log entry written to `asset_action_histories` 
-**Errors:** `422` (validation)
+**Errors:** `409 conflict` (asset_code collision after retry budget exhausted; FE should surface "please retry"), `422` (validation)
 
 ---
 
@@ -565,7 +564,7 @@ PATCH /api/v1/assets/:id
 }
 ```
 
-**Errors:** `409` (version conflict), `422` (validation)
+**Errors:** `409 conflict` (version mismatch), `422` (validation)
 
 ---
 
@@ -714,6 +713,8 @@ POST /api/v1/assets/:id/dispose
 ```
 
 **Side effects:** Audit log entry written. Asset can no longer transition to any other state.
+
+**Errors:** `409 invalid_transition` (asset not in_stock, has assigned holder, or active repair exists), `409 conflict` (version mismatch), `404` (not found or soft-deleted), `422` (validation)
 
 ---
 
@@ -988,6 +989,9 @@ POST /api/v1/repair-requests/:id/approve
 - Both versions incremented
 - `reviewer_id` set to current user
 - Audit log entry written 
+
+**Errors:** `409 conflict` (version mismatch), `409 invalid_transition` (request not pending_review or asset not pending_repair), `404` (not found)
+
 ---
 
 ### 3.5 Reject Repair Request (FSM T7: asset `pending_repair` → `in_use`)
@@ -1036,6 +1040,9 @@ POST /api/v1/repair-requests/:id/reject
 - Repair request status → `rejected`
 - Asset status → `in_use` (returns to normal)
 - Audit log entry written 
+
+**Errors:** `409 conflict` (version mismatch), `409 invalid_transition` (request not pending_review or asset not pending_repair), `404` (not found)
+
 ---
 
 ### 3.6 Fill Repair Details
@@ -1075,6 +1082,8 @@ PATCH /api/v1/repair-requests/:id/repair-details
 **Response:** `200 OK` with updated repair request.
 
 **Note:** This endpoint only updates metadata. It does **not** change status. Use [3.7 Complete Repair](#37-complete-repair) to mark as done.
+
+**Errors:** `409 conflict` (version mismatch), `409 invalid_transition` (request not under_repair or asset not under_repair), `404` (not found), `422` (no updatable field provided)
 
 ---
 
@@ -1130,6 +1139,9 @@ POST /api/v1/repair-requests/:id/complete
 - Asset status → `in_use`
 - `responsible_person_id` unchanged
 - Audit log entry written 
+
+**Errors:** `409 conflict` (version mismatch), `409 invalid_transition` (request not under_repair, or associated asset not under_repair), `404` (not found), `422` (validation)
+
 ---
 
 ## 4. Images (`/api/v1/images`)

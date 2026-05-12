@@ -34,7 +34,7 @@ Audit log + `GET /assets/:id/history` was explicitly deferred from Week 3's API 
 | Task | Target | Notes |
 |------|--------|-------|
 | Composite SQL indexes for asset search | Mon–Wed | Search API already shipped; performance-tune per design.md §5.5 |
-| Optimistic locking verification pass | Mon | Already enforced server-side; confirm test coverage and document granular 409 codes for FE consumption |
+| Optimistic locking verification pass | Mon | Done (PR #45) — 9 pin tests added, granular 409 codes documented per endpoint |
 | Audit log (event stream) + `GET /assets/:id/history` | Wed–Thu | New `asset_action_histories` model + migration. Endpoint deferred from Week 3 (PR #28). Per design decision Q13 |
 | API hardening: rate limiting, CORS | Thu–Fri | `slowapi` for rate limiting at 100 req/min/user. CORS already wired (`cors_allowed_origins`); audit allowed origins for the AWS rollout |
 
