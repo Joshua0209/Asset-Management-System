@@ -1,7 +1,7 @@
 """add assignment dates and repair_id
 
 Revision ID: 20260506_0004
-Revises: 20260506_0003
+Revises: 20260511_0004
 Create Date: 2026-05-06 00:00:00.000000
 """
 
@@ -12,7 +12,10 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260506_0004"
-down_revision = "20260506_0003"
+# Chained after 20260511_0004 (composite indexes, merged via PR #46) to keep
+# the alembic tree single-headed. Both migrations originally branched from
+# 20260506_0003, so the second-to-merge has to re-chain.
+down_revision = "20260511_0004"
 branch_labels = None
 depends_on = None
 
