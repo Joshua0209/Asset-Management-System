@@ -520,7 +520,7 @@ POST /api/v1/assets
 - `status` set to `in_stock`
 - `responsible_person_id` is `null`
 - Audit log entry written to `asset_action_histories` 
-**Errors:** `422` (validation)
+**Errors:** `409 conflict` (asset_code collision after retry budget exhausted; FE should surface "please retry"), `422` (validation)
 
 ---
 
