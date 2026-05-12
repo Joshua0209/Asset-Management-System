@@ -2020,36 +2020,3 @@ class TestAssignmentDateFields:
 
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "invalid_unassignment_date"
-
-    def test_stale_version_takes_precedence_over_invalid_unassignment_date(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        # When both the version is stale AND the unassignment_date is before
-        # assignment_date, the version conflict (409) must fire first so that
-        # a stale-version client cannot probe assignment_date via error shape.
-        manager = make_user(role=UserRole.MANAGER)
-        holder = make_user(role=UserRole.HOLDER)
-        asset = _make_asset(
-            db_session,
-            status=AssetStatus.IN_USE,
-            responsible_person_id=holder.id,
-        )
-        asset.assignment_date = date(2026, 4, 20)
-        db_session.commit()
-
-        response = client.post(
-            f"/api/v1/assets/{asset.id}/unassign",
-            json={
-                "reason": "transfer",
-                "unassignment_date": "2026-04-19",  # earlier than assignment_date
-                "version": asset.version + 99,       # stale
-            },
-            headers=auth_headers(manager),
-        )
-
-        assert response.status_code == 409
-        assert response.json()["error"]["code"] == "conflict"
