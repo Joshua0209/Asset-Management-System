@@ -1128,6 +1128,7 @@ class TestHistoryMetaOpenAPI:
         schemas = spec["components"]["schemas"]
         meta_schema = schemas["HistoryMeta"]
         assert "asset_deleted_at" in meta_schema["properties"]
+        assert "asset_deleted_at" in meta_schema["required"]
         # Inherits the pagination fields from PaginationMeta.
         for field in ("total", "page", "per_page", "total_pages"):
             assert field in meta_schema["properties"], field

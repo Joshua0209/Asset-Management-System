@@ -316,7 +316,7 @@ class HistoryMeta(PaginationMeta):
     frontend can render a "deleted asset" banner without a second call.
     """
 
-    asset_deleted_at: datetime | None = None
+    asset_deleted_at: datetime | None
 
 
 class AssetHistoryListResponse(APIModel):
