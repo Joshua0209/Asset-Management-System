@@ -131,7 +131,7 @@ const ReviewDetail: React.FC = () => {
   }, [formatApiError, id, t]);
 
   useEffect(() => {
-    void loadRequest();
+    loadRequest();
   }, [loadRequest]);
 
   const openApproveModal = () => {

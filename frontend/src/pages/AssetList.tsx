@@ -98,7 +98,7 @@ const AssetList: React.FC = () => {
       }
     };
 
-    void loadAssets();
+    loadAssets();
 
     return () => {
       cancelled = true;

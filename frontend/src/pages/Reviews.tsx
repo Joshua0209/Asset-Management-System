@@ -70,7 +70,7 @@ const Reviews: React.FC = () => {
   }, [formatApiError, page, pageSize, statusFilter, t]);
 
   useEffect(() => {
-    void loadRequests();
+    loadRequests();
   }, [loadRequests]);
 
   const columns: TableColumnsType<RepairRequestRecord> = [
