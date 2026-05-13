@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
-import { assetsApi } from '../api';
-import { useAssetList } from '../hooks/useAssetList';
-import AssetListContainer from '../components/assets/AssetListContainer';
+import { assetsApi } from '../../api';
+import { useAssetList } from '../../hooks/useAssetList';
+import AssetListContainer from '../../components/assets/AssetListContainer';
 
 const MyAssetList: React.FC = () => {
   const fetchFn = useCallback(

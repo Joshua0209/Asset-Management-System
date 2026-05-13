@@ -18,11 +18,11 @@ import {
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError, repairRequestsApi } from '../api';
-import type { RepairRequestRecord, RepairRequestStatus } from '../api/repair-requests';
-import { getApiErrorMessage } from '../utils/apiErrors';
-import { createAmountValidator } from '../utils/validators';
-import AuthImage from '../components/AuthImage';
+import { ApiError, repairRequestsApi } from '../../api';
+import type { RepairRequestRecord, RepairRequestStatus } from '../../api/repair-requests';
+import { getApiErrorMessage } from '../../utils/apiErrors';
+import { createAmountValidator } from '../../utils/validators';
+import AuthImage from '../../components/AuthImage';
 
 const STATUS_COLORS: Record<RepairRequestStatus, string> = {
   pending_review: 'warning',

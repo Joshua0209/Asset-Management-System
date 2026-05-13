@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import RepairRequestList from "../pages/RepairRequestList";
+import RepairRequestList from "../pages/holder/RepairRequestList";
 import i18n from "../i18n";
 import type { PaginatedRepairRequestResponse } from "../api/repair-requests/types";
 

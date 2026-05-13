@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { vi } from 'vitest';
 
-import ReviewDetail from '../pages/ReviewDetail';
+import ReviewDetail from '../pages/manager/ReviewDetail';
 import i18n from '../i18n';
 import type { RepairRequestRecord } from '../api/repair-requests/types';
 import { mockApi } from './test-helpers';

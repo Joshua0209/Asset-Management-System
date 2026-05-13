@@ -17,9 +17,9 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ToolOutlined } from '@ant-design/icons';
 
-import { ApiError, repairRequestsApi } from '../api';
-import type { RepairRequestRecord, RepairRequestStatus } from '../api/repair-requests';
-import AuthImage from '../components/AuthImage';
+import { ApiError, repairRequestsApi } from '../../api';
+import type { RepairRequestRecord, RepairRequestStatus } from '../../api/repair-requests';
+import AuthImage from '../../components/AuthImage';
 
 const STATUS_TAG_COLORS: Record<RepairRequestStatus, string> = {
   pending_review: 'processing',

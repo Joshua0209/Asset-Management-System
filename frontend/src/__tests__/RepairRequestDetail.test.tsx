@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import RepairRequestDetail from "../pages/RepairRequestDetail";
+import RepairRequestDetail from "../pages/holder/RepairRequestDetail";
 import i18n from "../i18n";
 import type { RepairRequestRecord } from "../api/repair-requests/types";
 
