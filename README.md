@@ -14,7 +14,7 @@ Course project for a cloud computing / software engineering class. The repositor
 
 ### Week 4 carry-over into Week 5
 
-W4 closed late on Tuesday May 13 (PR [#39](https://github.com/Joshua0209/Asset-Management-System/pull/39) rate limiting + CORS and PR [#52](https://github.com/Joshua0209/Asset-Management-System/pull/52) issue #29 dropdown both merged that morning). Audit log, composite indexes, optimistic-locking pin tests, full i18n parity, and granular 409 surfacing all shipped — see [docs/roadmap.md](docs/roadmap.md) Week 4 section for the full ledger. **One FE item carries:**
+W4 closed late on Tuesday May 13. Audit log, composite indexes, optimistic-locking pin tests, full i18n parity, granular 409 surfacing, and — newly merged this morning — the purpose-built conflict-resolution dialog with data refresh (PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55)) all shipped. See [docs/roadmap.md](docs/roadmap.md) Week 4 section for the full ledger. **One FE item carries:**
 
 | Task | Owner | Target | Notes |
 |------|-------|--------|-------|
@@ -22,7 +22,14 @@ W4 closed late on Tuesday May 13 (PR [#39](https://github.com/Joshua0209/Asset-M
 
 ### Week 5 — Infra + Testing + Polish (May 12–16) — Active
 
-Resource shift this week: 5 devs → **2 dev (bug fixes + the W4 search-UI carry-over)** + **2 infra/DevOps (Docker prod, AWS, CI/CD deploy)** + **1 QA (E2E + manual)**.
+Resource shift this week: 5 devs → **2 dev (W4 search-UI carry-over + two new FE tasks added May 13)** + **2 infra/DevOps (Docker prod, AWS, CI/CD deploy)** + **1 QA (E2E + manual)**.
+
+**Two new FE tasks decided this week (not in the original W5 plan):**
+
+| Task | Why now | Notes |
+|------|---------|-------|
+| **Unify manager + holder page pairs into role-aware pages** | Today the same surface is built twice — `AssetList`/`MyAssetList`, `Reviews`/`RepairRequestList`, `ReviewDetail`/`RepairRequestDetail`. Each pair carries duplicate logic for filters, columns, and table chrome; only the actions differ. Unifying reduces maintenance surface before the W6 demo polish window and makes the role gates explicit in one place | Merge each pair into a single page where actions/columns/dropdowns are toggled by `useCurrentUser().role`. Reference template: `frontend/src/pages/AssetDetail.tsx` already does this. Touches `App.tsx` routes, three page pairs, and the sidebar nav. Coordinate with the conflict-dialog wiring from PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55) — same files |
+| **Apply DESIGN.md theme to the UI** | The UI ships Antd defaults today, but the project's design system (`docs/designs/DESIGN.md` — TSMC-inspired: precision, restraint, hierarchy through typography, bilingual parity) has been authoritative since Week 2 and was never wired in. W6 demo is in 10 working days; the theme is the highest-visibility polish item | Wire `docs/designs/design-tokens.json` (W3C Design Tokens format) through Antd's `ConfigProvider` seed tokens. Audit components against the four pillars: 8px grid + tabular-nums; red as accent never surface, no gradients, no emoji; hierarchy through typography weight not decoration; light-mode first with 1px luminance hairline in dark mode. Reference visual: `docs/designs/design-preview.html` |
 
 **In-flight on `feat/cicd-prod-pipeline` (not yet PR'd):** six commits already code-complete most of the W5 infra checklist — production Dockerfiles (BE gunicorn+UvicornWorker, FE nginx:alpine), `/health` liveness + `/ready` DB-readiness, `S3ImageStorage` behind the existing `ImageStorage` Protocol, full SCA gates (pip-audit + npm audit + OWASP Dependency-Check), and a deploy workflow (`.github/workflows/deploy.yml`) that builds → pushes to ECR → renders ECS task defs → rolling update with `wait-for-service-stability`. Auth via GitHub OIDC. **Architecture pivot:** EC2 ×2 → ECS Fargate. Task defs committed under `infra/ecs/` with placeholders documented in `infra/ecs/README.md`. **Pending operator action:** AWS provisioning of ECR + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role.
 
@@ -46,11 +53,13 @@ Resource shift this week: 5 devs → **2 dev (bug fixes + the W4 search-UI carry
 | Integration tests: all API endpoints | Wed–Fri | httpx + pytest covering all CRUD + workflow + error cases |
 | E2E: 6 critical flows | Thu–Fri | Playwright — login, submit repair, approve, complete, search, register asset |
 
-#### Dev (2 people — bug fixes + W4 carry-over)
+#### Dev (2 people — W4 carry-over, new FE scope, bug fixes)
 
 | Task | Target | Notes |
 |------|--------|-------|
 | Multi-dim search/filter UI on `AssetList.tsx` | Mon–Tue | W4 FE carry-over described above |
+| Unify manager + holder page pairs into role-aware pages | Tue–Thu | New W5 scope. Three page pairs, mechanical refactor against `AssetDetail.tsx` template |
+| Apply DESIGN.md theme via `ConfigProvider` + four-pillar audit | Wed–Fri | New W5 scope. Wire `design-tokens.json` and audit components for restraint/precision/hierarchy/bilingual parity |
 | Bug fixes from integration testing | Rolling | Prioritize workflow-breaking bugs |
 | Edge cases: empty states, validation errors | Mon–Wed | |
 | Performance: add DB indexes if queries slow | Thu–Fri | Per `07-database-design.md § Index Strategy` |
@@ -58,6 +67,8 @@ Resource shift this week: 5 devs → **2 dev (bug fixes + the W4 search-UI carry
 #### Week 5 milestone — `M5 — Deployed & Tested`
 
 - [ ] W4 FE carry-over closed: search/filter UI on Asset List
+- [ ] Manager/holder page pairs unified into role-aware pages
+- [ ] DESIGN.md theme applied (tokens through `ConfigProvider`, four-pillar audit clean)
 - [ ] `feat/cicd-prod-pipeline` reviewed, PR'd, merged
 - [ ] AWS resources provisioned (ECR + ECS + RDS + S3 + OIDC IAM role)
 - [ ] App running on AWS (accessible via public URL)

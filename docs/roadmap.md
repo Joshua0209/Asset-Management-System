@@ -234,14 +234,14 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Task | Target | Notes |
 |------|--------|-------|
 | Search & filter UI (multi-dimensional) | Mon–Wed | ❌ Not done — **carries to W5.** `AssetList.tsx` still has no search/filter primitives. BE accepts the full filter set; the FE bar is the entirety of the remaining work. Status filter on `Reviews.tsx` is in place (1-dim) but does not satisfy the M4 multi-dim requirement |
-| Optimistic locking conflict UI | Wed–Thu | ✅ Done at envelope level. `utils/apiErrors.ts` maps every granular 409 code (`conflict`, `duplicate_request`, `invalid_transition`, `validation_error`, `payload_too_large`, `unsupported_media_type`, `rate_limit_exceeded`) into translated messages via `formatApiError`. Both locales carry `errors.conflict` = "This record was modified by someone else. Please refresh and try again." The purpose-built refresh-button modal was not built — flagged as a W6 polish item if needed |
+| Optimistic locking conflict UI | Wed–Thu | ✅ Done (PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55), merged 2026-05-13). Purpose-built conflict dialog with data refresh — when a 409 `conflict` is returned from an update, the dialog explains the situation and re-fetches the record so the user can re-apply their edit against the latest version. `AssetDetail.tsx`, `ReviewDetail.tsx`, and `SubmitRepairRequest.tsx` all wired up. Granular 409 codes (`duplicate_request`, `invalid_transition`, etc.) still surface through `formatApiError` for non-conflict cases |
 | i18n: all pages translated | Thu–Fri | ✅ Done. 212 keys × 2 locales (en, zh-TW), perfect parity. 8 sections: `common`, `auth`, `validation`, `errors`, `assetList`, `reviews`, `repairRequestList`, `repairRequestDetail`. Zero hardcoded user-facing strings |
 | UX polish: loading states, empty states, error toasts | Rolling | ✅ Done. Consistent Antd `Spin`/`Empty`/`notification` patterns across manager + holder surfaces, surfaced from FE-3 work in W3 and reinforced by PR #43/#44 |
 
 ### Milestone: `M4 — Feature Complete (Full)`
 - [x] M3 carry-over closed: issue #29 fixed (PR [#52](https://github.com/Joshua0209/Asset-Management-System/pull/52))
 - [x] Audit log (`asset_action_histories`) + `GET /assets/:id/history` shipped (PR [#38](https://github.com/Joshua0209/Asset-Management-System/pull/38))
-- [x] Optimistic locking: concurrent edit shows conflict to second user — translated error message via `formatApiError` for every 409 code (PR [#45](https://github.com/Joshua0209/Asset-Management-System/pull/45) pinned + documented the codes). _Note: dedicated refresh-button modal still pending if needed for demo polish_
+- [x] Optimistic locking: concurrent edit shows conflict to second user — purpose-built dialog with data refresh shipped in PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55), backed by the granular 409 codes pinned in PR [#45](https://github.com/Joshua0209/Asset-Management-System/pull/45)
 - [x] All UI text is i18n-ready (language switcher works) — 212-key parity, zh-TW + en, audited 2026-05-13
 - [x] Rate limiting active on all endpoints (PR [#39](https://github.com/Joshua0209/Asset-Management-System/pull/39))
 - [ ] **Multi-dimensional search works with all filter combinations** — BE shipped (composite indexes + filter API); **FE filter bar carries into W5**
@@ -253,7 +253,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 **Goal:** App is Dockerized, deployed to AWS, CI/CD pipeline green, test coverage ≥ 80%.
 
-**Status (2026-05-13):** W5 just kicked off after a late W4 close (PR #39 + #52 both merged on May 13). The resource shift now applies — five engineers redistribute into 2 dev seats (bug fixes + W4 search-UI carry-over), 2 infra seats (Docker prod + AWS), and 1 QA seat (E2E + manual testing). Search-UI carry-over from W4 is the only feature gap; everything else is hardening, deployment, and verification.
+**Status (2026-05-13):** W5 just kicked off after a late W4 close. The resource shift now applies — five engineers redistribute into 2 dev seats (the W4 search-UI carry-over + two new FE tasks decided this week), 2 infra seats (Docker prod + AWS), and 1 QA seat (E2E + manual testing). The W4 carry-over is the only outstanding M4 item; the two new tasks (unify manager/holder pages, apply DESIGN.md theme) are W5 net-new FE scope. PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55) (real conflict-UI dialog) merged on May 13 closes the optimistic-locking outcome cleanly — the W4 entry below has been updated to reflect that.
 
 **In-flight infra work on `feat/cicd-prod-pipeline` (not yet PR'd):** 6 commits already code-complete most of the W5 infra checklist — production multi-stage Dockerfiles (BE: gunicorn + UvicornWorker + non-root; FE: nginx:alpine), `/health` (liveness) + `/ready` (DB `SELECT 1`, 503 on failure), `S3ImageStorage` behind the existing `ImageStorage` Protocol (selected via `REPAIR_IMAGE_BACKEND=s3`), full SCA gates (pip-audit + npm audit + OWASP Dependency-Check), and a deploy workflow (`.github/workflows/deploy.yml`) that builds → pushes to ECR → renders ECS task defs → rolling update with `wait-for-service-stability`. Auth uses GitHub OIDC (no long-lived AWS keys). **Architecture pivot:** EC2 ×2 → ECS Fargate (cheaper, no manual orchestration). Task defs committed under `infra/ecs/` with placeholders documented in `infra/ecs/README.md`. **Pending operator action** (not code): AWS provisioning of ECR repos + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role, and `ACCOUNT_ID` / `REGION` substitution after `terraform apply`.
 
@@ -291,15 +291,23 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Integration tests: all API endpoints | Wed–Fri | httpx + pytest. Cover all CRUD + workflow + error cases |
 | E2E tests: 6 critical flows | Thu–Fri | Playwright. Login, submit repair, approve, complete, search, register asset |
 
-### Dev (2 people — bug fixes)
+### Dev (2 people — W4 carry-over, new FE scope, bug fixes)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Fix bugs from integration testing | Rolling | Prioritize workflow-breaking bugs |
+| **W4 carry-over: multi-dim search/filter UI on `AssetList.tsx`** | Mon–Tue | The only outstanding M4 item. BE filter API + composite indexes (PR [#46](https://github.com/Joshua0209/Asset-Management-System/pull/46)) already shipped — pure FE work. Filter bar with text search (`q`) + dropdowns (`status`, `category`, `department`, `location`, `responsible_person_id`), debounced, URL-state-driven so refresh preserves filters |
+| **New: unify manager + holder page pairs into role-aware pages** | Tue–Thu | Today each surface has two pages: `AssetList`/`MyAssetList`, `Reviews`/`RepairRequestList`, `ReviewDetail`/`RepairRequestDetail`. Merge each pair into a single page where actions/columns are toggled by `useCurrentUser().role`. Reference template: `AssetDetail.tsx` already does this. Touches `App.tsx` routes, three page pairs, and the sidebar nav. Test plan: render snapshot + role-gate assertion per page. Coordinate with FE-3 to avoid breaking PR #55's conflict-dialog wiring |
+| **New: apply DESIGN.md theme to UI** | Wed–Fri | Wire `docs/designs/design-tokens.json` (W3C Design Tokens) through Antd's `ConfigProvider` seed tokens; audit each component against the four pillars from `DESIGN.md` (precision: 8px grid + tabular-nums; restraint: red as accent never surface, no gradients, no emoji in UI; hierarchy through typography not decoration; bilingual parity). Light-mode first; dark mode keeps the 1px luminance hairline pattern. Reference: `docs/designs/design-preview.html` for the target visual feel |
+| Bug fixes from integration testing | Rolling | Prioritize workflow-breaking bugs |
 | Edge cases: empty states, validation errors | Mon–Wed | |
-| Performance: add DB indexes if queries slow | Thu–Fri | Per design.md §7.3 index strategy |
+| Performance: add DB indexes if queries slow | Thu–Fri | Per `07-database-design.md § Index Strategy` |
 
 ### Milestone: `M5 — Deployed & Tested`
+- [ ] W4 FE carry-over closed: multi-dim search/filter UI on Asset List
+- [ ] Manager/holder page pairs unified into role-aware pages (Assets, Repairs list, Repairs detail)
+- [ ] DESIGN.md theme applied: tokens wired through `ConfigProvider`, four-pillar audit clean
+- [ ] `feat/cicd-prod-pipeline` reviewed, PR'd, merged
+- [ ] AWS resources provisioned (ECR + ECS + RDS + S3 + OIDC IAM role)
 - [ ] App running on AWS (accessible via public URL)
 - [ ] CI/CD: push to main auto-deploys
 - [ ] Zero-downtime deploy demonstrated (deploy during load test)
@@ -441,7 +449,9 @@ Legend:
 | **W4 closed late (May 13 instead of May 9)** — eats into W5 capacity | Active | Medium | PR #39 (rate limiting) and PR #52 (issue #29) both merged on the first morning of W5. Effective W5 length is ~4 working days, not 5. **Mitigation:** the only W4 feature carry-over (search/filter UI) lands Mon–Tue of W5, before AWS work starts in earnest |
 | **Multi-dim search/filter UI is the only thing standing between M4 and "complete"** | Active | Low | Pure FE work; BE is fully ready. One dev seat picks it up Mon–Tue of W5 |
 | **AWS setup compresses if W5 dev seat is over-allocated** | Active | High | 2 dev seats absorb both bug fixes + the search-UI carry-over. If integration testing surfaces lots of edge cases, the search bar could slip to mid-week and trigger a cascade. **Mitigation:** ship search UI Mon–Tue (small, well-scoped); push edge-case fixes to Wed–Fri. If still slipping by Wed EOD, swap one infra seat onto bug fixes for half a day |
-| **Production multi-stage Dockerfiles are net-new W5 work** | Active | Medium | Dev compose stack already exists (PR #24) but prod multi-stage builds (non-root user, no dev deps in final layer) have not been written. Infra seat owns Mon–Tue |
+| ~~**Production multi-stage Dockerfiles are net-new W5 work**~~ | ~~Active~~ Resolved | ~~Medium~~ | Code-complete on `feat/cicd-prod-pipeline` (commits 48d471f BE Dockerfile + frontend/Dockerfile.prod + nginx.conf). PR + merge remains |
+| **W5 has 3 FE tasks competing for 2 dev seats** (search UI + page unification + DESIGN.md theme) | Active | High | The two new FE tasks (page unification, theme application) were added on May 13 alongside the still-unstarted search UI carry-over. With 2 dev seats and ~4 working days left, the realistic FE budget is ~8 person-days against ~6–7 person-days of work — tight but feasible if no major bugs surface. **Mitigation:** sequence search UI Mon–Tue (smallest, highest urgency — closes M4), page unification Tue–Thu (3 page pairs, mechanical refactor against the `AssetDetail.tsx` template), theme application Wed–Fri overlapping with unification (the unification PR creates the natural seam to wire tokens consistently). If a third FE seat opens up via reduced QA scope or finished infra, prioritize the theme pass — it's the highest-visibility item for the Jun 2 demo |
+| **Page unification could collide with PR #55's conflict-dialog wiring** | Active | Medium | PR #55 just landed conflict handling into `AssetDetail.tsx`, `ReviewDetail.tsx`, `SubmitRepairRequest.tsx`. The unification refactor touches the same files. **Mitigation:** rebase unification work on top of PR #55; run the PR #55 test suite as the regression baseline before opening the unification PR |
 
 ---
 
