@@ -138,7 +138,18 @@ function ensureState(): void {
         name: requesterName,
       },
       reviewer: null,
-      images: [],
+      images: [
+        {
+          id: "img-mock-0001",
+          url: "/api/v1/images/img-mock-0001",
+          uploaded_at: createdAt,
+        },
+        {
+          id: "img-mock-0002",
+          url: "/api/v1/images/img-mock-0002",
+          uploaded_at: createdAt,
+        },
+      ],
     },
     {
       id: "repair-mock-0002",
@@ -170,7 +181,13 @@ function ensureState(): void {
         id: "mock-manager",
         name: "Admin Manager",
       },
-      images: [],
+      images: [
+        {
+          id: "img-mock-0003",
+          url: "/api/v1/images/img-mock-0003",
+          uploaded_at: createdAt,
+        },
+      ],
     },
     {
       id: "repair-mock-0003",
@@ -550,6 +567,75 @@ export function getRepairRequestById(repairRequestId: string): RepairRequestReco
   }
 
   return repairRequest;
+}
+
+export function submitRepairRequest(payload: FormData): RepairRequestRecord {
+  ensureState();
+  const user = getCurrentUser();
+  const assetId = (payload.get("asset_id") as string) || "";
+  const faultDescription = (payload.get("fault_description") as string) || "";
+
+  if (!assetId || !faultDescription) {
+    throw new ApiError(422, "validation_error", "Missing required fields");
+  }
+
+  const asset = findAssetOrThrow(assetId);
+  if (asset.status !== "in_use") {
+    throw new ApiError(409, "invalid_state", "Asset must be in use to request repair");
+  }
+
+  const id = `repair-mock-${Math.random().toString(36).substr(2, 9)}`;
+  const now = nowIso();
+
+  // Simulate image processing
+  const images = [];
+  const files = payload.getAll("images");
+  if (files && files.length > 0) {
+    for (let i = 0; i < files.length; i++) {
+      const imgId = `img-mock-new-${i}-${Math.random().toString(36).substr(2, 5)}`;
+      images.push({
+        id: imgId,
+        url: `https://via.placeholder.com/300?text=Mock+Upload+${i + 1}`,
+        uploaded_at: now,
+      });
+    }
+  }
+
+  const newRequest: RepairRequestRecord = {
+    id,
+    asset_id: assetId,
+    requester_id: user.id,
+    reviewer_id: null,
+    status: "pending_review",
+    fault_description: faultDescription,
+    repair_date: null,
+    fault_content: null,
+    repair_plan: null,
+    repair_cost: null,
+    repair_vendor: null,
+    rejection_reason: null,
+    completed_at: null,
+    created_at: now,
+    updated_at: now,
+    version: 1,
+    asset: {
+      id: asset.id,
+      asset_code: asset.asset_code,
+      name: asset.name,
+    },
+    requester: {
+      id: user.id,
+      name: user.name,
+    },
+    reviewer: null,
+    images,
+  };
+
+  state.repairRequests.push(newRequest);
+  asset.status = "pending_repair";
+  touchAsset(asset);
+
+  return newRequest;
 }
 
 export function approveRepairRequest(

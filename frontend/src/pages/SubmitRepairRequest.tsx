@@ -4,7 +4,7 @@ import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { RcFile, UploadFile } from 'antd/es/upload/interface';
-import { ApiError, assetsApi, request } from '../api';
+import { ApiError, assetsApi, repairRequestsApi } from '../api';
 import type { AssetRecord } from '../api/assets/types';
 
 const { Title } = Typography;
@@ -88,11 +88,7 @@ const SubmitRepairRequest: React.FC = () => {
     });
 
     try {
-      await request({
-        method: 'POST',
-        url: '/repair-requests',
-        data: formData,
-      });
+      await repairRequestsApi.submitRepairRequest(formData);
       message.success(t('common.repairRequest.successMessage'));
       navigate('/repairs');
     } catch (error) {
