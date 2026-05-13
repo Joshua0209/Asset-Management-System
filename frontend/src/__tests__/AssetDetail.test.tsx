@@ -7,7 +7,13 @@ import AssetDetail from "../pages/AssetDetail";
 import i18n from "../i18n";
 import { ApiError } from "../api";
 import type { AssetRecord } from "../api/assets";
-import { getModalField, getOpenModalContent, holderUser, managerUser } from "./test-helpers";
+import {
+  getModalField,
+  getOpenModalContent,
+  holderUser,
+  managerUser,
+  mockApi,
+} from "./test-helpers";
 
 const mockGetAsset = vi.hoisted(() => vi.fn());
 const mockListUsers = vi.hoisted(() => vi.fn());
@@ -20,28 +26,10 @@ vi.mock("../auth/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
 
-vi.mock("../api", () => {
-  class MockApiError extends Error {
-    readonly status: number;
-    readonly code: string;
-    readonly details: Array<{ field: string; message: string; code: string }>;
-
-    constructor(
-      status: number,
-      code: string,
-      message: string,
-      details: Array<{ field: string; message: string; code: string }> = [],
-    ) {
-      super(message);
-      this.name = "ApiError";
-      this.status = status;
-      this.code = code;
-      this.details = details;
-    }
-  }
-
+vi.mock("../api", async () => {
+  const actual = await vi.importActual<typeof import("../api")>("../api");
   return {
-    ApiError: MockApiError,
+    ...actual,
     assetsApi: {
       getAssetById: mockGetAsset,
       updateAsset: mockUpdateAsset,
@@ -131,6 +119,8 @@ describe("AssetDetail", () => {
     mockAssignAsset.mockReset();
     mockUnassignAsset.mockReset();
     mockDisposeAsset.mockReset();
+    mockApi.success.mockReset();
+    mockApi.error.mockReset();
     setAuthUser(holderUser);
     mockUpdateAsset.mockResolvedValue({});
     mockAssignAsset.mockResolvedValue({});
@@ -331,6 +321,72 @@ describe("AssetDetail", () => {
         disposal_reason: "Lifecycle end",
         version: 1,
       });
+    });
+  });
+
+  it("shows a warning modal on 409 conflict error and refreshes data", async () => {
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockGetAsset
+      .mockResolvedValueOnce(buildAsset()) // Initial load
+      .mockResolvedValueOnce(buildAsset({ version: 2 })); // Refresh load
+
+    mockUpdateAsset.mockRejectedValueOnce(
+      new ApiError(409, "conflict", "Conflict message")
+    );
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    const editModal = getOpenModalContent();
+    await user.click(within(editModal).getByRole("button", { name: "Save" }));
+
+    // Wait for the conflict dialog
+    await waitFor(() => {
+      expect(screen.getAllByText("Update Conflict")[0]).toBeInTheDocument();
+    });
+
+    // Dismiss the dialog
+    await user.click(screen.getByRole("button", { name: "OK" }));
+
+    // Verify refresh
+    await waitFor(() => {
+      expect(mockGetAsset).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("shows a generic error toast for other ApiErrors during update", async () => {
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockGetAsset.mockResolvedValue(buildAsset());
+
+    mockUpdateAsset.mockRejectedValueOnce(
+      new ApiError(400, "validation_error", "Bad request")
+    );
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const editModal = getOpenModalContent();
+    await user.click(within(editModal).getByRole("button", { name: "Save" }));
+
+    // Verify error toast
+    await waitFor(() => {
+      expect(mockApi.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Action failed",
+          description: "Invalid input",
+        })
+      );
     });
   });
 });

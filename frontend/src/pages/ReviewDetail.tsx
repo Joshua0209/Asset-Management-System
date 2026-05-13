@@ -130,6 +130,28 @@ const ReviewDetail: React.FC = () => {
     }
   }, [formatApiError, id, t]);
 
+  const showActionError = React.useCallback(
+    (error: unknown) => {
+      if (error instanceof ApiError) {
+        if (error.code === 'conflict') {
+          Modal.warning({
+            title: t('errors.conflictTitle'),
+            content: formatApiError(error),
+            onOk: async () => {
+              await loadRequest();
+            },
+          });
+        } else {
+          api.error({
+            title: t('reviews.actionFailedTitle'),
+            description: formatApiError(error),
+          });
+        }
+      }
+    },
+    [api, formatApiError, loadRequest, t],
+  );
+
   useEffect(() => {
     loadRequest();
   }, [loadRequest]);
@@ -206,12 +228,7 @@ const ReviewDetail: React.FC = () => {
       await loadRequest();
       api.success({ title: t('reviews.approveSuccess') });
     } catch (e) {
-      if (e instanceof ApiError) {
-        api.error({
-          title: t('reviews.actionFailedTitle'),
-          description: formatApiError(e),
-        });
-      }
+      showActionError(e);
     } finally {
       setIsSubmitting(false);
     }
@@ -233,12 +250,7 @@ const ReviewDetail: React.FC = () => {
       await loadRequest();
       api.success({ title: t('reviews.rejectSuccess') });
     } catch (e) {
-      if (e instanceof ApiError) {
-        api.error({
-          title: t('reviews.actionFailedTitle'),
-          description: formatApiError(e),
-        });
-      }
+      showActionError(e);
     } finally {
       setIsSubmitting(false);
     }
@@ -264,12 +276,7 @@ const ReviewDetail: React.FC = () => {
       await loadRequest();
       api.success({ title: t('reviews.detailsSuccess') });
     } catch (e) {
-      if (e instanceof ApiError) {
-        api.error({
-          title: t('reviews.actionFailedTitle'),
-          description: formatApiError(e),
-        });
-      }
+      showActionError(e);
     } finally {
       setIsSubmitting(false);
     }
@@ -295,12 +302,7 @@ const ReviewDetail: React.FC = () => {
       await loadRequest();
       api.success({ title: t('reviews.completeSuccess') });
     } catch (e) {
-      if (e instanceof ApiError) {
-        api.error({
-          title: t('reviews.actionFailedTitle'),
-          description: formatApiError(e),
-        });
-      }
+      showActionError(e);
     } finally {
       setIsSubmitting(false);
     }

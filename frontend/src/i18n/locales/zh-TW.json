@@ -87,6 +87,7 @@
     "forbiddenTitle": "存取被拒",
     "backHome": "返回首頁",
     "notFound": "找不到資源",
+    "conflictTitle": "更新衝突",
     "conflict": "資料已被他人修改，請重新整理",
     "duplicateRequest": "此資產已有進行中的維修申請。",
     "invalidTransition": "目前狀態不允許執行此操作。",

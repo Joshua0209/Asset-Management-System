@@ -76,32 +76,6 @@ const AssetDetail: React.FC = () => {
     [assetForm, t],
   );
 
-  const showActionError = useCallback(
-    (error: unknown) => {
-      if (error instanceof ApiError) {
-        api.error({
-          title: t('assetList.manager.actionFailedTitle'),
-          description: formatApiError(error),
-        });
-      }
-    },
-    [api, formatApiError, t],
-  );
-
-  const runSubmittingAction = useCallback(
-    async (action: () => Promise<void>) => {
-      setIsSubmitting(true);
-      try {
-        await action();
-      } catch (error) {
-        showActionError(error);
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [showActionError],
-  );
-
   const loadAsset = useCallback(
     async (showLoading = true) => {
       if (!id) {
@@ -132,6 +106,42 @@ const AssetDetail: React.FC = () => {
       }
     },
     [id, t],
+  );
+
+  const showActionError = useCallback(
+    (error: unknown) => {
+      if (error instanceof ApiError) {
+        if (error.code === 'conflict') {
+          Modal.warning({
+            title: t('errors.conflictTitle'),
+            content: formatApiError(error),
+            onOk: async () => {
+              await loadAsset();
+            },
+          });
+        } else {
+          api.error({
+            title: t('assetList.manager.actionFailedTitle'),
+            description: formatApiError(error),
+          });
+        }
+      }
+    },
+    [api, formatApiError, loadAsset, t],
+  );
+
+  const runSubmittingAction = useCallback(
+    async (action: () => Promise<void>) => {
+      setIsSubmitting(true);
+      try {
+        await action();
+      } catch (error) {
+        showActionError(error);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [showActionError],
   );
 
   useEffect(() => {

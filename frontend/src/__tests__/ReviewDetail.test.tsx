@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import ReviewDetail from '../pages/ReviewDetail';
 import i18n from '../i18n';
 import type { RepairRequestRecord } from '../api/repair-requests/types';
+import { mockApi } from './test-helpers';
 
 vi.mock('../components/AuthImage', () => ({
   default: ({ imageId, alt }: { imageId: string; alt?: string }) => (
@@ -54,6 +55,19 @@ async function typeLabel(user: User, label: string, value: string): Promise<void
   await act(async () => {
     await user.type(screen.getByLabelText(label), value);
   });
+}
+
+async function performApproveFlow(user: User): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+  });
+
+  await clickButton(user, 'Approve');
+  await typeLabel(user, 'Repair Plan', 'Plan');
+  await typeLabel(user, 'Repair Vendor', 'Vendor');
+  await typeLabel(user, 'Repair Cost', '100');
+  await typeLabel(user, 'Planned Date', '2026-05-01');
+  await clickLastButton(user, 'Approve');
 }
 
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
@@ -106,6 +120,8 @@ describe('ReviewDetail', () => {
     mockRejectRepairRequest.mockReset();
     mockUpdateRepairRequestDetails.mockReset();
     mockCompleteRepairRequest.mockReset();
+    mockApi.success.mockReset();
+    mockApi.error.mockReset();
     mockApproveRepairRequest.mockResolvedValue({} as RepairRequestRecord);
     mockRejectRepairRequest.mockResolvedValue({} as RepairRequestRecord);
     mockUpdateRepairRequestDetails.mockResolvedValue({} as RepairRequestRecord);
@@ -140,24 +156,15 @@ describe('ReviewDetail', () => {
 
     await renderDetailPage();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-    });
-
-    await clickButton(user, 'Approve');
-    await typeLabel(user, 'Repair Plan', 'Replace panel');
-    await typeLabel(user, 'Repair Vendor', 'Vendor A');
-    await typeLabel(user, 'Repair Cost', '2200');
-    await typeLabel(user, 'Planned Date', '2026-04-25');
-    await clickLastButton(user, 'Approve');
+    await performApproveFlow(user);
 
     await waitFor(() => {
       expect(mockApproveRepairRequest).toHaveBeenCalledWith('rr-1', {
         version: 1,
-        repair_plan: 'Replace panel',
-        repair_vendor: 'Vendor A',
-        repair_cost: '2200',
-        planned_date: '2026-04-25',
+        repair_plan: 'Plan',
+        repair_vendor: 'Vendor',
+        repair_cost: '100',
+        planned_date: '2026-05-01',
       });
     });
   });
@@ -269,6 +276,71 @@ describe('ReviewDetail', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Resource not found')).toBeInTheDocument();
+    });
+  });
+
+  it('shows a warning modal on 409 conflict error and refreshes data', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildRequest('pending_review'))
+      .mockResolvedValueOnce(buildRequest('pending_review'));
+
+    mockApproveRepairRequest.mockRejectedValueOnce(
+      new apiModule.ApiError(409, 'conflict', 'Conflict occurred'),
+    );
+
+    await renderDetailPage();
+
+    await performApproveFlow(user);
+
+    // Wait for conflict dialog
+    await waitFor(() => {
+      expect(screen.getAllByText('Update Conflict')[0]).toBeInTheDocument();
+    });
+
+    // Dismiss the dialog
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'OK' }));
+    });
+
+    // Verify refresh
+    await waitFor(() => {
+      expect(mockGetRepairRequestById).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('shows a generic error toast for other ApiErrors during action', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
+    mockApproveRepairRequest.mockRejectedValueOnce(
+      new apiModule.ApiError(400, 'validation_error', 'Bad request'),
+    );
+
+    await renderDetailPage();
+
+    await performApproveFlow(user);
+
+    await waitFor(() => {
+      expect(mockApi.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Action failed',
+          description: 'Invalid input',
+        }),
+      );
+    });
+  });
+
+  it('does nothing if error is not an ApiError in showActionError', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
+    mockApproveRepairRequest.mockRejectedValueOnce(new Error('Non-API error'));
+
+    await renderDetailPage();
+
+    await performApproveFlow(user);
+
+    await waitFor(() => {
+      expect(mockApi.error).not.toHaveBeenCalled();
     });
   });
 });
