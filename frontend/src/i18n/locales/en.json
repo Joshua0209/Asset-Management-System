@@ -135,6 +135,8 @@
       "supplier": "Supplier",
       "activationDate": "Activation Date",
       "warrantyExpiry": "Warranty Expiry",
+      "assignmentDate": "Assignment Date",
+      "unassignmentDate": "Unassignment Date",
       "unassigned": "Unassigned",
       "notAvailable": "N/A"
     },
@@ -163,6 +165,7 @@
       "warrantyExpiry": "Warranty Expiry",
       "holder": "Holder",
       "assignmentDate": "Assignment Date",
+      "unassignmentDate": "Unassignment Date",
       "unassignReason": "Unassign Reason",
       "disposalReason": "Disposal Reason"
     },

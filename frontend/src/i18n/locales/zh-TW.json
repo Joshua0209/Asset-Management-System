@@ -135,6 +135,8 @@
       "supplier": "供應商",
       "activationDate": "啟用日期",
       "warrantyExpiry": "保固到期日",
+      "assignmentDate": "指派日期",
+      "unassignmentDate": "收回日期",
       "unassigned": "未指派",
       "notAvailable": "無"
     },
@@ -163,6 +165,7 @@
       "warrantyExpiry": "保固到期日",
       "holder": "持有者",
       "assignmentDate": "指派日期",
+      "unassignmentDate": "收回日期",
       "unassignReason": "收回原因",
       "disposalReason": "報廢原因"
     },

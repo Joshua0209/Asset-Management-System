@@ -34,6 +34,8 @@ export interface AssetRecord {
   department: string;
   activation_date: string | null;
   warranty_expiry: string | null;
+  assignment_date: string | null;
+  unassignment_date: string | null;
   status: AssetStatus;
   responsible_person_id: string | null;
   responsible_person: AssetPerson | null;
@@ -102,12 +104,13 @@ export interface AssetUpdatePayload {
 
 export interface AssetAssignPayload {
   responsible_person_id: string;
+  assignment_date: string;
   version: number;
-  assignment_date?: string;
 }
 
 export interface AssetUnassignPayload {
   reason: string;
+  unassignment_date: string;
   version: number;
 }
 

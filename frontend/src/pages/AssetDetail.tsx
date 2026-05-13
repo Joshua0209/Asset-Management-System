@@ -37,6 +37,7 @@ interface AssignFormValues {
   responsible_person_id?: string;
   assignment_date?: string;
   reason?: string;
+  unassignment_date?: string;
 }
 
 interface DisposeFormValues {
@@ -48,6 +49,14 @@ const pageContainerStyle: React.CSSProperties = {
   maxWidth: 1200,
   margin: '0 auto',
 };
+
+function getTodayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 const AssetDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -69,6 +78,7 @@ const AssetDetail: React.FC = () => {
   const [disposeForm] = Form.useForm<DisposeFormValues>();
 
   const isManager = user?.role === 'manager';
+  const todayIsoDate = useMemo(() => getTodayIsoDate(), []);
   const formatApiError = useCallback((apiError: ApiError): string => getApiErrorMessage(apiError, t), [t]);
   const validatePurchaseAmount = createAmountValidator(t, { required: true });
   const validateWarrantyExpiry = useMemo(
@@ -209,9 +219,15 @@ const AssetDetail: React.FC = () => {
 
     assignForm.resetFields();
     if (asset.status === 'in_use') {
-      assignForm.setFieldValue('reason', '');
-    } else if (asset.responsible_person_id) {
-      assignForm.setFieldValue('responsible_person_id', asset.responsible_person_id);
+      assignForm.setFieldsValue({
+        reason: '',
+        unassignment_date: todayIsoDate,
+      });
+    } else {
+      assignForm.setFieldValue('assignment_date', todayIsoDate);
+      if (asset.responsible_person_id) {
+        assignForm.setFieldValue('responsible_person_id', asset.responsible_person_id);
+      }
     }
     setIsAssignModalOpen(true);
   };
@@ -254,13 +270,14 @@ const AssetDetail: React.FC = () => {
         if (asset.status === 'in_use') {
           await assetsApi.unassignAsset(asset.id, {
             reason: values.reason ?? '',
+            unassignment_date: values.unassignment_date ?? '',
             version: asset.version,
           });
           api.success({ title: t('assetList.manager.unassignSuccess') });
         } else {
           await assetsApi.assignAsset(asset.id, {
             responsible_person_id: values.responsible_person_id ?? '',
-            assignment_date: values.assignment_date,
+            assignment_date: values.assignment_date ?? '',
             version: asset.version,
           });
           api.success({ title: t('assetList.manager.assignSuccess') });
@@ -373,6 +390,12 @@ const AssetDetail: React.FC = () => {
           <Descriptions.Item label={t('assetList.detail.holder')}>
             {asset.responsible_person?.name ?? t('assetList.detail.unassigned')}
           </Descriptions.Item>
+          <Descriptions.Item label={t('assetList.detail.assignmentDate')}>
+            {formatDateValue(asset.assignment_date, t)}
+          </Descriptions.Item>
+          <Descriptions.Item label={t('assetList.detail.unassignmentDate')}>
+            {formatDateValue(asset.unassignment_date, t)}
+          </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.model')}>
             {asset.model}
           </Descriptions.Item>
@@ -464,13 +487,27 @@ const AssetDetail: React.FC = () => {
         >
           <Form form={assignForm} layout="vertical">
             {asset?.status === 'in_use' ? (
-              <Form.Item
-                name="reason"
-                label={t('assetList.form.unassignReason')}
-                rules={[{ required: true, message: t('validation.required') }]}
-              >
-                <Input.TextArea rows={3} />
-              </Form.Item>
+              <>
+                <Form.Item
+                  name="reason"
+                  label={t('assetList.form.unassignReason')}
+                  rules={[{ required: true, message: t('validation.required') }]}
+                >
+                  <Input.TextArea rows={3} />
+                </Form.Item>
+
+                <Form.Item
+                  name="unassignment_date"
+                  label={t('assetList.form.unassignmentDate')}
+                  rules={[{ required: true, message: t('validation.required') }]}
+                >
+                  <Input
+                    type="date"
+                    max={todayIsoDate}
+                    min={asset?.assignment_date ?? undefined}
+                  />
+                </Form.Item>
+              </>
             ) : (
               <>
                 <Form.Item
@@ -493,7 +530,7 @@ const AssetDetail: React.FC = () => {
                   label={t('assetList.form.assignmentDate')}
                   rules={[{ required: true, message: t('validation.required') }]}
                 >
-                  <Input type="date" />
+                  <Input type="date" max={todayIsoDate} />
                 </Form.Item>
               </>
             )}

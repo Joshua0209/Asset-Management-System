@@ -302,25 +302,38 @@ describe("api/assets/queries", () => {
 
       await mod.assignAsset("asset-1", {
         responsible_person_id: "holder-1",
+        assignment_date: "2026-05-08",
         version: 1,
       });
 
       expect(mockRequest).toHaveBeenCalledWith({
         method: "POST",
         url: "/assets/asset-1/assign",
-        data: { responsible_person_id: "holder-1", version: 1 },
+        data: {
+          responsible_person_id: "holder-1",
+          assignment_date: "2026-05-08",
+          version: 1,
+        },
       });
     });
 
     it("unassignAsset posts to /assets/:id/unassign", async () => {
       mockRequest.mockResolvedValueOnce({ data: { id: "asset-1", status: "in_stock" } });
 
-      await mod.unassignAsset("asset-1", { reason: "transfer", version: 1 });
+      await mod.unassignAsset("asset-1", {
+        reason: "transfer",
+        unassignment_date: "2026-05-10",
+        version: 1,
+      });
 
       expect(mockRequest).toHaveBeenCalledWith({
         method: "POST",
         url: "/assets/asset-1/unassign",
-        data: { reason: "transfer", version: 1 },
+        data: {
+          reason: "transfer",
+          unassignment_date: "2026-05-10",
+          version: 1,
+        },
       });
     });
 

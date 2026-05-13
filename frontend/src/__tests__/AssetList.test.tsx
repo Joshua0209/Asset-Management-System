@@ -124,6 +124,8 @@ function buildResponse(
         department: "IT",
         activation_date: "2026-01-05",
         warranty_expiry: "2028-01-01",
+        assignment_date: status === "in_use" ? "2026-01-05" : null,
+        unassignment_date: null,
         status,
         responsible_person_id: "holder-1",
         responsible_person: {

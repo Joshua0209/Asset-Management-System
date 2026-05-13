@@ -99,6 +99,8 @@ const mockAsset: AssetRecord = {
   department: "IT",
   activation_date: "2026-01-05",
   warranty_expiry: "2028-01-01",
+  assignment_date: "2026-01-05",
+  unassignment_date: null,
   status: "in_use" as const,
   responsible_person_id: "holder-1",
   responsible_person: {
@@ -257,7 +259,9 @@ describe("AssetDetail", () => {
     const assignModal = getOpenModalContent();
     await user.click(within(assignModal).getByRole("combobox", { name: "Holder" }));
     await user.click(screen.getByText("Bob Lee (bob@example.com)"));
-    await user.type(getModalField(assignModal, "#assignment_date"), "2026-05-08");
+    const assignDateInput = getModalField(assignModal, "#assignment_date");
+    await user.clear(assignDateInput);
+    await user.type(assignDateInput, "2026-05-08");
     await user.click(within(assignModal).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
@@ -286,11 +290,15 @@ describe("AssetDetail", () => {
 
     const unassignModal = getOpenModalContent();
     await user.type(getModalField(unassignModal, "#reason"), "Returned to IT");
+    const unassignDateInput = getModalField(unassignModal, "#unassignment_date");
+    await user.clear(unassignDateInput);
+    await user.type(unassignDateInput, "2026-05-10");
     await user.click(within(unassignModal).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
       expect(mockUnassignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
         reason: "Returned to IT",
+        unassignment_date: "2026-05-10",
         version: 1,
       });
     });
