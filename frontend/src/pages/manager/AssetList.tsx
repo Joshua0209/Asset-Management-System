@@ -14,19 +14,19 @@ import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { useAuth } from '../../auth/AuthContext';
-import { ApiError, assetsApi } from '../../api';
-import { getApiErrorMessage } from '../../utils/apiErrors';
-import { createAmountValidator } from '../../utils/validators';
-import { PAGE_SIZE_OPTIONS } from '../../components/assets/constants';
-import { getAssetColumns } from '../../components/assets/columns';
-import type { AssetRecord } from '../../api/assets';
-import AssetFormFields from '../../components/assets/AssetFormFields';
+import { useAuth } from '@/auth/AuthContext';
+import { ApiError, assetsApi } from '@/api';
+import { getApiErrorMessage } from '@/utils/apiErrors';
+import { createAmountValidator } from '@/utils/validators';
+import { PAGE_SIZE_OPTIONS } from '@/components/assets/constants';
+import { getAssetColumns } from '@/components/assets/columns';
+import type { AssetRecord } from '@/api/assets';
+import AssetFormFields from '@/components/assets/AssetFormFields';
 import {
   createWarrantyExpiryValidator,
   normalizeAssetFormValues,
   type AssetFormValues,
-} from '../../components/assets/assetFormShared';
+} from '@/components/assets/assetFormShared';
 
 const AssetList: React.FC = () => {
   const { t } = useTranslation();

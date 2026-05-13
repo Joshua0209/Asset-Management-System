@@ -4,9 +4,9 @@ import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { RcFile, UploadFile } from 'antd/es/upload/interface';
-import { ApiError, assetsApi, repairRequestsApi } from '../../api';
-import type { AssetRecord } from '../../api/assets/types';
-import { getApiErrorMessage } from '../../utils/apiErrors';
+import { ApiError, assetsApi, repairRequestsApi } from '@/api';
+import type { AssetRecord } from '@/api/assets/types';
+import { getApiErrorMessage } from '@/utils/apiErrors';
 
 const { Title } = Typography;
 const { TextArea } = Input;

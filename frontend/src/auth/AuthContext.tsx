@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { authApi } from "../api";
+import { authApi } from "@/api";
 import { UNAUTHORIZED_EVENT, clearSession, loadSession, saveSession } from "./storage";
-import type { AuthSession, AuthUser } from "../api/auth";
+import type { AuthSession, AuthUser } from "@/api/auth";
 
 interface AuthContextValue {
   user: AuthUser | null;

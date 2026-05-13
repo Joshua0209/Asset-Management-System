@@ -2,15 +2,15 @@ import React, { useEffect, useMemo } from 'react';
 import { Form, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import type { AssetRecord } from '../../api/assets';
-import { createAmountValidator } from '../../utils/validators';
-import AssetFormFields from '../../components/assets/AssetFormFields';
+import type { AssetRecord } from '@/api/assets';
+import { createAmountValidator } from '@/utils/validators';
+import AssetFormFields from '@/components/assets/AssetFormFields';
 import {
   createWarrantyExpiryValidator,
   normalizeAssetFormValues,
   type AssetFormPayload,
   type AssetFormValues,
-} from '../../components/assets/assetFormShared';
+} from '@/components/assets/assetFormShared';
 
 interface EditAssetModalProps {
   open: boolean;

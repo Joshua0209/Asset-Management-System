@@ -1,12 +1,12 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import RepairRequestDetail from "../pages/holder/RepairRequestDetail";
-import i18n from "../i18n";
-import type { RepairRequestRecord } from "../api/repair-requests/types";
+import RepairRequestDetail from "@/pages/holder/RepairRequestDetail";
+import i18n from "@/i18n";
+import type { RepairRequestRecord } from "@/api/repair-requests/types";
 
-vi.mock("../api", async () => {
-  const actual = await vi.importActual<typeof import("../api")>("../api");
+vi.mock("@/api", async () => {
+  const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
     repairRequestsApi: {
@@ -22,7 +22,7 @@ vi.mock("../api", async () => {
   };
 });
 
-const apiModule = await import("../api");
+const apiModule = await import("@/api");
 const mockGetRepairRequestById = vi.mocked(apiModule.repairRequestsApi.getRepairRequestById);
 const mockApiClientGet = vi.mocked(apiModule.apiClient.get);
 

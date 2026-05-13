@@ -2,8 +2,8 @@ import React, { useEffect, useMemo } from 'react';
 import { Form, Input, Modal, Select } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import type { AssetRecord } from '../../api/assets';
-import type { UserRecord } from '../../api/users';
+import type { AssetRecord } from '@/api/assets';
+import type { UserRecord } from '@/api/users';
 
 export interface AssignFormValues {
   responsible_person_id?: string;

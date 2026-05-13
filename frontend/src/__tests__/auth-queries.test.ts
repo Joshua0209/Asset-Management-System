@@ -2,9 +2,9 @@
 // Real-API branches go through `request()` and are covered by base-client.test.ts.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LoginPayload, RegisterPayload } from "../api/auth";
+import type { LoginPayload, RegisterPayload } from "@/api/auth";
 
-type QueriesModule = typeof import("../api/auth/queries");
+type QueriesModule = typeof import("@/api/auth/queries");
 
 describe("api/auth/queries (mock mode)", () => {
   let mod: QueriesModule;
@@ -12,7 +12,7 @@ describe("api/auth/queries (mock mode)", () => {
   beforeEach(async () => {
     vi.stubEnv("VITE_USE_MOCK_AUTH", "true");
     vi.resetModules();
-    mod = await import("../api/auth/queries");
+    mod = await import("@/api/auth/queries");
   });
 
   afterEach(() => {
@@ -59,7 +59,7 @@ describe("api/auth/queries (mock mode)", () => {
 
   it("fetchMe resolves to the user whose mock token is in localStorage", async () => {
     const session = await mod.login({ email: "admin@example.com", password: "admin" });
-    const { saveSession } = await import("../auth/storage");
+    const { saveSession } = await import("@/auth/storage");
     saveSession(session);
 
     const user = await mod.fetchMe();

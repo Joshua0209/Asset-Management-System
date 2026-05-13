@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError } from '../api';
-import type { AssetRecord } from '../api/assets';
-import { PAGE_SIZE_OPTIONS } from '../components/assets/constants';
+import { ApiError } from '@/api';
+import type { AssetRecord } from '@/api/assets';
+import { PAGE_SIZE_OPTIONS } from '@/components/assets/constants';
 
 interface UseAssetListOptions {
   fetchFn: (params: { page: number; perPage: number }) => Promise<{

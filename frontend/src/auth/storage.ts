@@ -1,4 +1,4 @@
-import type { AuthSession } from "../api/auth";
+import type { AuthSession } from "@/api/auth";
 
 const STORAGE_KEY = "ams-auth";
 

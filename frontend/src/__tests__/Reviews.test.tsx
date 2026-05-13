@@ -2,8 +2,8 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
-import Reviews from "../pages/manager/Reviews";
-import i18n from "../i18n";
+import Reviews from "@/pages/manager/Reviews";
+import i18n from "@/i18n";
 
 const { mockNavigate } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
@@ -17,8 +17,8 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-vi.mock("../api", async () => {
-  const actual = await vi.importActual<typeof import("../api")>("../api");
+vi.mock("@/api", async () => {
+  const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
     repairRequestsApi: {
@@ -27,7 +27,7 @@ vi.mock("../api", async () => {
   };
 });
 
-const apiModule = await import("../api");
+const apiModule = await import("@/api");
 const mockListRepairRequests = vi.mocked(apiModule.repairRequestsApi.listRepairRequests);
 
 function buildResponse(

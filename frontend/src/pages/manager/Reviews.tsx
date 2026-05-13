@@ -12,14 +12,14 @@ import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { ApiError, repairRequestsApi } from '../../api';
-import { getApiErrorMessage } from '../../utils/apiErrors';
-import { formatDateTime } from '../../utils/format';
-import { REPAIR_REQUEST_STATUS_COLORS } from '../../components/repair-requests/constants';
+import { ApiError, repairRequestsApi } from '@/api';
+import { getApiErrorMessage } from '@/utils/apiErrors';
+import { formatDateTime } from '@/utils/format';
+import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
 import type {
   RepairRequestRecord,
   RepairRequestStatus,
-} from '../../api/repair-requests';
+} from '@/api/repair-requests';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20];
 

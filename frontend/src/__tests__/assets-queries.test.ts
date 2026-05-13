@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DUMMY_HOLDERS } from "../mocks/assets";
-import { saveSession } from "../auth/storage";
+import { DUMMY_HOLDERS } from "@/mocks/assets";
+import { saveSession } from "@/auth/storage";
 
-vi.mock("../api/base-client", () => ({
+vi.mock("@/api/base-client", () => ({
   ApiError: class ApiError extends Error {
     status: number;
     code: string;
@@ -25,10 +25,10 @@ vi.mock("../api/base-client", () => ({
   request: vi.fn(),
 }));
 
-const baseClientModule = await import("../api/base-client");
+const baseClientModule = await import("@/api/base-client");
 const mockRequest = vi.mocked(baseClientModule.request);
 
-type QueriesModule = typeof import("../api/assets/queries");
+type QueriesModule = typeof import("@/api/assets/queries");
 
 function sessionFor(userId: string, role: "holder" | "manager") {
   return {
@@ -57,7 +57,7 @@ describe("api/assets/queries", () => {
     beforeEach(async () => {
       vi.stubEnv("VITE_USE_MOCK_AUTH", "true");
       vi.resetModules();
-      mod = await import("../api/assets/queries");
+      mod = await import("@/api/assets/queries");
     });
 
     it("listAssets returns paginated dummy assets and maps responsible_person_id", async () => {
@@ -105,7 +105,7 @@ describe("api/assets/queries", () => {
     beforeEach(async () => {
       vi.stubEnv("VITE_USE_MOCK_AUTH", "false");
       vi.resetModules();
-      mod = await import("../api/assets/queries");
+      mod = await import("@/api/assets/queries");
     });
 
     it("listAssets calls backend /assets endpoint with normalized params", async () => {

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Form, Input, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import type { AssetRecord } from '../../api/assets';
+import type { AssetRecord } from '@/api/assets';
 
 export interface DisposeFormValues {
   disposal_reason: string;

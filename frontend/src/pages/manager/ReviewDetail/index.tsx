@@ -15,12 +15,12 @@ import {
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import { ApiError, repairRequestsApi } from '../../../api';
-import type { RepairRequestRecord } from '../../../api/repair-requests';
-import { getApiErrorMessage } from '../../../utils/apiErrors';
-import { formatDateTime, formatRepairCost } from '../../../utils/format';
-import AuthImage from '../../../components/AuthImage';
-import { REPAIR_REQUEST_STATUS_COLORS } from '../../../components/repair-requests/constants';
+import { ApiError, repairRequestsApi } from '@/api';
+import type { RepairRequestRecord } from '@/api/repair-requests';
+import { getApiErrorMessage } from '@/utils/apiErrors';
+import { formatDateTime, formatRepairCost } from '@/utils/format';
+import AuthImage from '@/components/AuthImage';
+import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
 
 import ApproveRepairModal from './ApproveRepairModal';
 import RejectRepairModal from './RejectRepairModal';

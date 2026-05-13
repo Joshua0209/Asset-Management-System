@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation, useRoutes } from "react-router-dom";
-import { routes } from "../App";
-import type { AuthSession, UserRole } from "../api/auth";
+import { routes } from "@/App";
+import type { AuthSession, UserRole } from "@/api/auth";
 
 const STORAGE_KEY = "ams-auth";
 

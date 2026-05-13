@@ -3,7 +3,7 @@ import { Button, Table } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import type { AssetRecord } from '../../api/assets';
+import type { AssetRecord } from '@/api/assets';
 import { PAGE_SIZE_OPTIONS } from './constants';
 import { getAssetColumns } from './columns';
 

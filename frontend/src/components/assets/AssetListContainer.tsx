@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, Card, Space, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import AssetTable from './AssetTable';
-import type { AssetRecord } from '../../api/assets';
+import type { AssetRecord } from '@/api/assets';
 
 interface AssetListContainerProps {
   assets: AssetRecord[];

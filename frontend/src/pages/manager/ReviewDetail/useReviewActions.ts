@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import { Modal } from 'antd';
 import type { ParseKeys, TFunction } from 'i18next';
-import { ApiError, repairRequestsApi } from '../../../api';
-import { getApiErrorMessage } from '../../../utils/apiErrors';
+import { ApiError, repairRequestsApi } from '@/api';
+import { getApiErrorMessage } from '@/utils/apiErrors';
 
 export interface ApproveValues {
   repair_plan: string;

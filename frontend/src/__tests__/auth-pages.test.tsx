@@ -2,16 +2,16 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import Login from "../pages/auth/Login";
-import Register from "../pages/auth/Register";
-import { AuthProvider } from "../auth/AuthContext";
-import { ApiError } from "../api";
+import Login from "@/pages/auth/Login";
+import Register from "@/pages/auth/Register";
+import { AuthProvider } from "@/auth/AuthContext";
+import { ApiError } from "@/api";
 
 // Replace the entire api barrel so both AuthContext (authApi.login) and
 // Register (authApi.register) call into the same vi.fn() instances.
-vi.mock("../api", async () => {
-  const { ApiError } = await vi.importActual<typeof import("../api/base-client")>(
-    "../api/base-client",
+vi.mock("@/api", async () => {
+  const { ApiError } = await vi.importActual<typeof import("@/api/base-client")>(
+    "@/api/base-client",
   );
   return {
     ApiError,
@@ -23,7 +23,7 @@ vi.mock("../api", async () => {
   };
 });
 
-const apiBarrel = await import("../api");
+const apiBarrel = await import("@/api");
 const mockLogin = vi.mocked(apiBarrel.authApi.login);
 const mockRegister = vi.mocked(apiBarrel.authApi.register);
 
