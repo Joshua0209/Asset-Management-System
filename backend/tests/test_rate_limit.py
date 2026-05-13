@@ -132,40 +132,30 @@ def test_key_func_ignores_non_bearer_authorization() -> None:
     assert get_rate_limit_key(request) == "10.10.10.10"
 
 
-def test_key_func_uses_xforwarded_for_when_present() -> None:
-    """Anonymous bucket must split on the original client IP behind a proxy.
+def test_key_func_ignores_xforwarded_for_header() -> None:
+    """Anonymous bucket must NOT read XFF directly — uvicorn's trust gate is
+    the only thing standing between a forged header and the bucket key.
 
-    Regression guard for the ALB self-DoS: if `_client_ip` ever stops
-    reading X-Forwarded-For, every anonymous request collapses to the
-    proxy IP and one attacker drains the global anon quota.
-
-    The header is hyphen-cased here on purpose — slowapi's built-in
-    ``get_ipaddr`` looks up underscores, which Starlette never matches.
+    Regression guard against re-introducing an application-layer XFF reader.
+    If a future change re-adds a ``request.headers["x-forwarded-for"]``
+    lookup in ``get_rate_limit_key`` (or any helper it delegates to), this
+    test fails: a request whose ``client.host`` differs from its XFF header
+    must bucket on ``client.host``, because that is the value uvicorn's
+    ``ProxyHeadersMiddleware`` will have already rewritten per the
+    ``--forwarded-allow-ips`` trust gate. Re-adding the XFF read would
+    turn a misconfigured trust gate from a fail-closed self-DoS (visible,
+    paged) into a fail-open IP-spoof primitive (silent).
     """
     from unittest.mock import MagicMock
 
     request = MagicMock()
+    # Spoofed XFF from a public client. With the trust gate working uvicorn
+    # would have already rewritten client.host accordingly; with it broken
+    # the limiter should still bucket on client.host, not the spoofed value.
     request.headers = {"x-forwarded-for": "203.0.113.7, 10.0.0.5"}
-    # ALB private IP — what request.client.host would be without proxy-headers.
     request.client.host = "10.0.0.5"
 
-    # Leftmost (original client), not the proxy.
-    assert get_rate_limit_key(request) == "203.0.113.7"
-
-
-def test_key_func_xforwarded_for_takes_precedence_over_client_host() -> None:
-    """XFF wins over client.host even when client.host is set.
-
-    Production trust comes from uvicorn's --forwarded-allow-ips gate,
-    not from this code. The application layer is defense-in-depth.
-    """
-    from unittest.mock import MagicMock
-
-    request = MagicMock()
-    request.headers = {"x-forwarded-for": "198.51.100.42"}
-    request.client.host = "10.0.0.5"
-
-    assert get_rate_limit_key(request) == "198.51.100.42"
+    assert get_rate_limit_key(request) == "10.0.0.5"
 
 
 @pytest.mark.parametrize("exc_cls", [RuntimeError, ValueError, TypeError])
@@ -219,13 +209,13 @@ def test_key_func_unexpected_decode_error_falls_back_to_ip(
 def test_fresh_limiter_starts_at_full_quota(rl_client: TestClient) -> None:
     """A fresh Limiter instance is unaffected by a sibling's exhausted bucket.
 
-    Originally named ``test_anonymous_buckets_are_per_ip``, but TestClient
-    cannot vary ``request.client.host`` per-request (the underlying ASGI
-    scope is fixed at construction time, and slowapi's `get_remote_address`
-    reads `client.host` directly). The actual per-IP bucketing test lives
-    on the unit-level: ``test_key_func_uses_xforwarded_for_when_present``
-    drives `_client_ip()` with a `MagicMock` and confirms two XFFs produce
-    two distinct bucket keys.
+    TestClient cannot vary ``request.client.host`` per-request (the
+    underlying ASGI scope is fixed at construction time, and slowapi's
+    ``get_remote_address`` reads ``client.host`` directly), so this test
+    is not a per-IP bucketing test. Per-IP bucketing is a property of
+    uvicorn's ``ProxyHeadersMiddleware`` plus slowapi's
+    ``get_remote_address`` and is exercised in production by the curl
+    verification recipe in ``docs/system-design/08-deployment-operations.md``.
 
     What this test *does* lock down is that each Limiter has its own
     in-memory storage — exhausting `rl_client` does not bleed into a
