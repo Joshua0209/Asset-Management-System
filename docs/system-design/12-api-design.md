@@ -61,7 +61,9 @@
 
 ## Rate Limiting
 
-Per NFR-12, all endpoints are rate-limited at **100 requests/minute per authenticated user** (configurable). Anonymous endpoints (login, register, password reset) are limited to **30 requests/minute per IP**.
+Per NFR-12, all endpoints are rate-limited at **100 requests/minute per authenticated user** (configurable). Anonymous endpoints (`POST /auth/login`, `POST /auth/register`) are limited to **30 requests/minute per IP**. The image endpoint (`GET /images/:id`) gets a higher tier (300 req/min) because a holder browsing several repair requests with attachments can legitimately fan-out beyond the default.
+
+`GET /health` is exempt — it serves liveness probes (compose healthcheck, ALB) that would otherwise DoS themselves under tight defaults.
 
 Response headers on every request:
 
@@ -70,6 +72,32 @@ X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1744742400
 ```
+
+When the budget is exhausted the response is the project error envelope with a `Retry-After` header:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 60
+Content-Type: application/json
+
+{"error": {"code": "rate_limit_exceeded", "message": "Rate limit exceeded: 100 per 1 minute"}}
+```
+
+### Implementation notes
+
+- Library: [`slowapi`](https://slowapi.readthedocs.io/) (FastAPI-friendly, no Redis dependency). Storage is in-process memory per `docs/system-design/05-phase2-architecture.md` — Phase 2's ~4 QPS target makes per-worker counters acceptable.
+- Bucket key: the limiter's `key_func` (`backend/app/core/rate_limit.py`) decodes the JWT inline so authenticated requests bucket as `user:<sub>`; anonymous requests fall back to `get_remote_address(request)`.
+- The decoder runs *before* `get_current_user`, on purpose — slowapi middleware fires before route dependencies, so we can't read `request.state.user` here.
+- 429 responses are rewrapped into the project error envelope by `register_rate_limit_handler` in `backend/app/main.py`. The handler must remain a **synchronous** `def`; `SlowAPIMiddleware.sync_check_limits` falls back to slowapi's plaintext default if the registered handler is `async`.
+
+### Configuration
+
+| Env var | Default | Effect |
+|---|---|---|
+| `RATE_LIMIT_ENABLED` | `true` | Master kill switch. Set `false` in CI / load tests. |
+| `RATE_LIMIT_AUTHENTICATED` | `100/minute` | Default tier (applied via `default_limits`). |
+| `RATE_LIMIT_ANONYMOUS` | `30/minute` | Per-IP limit on `/auth/login` + `/auth/register`. |
+| `RATE_LIMIT_IMAGES` | `300/minute` | Higher tier for `/images/:id`. |
 
 ---
 

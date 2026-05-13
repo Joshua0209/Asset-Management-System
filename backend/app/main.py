@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -6,9 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.rate_limit import limiter
 from app.schemas.repair_request import RepairRequestCreate
 
 logger = logging.getLogger(__name__)
@@ -23,12 +27,85 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+if not settings.rate_limit_enabled:
+    # Loud-on-misconfig: a deploy with RATE_LIMIT_ENABLED=false is
+    # almost certainly a leaked test fixture, not an intentional
+    # production switch. Logged as WARNING (not just INFO) so it
+    # surfaces in CloudWatch's default Lambda Insights / ECS log
+    # filters. CLAUDE.md "no silent failures" — startup is the loudest
+    # place we can put this.
+    logger.warning(
+        "Rate limiting is DISABLED (RATE_LIMIT_ENABLED=false). "
+        "This must only be set in tests; production deploys MUST "
+        "leave it true to avoid credential-stuffing exposure on "
+        "/auth/login + /auth/register."
+    )
+
+
+def _enforce_single_worker_invariant(
+    settings_obj: "object", web_concurrency_raw: str | None
+) -> None:
+    """Refuse to boot when multi-worker would silently relax rate limits.
+
+    Per ``docs/system-design/08-deployment-operations.md`` §"API Hardening:
+    Rate Limiting", Phase 2 mandates ``--workers 1`` until Phase 3 introduces
+    Redis-backed shared storage. Slowapi's ``MemoryStorage`` is per-process,
+    so N workers means a user's effective per-minute cap is N× the configured
+    value — credential-stuffing protection on ``/auth/login`` is silently
+    defeated. We refuse to start rather than serve traffic with that hole.
+
+    Detection scope (known gap):
+    * ``WEB_CONCURRENCY`` is the gunicorn / ``tiangolo/uvicorn-gunicorn-fastapi``
+      convention. Most Phase 2 ECS task definitions will hit this path.
+    * ``uvicorn --workers N`` CLI flag is NOT readable from inside the app
+      (uvicorn does not export it to the process environment). The runbook in
+      ``08-deployment-operations.md`` carries the verbal "use --workers 1"
+      mandate; this function backstops the env-var shape only.
+
+    Malformed values (``""``, ``"auto"``, non-numeric) degrade to single-worker
+    rather than raising ``ValueError`` — a confusing crash for an operator who
+    set a stray value is worse than treating it as "unset".
+    """
+    if not getattr(settings_obj, "rate_limit_enabled", True):
+        # Rate limiting off → the N-worker concern is moot. The existing
+        # WARN above already flags the disabled state loudly.
+        return
+    if web_concurrency_raw is None:
+        return
+    try:
+        workers = int(web_concurrency_raw.strip())
+    except (ValueError, AttributeError):
+        # Garbled env value → treat as unset. Operator gets no false alarm,
+        # and the surrounding gunicorn/uvicorn layer will surface the bad
+        # value on its own when it tries to spawn processes.
+        return
+    if workers <= 1:
+        return
+    raise RuntimeError(
+        f"WEB_CONCURRENCY={workers} but rate-limit storage is in-process "
+        "MemoryStorage. Effective per-user/per-IP cap is "
+        f"{workers}x the configured value, which silently defeats "
+        "credential-stuffing protection on /auth/login. Per "
+        "docs/system-design/08-deployment-operations.md, keep --workers 1 "
+        "until Phase 3 introduces Redis-backed shared storage. Set "
+        "WEB_CONCURRENCY=1 (or unset) to boot. To intentionally bypass "
+        "for load tests, set RATE_LIMIT_ENABLED=false."
+    )
+
+
+_enforce_single_worker_invariant(settings, os.environ.get("WEB_CONCURRENCY"))
+
+# slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
+# request time and emits the X-RateLimit-* headers.
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.cors_allowed_methods,
+    allow_headers=settings.cors_allowed_headers,
 )
 
 # Map HTTP status → machine-readable error code per docs/system-design/12-api-design.md
@@ -137,6 +214,50 @@ async def unhandled_exception_to_envelope(
     )
 
 
+def register_rate_limit_handler(target_app: FastAPI) -> None:
+    """Attach a RateLimitExceeded → project error envelope handler.
+
+    Extracted so test apps can register the same handler without re-importing
+    the whole production app. slowapi's default handler returns
+    ``{"error": "Rate limit exceeded"}`` which would break the FE's contract
+    that every error follows ``{"error": {"code": ..., "message": ...}}``.
+
+    Important: slowapi's SlowAPIMiddleware looks up this handler via
+    ``app.exception_handlers[RateLimitExceeded]`` *synchronously* (see
+    ``slowapi.middleware.sync_check_limits``). If the registered handler is a
+    coroutine the middleware silently falls back to slowapi's default body,
+    so this MUST stay a plain ``def``.
+    """
+
+    @target_app.exception_handler(RateLimitExceeded)
+    def _rate_limit_to_envelope(
+        request: Request, exc: RateLimitExceeded
+    ) -> JSONResponse:
+        # `exc.detail` is e.g. "3 per 1 minute" — surface it as the message
+        # so clients can show the configured limit without leaking internals.
+        message = f"Rate limit exceeded: {exc.detail}"
+        # SlowAPIMiddleware injects X-RateLimit-* on the response on its way
+        # back through the stack when `headers_enabled=True`. We seed
+        # Retry-After defensively here so a misconfigured limiter
+        # (`headers_enabled=False`) still gives clients a usable backoff
+        # signal — slowapi will overwrite it when it does fire.
+        headers = dict(getattr(exc, "headers", None) or {})
+        headers.setdefault("Retry-After", "60")
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": message,
+                }
+            },
+            headers=headers,
+        )
+
+
+register_rate_limit_handler(app)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_to_envelope(
     request: Request, exc: RequestValidationError
@@ -191,5 +312,11 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 @app.get("/health", tags=["health"])
-def health_check() -> dict[str, str]:
+@limiter.exempt  # type: ignore[untyped-decorator]  # slowapi decorators have no type stubs
+def health_check(request: Request) -> dict[str, str]:
+    """Liveness probe.
+
+    Exempt from rate limiting so monitoring (compose healthcheck, ALB, etc.)
+    cannot DoS itself when the global default tier shrinks.
+    """
     return {"status": "ok"}

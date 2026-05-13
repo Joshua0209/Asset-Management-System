@@ -1,6 +1,33 @@
 from functools import lru_cache
+from typing import Annotated
 
+from pydantic import BeforeValidator, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_string_list(value: object) -> object:
+    """Accept either a JSON array (canonical) or a comma-separated string.
+
+    pydantic-settings' default for `list[str]` env vars expects JSON
+    (`["GET","POST"]`). Operators occasionally hand-edit `.env` files and
+    write `GET,POST` instead, which silently mis-parsed as a single-element
+    list `["GET,POST"]` (and then CORS would advertise a single bogus
+    method). This validator normalises the comma-separated form before
+    pydantic's own list parser runs, so both shapes work; pure JSON arrays
+    pass through untouched.
+    """
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    # JSON arrays start with `[` — let pydantic's default parser handle them.
+    if stripped.startswith("["):
+        return value
+    if "," not in stripped:
+        return value
+    return [item.strip() for item in stripped.split(",") if item.strip()]
+
+
+_StringList = Annotated[list[str], BeforeValidator(_parse_string_list)]
 
 
 class Settings(BaseSettings):
@@ -8,7 +35,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
     database_url: str  # required — must be set via DATABASE_URL env var or .env
-    cors_allowed_origins: list[str] = ["http://localhost:5173"]
+    cors_allowed_origins: _StringList = ["http://localhost:5173"]
 
     jwt_secret: str  # required — must be set via JWT_SECRET env var or .env
     jwt_algorithm: str = "HS256"
@@ -23,7 +50,53 @@ class Settings(BaseSettings):
 
     repair_upload_dir: str = "uploads/repair-requests"
 
+    # Rate limiting (slowapi, in-memory per-process — see
+    # docs/system-design/05-phase2-architecture.md for the no-Redis decision).
+    # `rate_limit_enabled=False` lets the test suite no-op the limiter without
+    # patching every fixture; production must keep this true.
+    rate_limit_enabled: bool = True
+    rate_limit_authenticated: str = "100/minute"
+    rate_limit_anonymous: str = "30/minute"
+    # Image polling (`GET /images/{id}`) can legitimately fan out when a holder
+    # browses several repair requests with attachments. Higher tier so a normal
+    # session does not bump into the authenticated default.
+    rate_limit_images: str = "300/minute"
+
+    # CORS — defaults match the actual route surface. The "no DELETE / no
+    # If-Match" invariant is enforced at the router site
+    # (app/api/v1/router.py); when either appears, override these via env
+    # rather than changing the source default.
+    cors_allowed_methods: _StringList = ["GET", "POST", "PATCH", "OPTIONS"]
+    cors_allowed_headers: _StringList = ["Authorization", "Content-Type"]
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @field_validator("cors_allowed_origins")
+    @classmethod
+    def _reject_wildcard_origin(cls, origins: list[str]) -> list[str]:
+        """Refuse to load when CORS_ALLOWED_ORIGINS contains ``"*"``.
+
+        The app sends ``allow_credentials=True`` (app/main.py) — a wildcard
+        origin combined with credentials is unsafe: modern browsers refuse
+        the response, but a misconfigured proxy that *reflects* the wildcard
+        back defeats the allowlist silently. Per
+        docs/system-design/08-deployment-operations.md:52 ("Do not ship a
+        wildcard origin to anything serving real users"), we hard-fail at
+        config load — same posture as a missing DATABASE_URL or JWT_SECRET.
+
+        Mixed lists like ``["*", "https://ams.example.com"]`` are equally
+        unsafe because Starlette's CORSMiddleware short-circuits on the
+        wildcard before checking the rest; we reject any list containing
+        ``"*"`` rather than only single-element wildcards.
+        """
+        if "*" in origins:
+            raise ValueError(
+                "CORS_ALLOWED_ORIGINS contains wildcard '*', which is unsafe "
+                "with allow_credentials=True. List the explicit origins "
+                "per docs/system-design/08-deployment-operations.md "
+                "§'CORS Allowlist'."
+            )
+        return origins
 
 
 @lru_cache

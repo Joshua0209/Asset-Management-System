@@ -3,12 +3,14 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser, ManagerUser
+from app.core.config import get_settings
+from app.core.rate_limit import limiter
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
 from app.models.user import User, UserRole
@@ -23,6 +25,18 @@ from app.schemas.common import DataResponse, error_responses
 from app.schemas.user import UserRead
 
 logger = logging.getLogger(__name__)
+
+
+def _anonymous_rate_limit() -> str:
+    """Return the current anonymous-tier limit string.
+
+    Passed as a callable to ``@limiter.limit(...)`` so the value is read
+    *per request* rather than baked into the decorator at import time.
+    `get_settings()` is `@lru_cache`-decorated, so this stays cheap; the
+    important property is that conftest can set env vars + clear the cache
+    and the live decorator picks up the change without a re-import dance.
+    """
+    return get_settings().rate_limit_anonymous
 # Routes here have heterogeneous auth requirements (`/register` is public,
 # `/me` is read-only authed, `/users` is manager-only), so the router does
 # not declare a shared `responses=` block — each endpoint enumerates its
@@ -59,10 +73,14 @@ _DUMMY_PASSWORD_HASH = hash_password("placeholder-password-for-timing-equalizati
     responses=error_responses(
         status.HTTP_409_CONFLICT,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_429_TOO_MANY_REQUESTS,
         status.HTTP_503_SERVICE_UNAVAILABLE,
     ),
 )
-def register(payload: RegisterRequest, db: DbSession) -> DataResponse[UserRead]:
+@limiter.limit(_anonymous_rate_limit)
+def register(
+    request: Request, payload: RegisterRequest, db: DbSession
+) -> DataResponse[UserRead]:
     # Decision A2: role is always holder on public register.
     # Email is globally unique at the DB layer, so the duplicate check is
     # not filtered by deleted_at — a soft-deleted row still occupies the email.
@@ -121,9 +139,13 @@ _INVALID_CREDENTIALS = HTTPException(
     responses=error_responses(
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_429_TOO_MANY_REQUESTS,
     ),
 )
-def login(payload: LoginRequest, db: DbSession) -> DataResponse[LoginResponse]:
+@limiter.limit(_anonymous_rate_limit)
+def login(
+    request: Request, payload: LoginRequest, db: DbSession
+) -> DataResponse[LoginResponse]:
     user = db.scalar(
         select(User).where(User.email == payload.email, User.deleted_at.is_(None))
     )

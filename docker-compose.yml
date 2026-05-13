@@ -31,6 +31,14 @@ services:
       JWT_SECRET: dev-only-change-me-please
       # Browser origin is the host's published port, not the container.
       CORS_ALLOWED_ORIGINS: '["http://localhost:5173"]'
+      CORS_ALLOWED_METHODS: '["GET","POST","PATCH","OPTIONS"]'
+      CORS_ALLOWED_HEADERS: '["Authorization","Content-Type"]'
+      # Rate limiting — slowapi in-memory; flip RATE_LIMIT_ENABLED to false
+      # only for load testing where real limits would skew the run.
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_AUTHENTICATED: 100/minute
+      RATE_LIMIT_ANONYMOUS: 30/minute
+      RATE_LIMIT_IMAGES: 300/minute
       # Persisted via the named volume below so uploads survive restarts.
       # Lives outside /app so the bind mount on /app cannot mask the image's
       # app-owned mkdir that seeds the volume's initial permissions.
