@@ -1,7 +1,11 @@
 import React from 'react';
 import { Form, Input, Select } from 'antd';
 import type { TFunction } from 'i18next';
-import { ASSET_CATEGORY_OPTIONS, createPurchaseDateNotFutureValidator } from './assetFormShared';
+import {
+  ASSET_CATEGORY_OPTIONS,
+  createPurchaseDateNotFutureValidator,
+  getAssetCategoryLabel,
+} from './assetFormShared';
 
 interface AssetFormFieldsProps {
   t: TFunction;
@@ -56,7 +60,7 @@ const AssetFormFields: React.FC<AssetFormFieldsProps> = ({
         <Select
           options={ASSET_CATEGORY_OPTIONS.map((category) => ({
             value: category,
-            label: category,
+            label: getAssetCategoryLabel(t, category),
           }))}
         />
       </Form.Item>

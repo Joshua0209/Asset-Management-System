@@ -4,6 +4,7 @@ import type { TableColumnsType } from 'antd';
 import type { TFunction } from 'i18next';
 import type { AssetRecord, AssetStatus } from '../../api/assets';
 import { STATUS_COLORS } from './constants';
+import { getAssetCategoryLabel } from './assetFormShared';
 import { formatDateValue, formatAmountValue } from '../../utils/format';
 
 export const getAssetColumns = (t: TFunction): TableColumnsType<AssetRecord> => [
@@ -26,6 +27,7 @@ export const getAssetColumns = (t: TFunction): TableColumnsType<AssetRecord> => 
     dataIndex: 'category',
     key: 'category',
     width: 120,
+    render: (category: string) => getAssetCategoryLabel(t, category),
   },
   {
     title: t('assetList.columns.department'),

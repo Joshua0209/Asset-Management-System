@@ -11,6 +11,31 @@ export const ASSET_CATEGORY_OPTIONS: AssetCategory[] = [
   'other',
 ];
 
+export function isAssetCategory(value: string): value is AssetCategory {
+  return ASSET_CATEGORY_OPTIONS.includes(value as AssetCategory);
+}
+
+export function getAssetCategoryLabel(t: TFunction, category: string): string {
+  switch (category) {
+    case 'phone':
+      return t('assetList.categories.phone');
+    case 'computer':
+      return t('assetList.categories.computer');
+    case 'tablet':
+      return t('assetList.categories.tablet');
+    case 'monitor':
+      return t('assetList.categories.monitor');
+    case 'printer':
+      return t('assetList.categories.printer');
+    case 'network_equipment':
+      return t('assetList.categories.networkEquipment');
+    case 'other':
+      return t('assetList.categories.other');
+    default:
+      return category;
+  }
+}
+
 export interface AssetFormValues {
   name: string;
   model: string;

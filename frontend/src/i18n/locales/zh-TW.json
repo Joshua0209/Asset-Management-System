@@ -100,6 +100,31 @@
     "holderLabel": "持有者",
     "holderPlaceholder": "選擇持有者",
     "summary": "共顯示 {{count}} 筆資產",
+    "filters": {
+      "searchLabel": "資產搜尋",
+      "searchPlaceholder": "搜尋資產編號、名稱或型號",
+      "statusLabel": "狀態篩選",
+      "statusPlaceholder": "依狀態篩選",
+      "categoryLabel": "類別篩選",
+      "categoryPlaceholder": "依類別篩選",
+      "departmentLabel": "部門篩選",
+      "departmentPlaceholder": "輸入部門關鍵字",
+      "locationLabel": "地點篩選",
+      "locationPlaceholder": "輸入地點關鍵字",
+      "holderLabel": "持有者篩選",
+      "holderPlaceholder": "依持有者篩選",
+      "resetButton": "重設",
+      "purchaseAmountSortHint": "採購金額排序僅套用於目前頁面的資料。"
+    },
+    "categories": {
+      "phone": "手機",
+      "computer": "電腦",
+      "tablet": "平板",
+      "monitor": "螢幕",
+      "printer": "印表機",
+      "networkEquipment": "網路設備",
+      "other": "其他"
+    },
     "mode": {
       "manager": "管理員",
       "holder": "持有者"

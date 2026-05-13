@@ -100,6 +100,31 @@
     "holderLabel": "Holder",
     "holderPlaceholder": "Select holder",
     "summary": "Showing {{count}} assets",
+    "filters": {
+      "searchLabel": "Asset search",
+      "searchPlaceholder": "Search asset code, name, or model",
+      "statusLabel": "Status filter",
+      "statusPlaceholder": "Filter by status",
+      "categoryLabel": "Category filter",
+      "categoryPlaceholder": "Filter by category",
+      "departmentLabel": "Department filter",
+      "departmentPlaceholder": "Match part of a department",
+      "locationLabel": "Location filter",
+      "locationPlaceholder": "Match part of a location",
+      "holderLabel": "Holder filter",
+      "holderPlaceholder": "Filter by holder",
+      "resetButton": "Reset",
+      "purchaseAmountSortHint": "Purchase amount sorting applies to the current page only."
+    },
+    "categories": {
+      "phone": "Phone",
+      "computer": "Computer",
+      "tablet": "Tablet",
+      "monitor": "Monitor",
+      "printer": "Printer",
+      "networkEquipment": "Network Equipment",
+      "other": "Other"
+    },
     "mode": {
       "manager": "Manager",
       "holder": "Holder"

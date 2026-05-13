@@ -28,6 +28,7 @@ import { STATUS_COLORS } from '../components/assets/constants';
 import AssetFormFields from '../components/assets/AssetFormFields';
 import {
   createWarrantyExpiryValidator,
+  getAssetCategoryLabel,
   normalizeAssetFormValues,
   type AssetFormValues,
 } from '../components/assets/assetFormShared';
@@ -358,7 +359,7 @@ const AssetDetail: React.FC = () => {
             {asset.name}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.columns.category')}>
-            {asset.category}
+            {getAssetCategoryLabel(t, asset.category)}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.holder')}>
             {asset.responsible_person?.name ?? t('assetList.detail.unassigned')}
