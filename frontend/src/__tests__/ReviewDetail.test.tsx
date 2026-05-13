@@ -57,6 +57,19 @@ async function typeLabel(user: User, label: string, value: string): Promise<void
   });
 }
 
+async function performApproveFlow(user: User): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+  });
+
+  await clickButton(user, 'Approve');
+  await typeLabel(user, 'Repair Plan', 'Plan');
+  await typeLabel(user, 'Repair Vendor', 'Vendor');
+  await typeLabel(user, 'Repair Cost', '100');
+  await typeLabel(user, 'Planned Date', '2026-05-01');
+  await clickLastButton(user, 'Approve');
+}
+
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
   return {
     id: 'rr-1',
@@ -143,24 +156,15 @@ describe('ReviewDetail', () => {
 
     await renderDetailPage();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-    });
-
-    await clickButton(user, 'Approve');
-    await typeLabel(user, 'Repair Plan', 'Replace panel');
-    await typeLabel(user, 'Repair Vendor', 'Vendor A');
-    await typeLabel(user, 'Repair Cost', '2200');
-    await typeLabel(user, 'Planned Date', '2026-04-25');
-    await clickLastButton(user, 'Approve');
+    await performApproveFlow(user);
 
     await waitFor(() => {
       expect(mockApproveRepairRequest).toHaveBeenCalledWith('rr-1', {
         version: 1,
-        repair_plan: 'Replace panel',
-        repair_vendor: 'Vendor A',
-        repair_cost: '2200',
-        planned_date: '2026-04-25',
+        repair_plan: 'Plan',
+        repair_vendor: 'Vendor',
+        repair_cost: '100',
+        planned_date: '2026-05-01',
       });
     });
   });
@@ -287,16 +291,7 @@ describe('ReviewDetail', () => {
 
     await renderDetailPage();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-    });
-
-    await clickButton(user, 'Approve');
-    await typeLabel(user, 'Repair Plan', 'Plan');
-    await typeLabel(user, 'Repair Vendor', 'Vendor');
-    await typeLabel(user, 'Repair Cost', '100');
-    await typeLabel(user, 'Planned Date', '2026-05-01');
-    await clickLastButton(user, 'Approve');
+    await performApproveFlow(user);
 
     // Wait for conflict dialog
     await waitFor(() => {
@@ -323,16 +318,7 @@ describe('ReviewDetail', () => {
 
     await renderDetailPage();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-    });
-
-    await clickButton(user, 'Approve');
-    await typeLabel(user, 'Repair Plan', 'Plan');
-    await typeLabel(user, 'Repair Vendor', 'Vendor');
-    await typeLabel(user, 'Repair Cost', '100');
-    await typeLabel(user, 'Planned Date', '2026-05-01');
-    await clickLastButton(user, 'Approve');
+    await performApproveFlow(user);
 
     await waitFor(() => {
       expect(mockApi.error).toHaveBeenCalledWith(
@@ -351,16 +337,7 @@ describe('ReviewDetail', () => {
 
     await renderDetailPage();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-    });
-
-    await clickButton(user, 'Approve');
-    await typeLabel(user, 'Repair Plan', 'Plan');
-    await typeLabel(user, 'Repair Vendor', 'Vendor');
-    await typeLabel(user, 'Repair Cost', '100');
-    await typeLabel(user, 'Planned Date', '2026-05-01');
-    await clickLastButton(user, 'Approve');
+    await performApproveFlow(user);
 
     await waitFor(() => {
       expect(mockApi.error).not.toHaveBeenCalled();
