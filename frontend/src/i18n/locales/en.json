@@ -24,6 +24,10 @@
     "repairRequest": {
       "title": "Submit Repair Request",
       "assetId": "Asset ID",
+      "assetSelectPlaceholder": "Select one of your assets",
+      "assetsLoading": "Loading your assets…",
+      "assetsEmpty": "No eligible assets found",
+      "assetsLoadError": "Failed to load your assets",
       "faultDescription": "Fault Description",
       "uploadImages": "Upload Images",
       "uploadLimit": "Up to 5 images",
