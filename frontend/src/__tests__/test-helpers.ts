@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import type { AssetRecord } from '../api/assets';
 
 export const holderUser = {
@@ -12,6 +13,13 @@ export const managerUser = {
   email: "manager@example.com",
   name: "Manager",
   role: "manager" as const,
+};
+
+export const mockApi = {
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
 };
 
 export function getOpenModalContent(): HTMLElement {

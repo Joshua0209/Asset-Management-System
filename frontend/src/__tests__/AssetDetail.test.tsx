@@ -7,7 +7,13 @@ import AssetDetail from "../pages/AssetDetail";
 import i18n from "../i18n";
 import { ApiError } from "../api";
 import type { AssetRecord } from "../api/assets";
-import { getModalField, getOpenModalContent, holderUser, managerUser } from "./test-helpers";
+import {
+  getModalField,
+  getOpenModalContent,
+  holderUser,
+  managerUser,
+  mockApi,
+} from "./test-helpers";
 
 const mockGetAsset = vi.hoisted(() => vi.fn());
 const mockListUsers = vi.hoisted(() => vi.fn());
@@ -15,50 +21,15 @@ const mockUpdateAsset = vi.hoisted(() => vi.fn());
 const mockAssignAsset = vi.hoisted(() => vi.fn());
 const mockUnassignAsset = vi.hoisted(() => vi.fn());
 const mockDisposeAsset = vi.hoisted(() => vi.fn());
-const mockApi = {
-  success: vi.fn(),
-  error: vi.fn(),
-  info: vi.fn(),
-  warning: vi.fn(),
-};
-
-vi.mock("antd", async () => {
-  const actual = await vi.importActual<typeof import("antd")>("antd");
-  return {
-    ...actual,
-    notification: {
-      ...actual.notification,
-      useNotification: () => [mockApi, null],
-    },
-  };
-});
 
 vi.mock("../auth/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
 
-vi.mock("../api", () => {
-  class MockApiError extends Error {
-    readonly status: number;
-    readonly code: string;
-    readonly details: Array<{ field: string; message: string; code: string }>;
-
-    constructor(
-      status: number,
-      code: string,
-      message: string,
-      details: Array<{ field: string; message: string; code: string }> = [],
-    ) {
-      super(message);
-      this.name = "ApiError";
-      this.status = status;
-      this.code = code;
-      this.details = details;
-    }
-  }
-
+vi.mock("../api", async () => {
+  const actual = await vi.importActual<typeof import("../api")>("../api");
   return {
-    ApiError: MockApiError,
+    ...actual,
     assetsApi: {
       getAssetById: mockGetAsset,
       updateAsset: mockUpdateAsset,

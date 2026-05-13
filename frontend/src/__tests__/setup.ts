@@ -1,4 +1,6 @@
 import "@testing-library/jest-dom";
+import { vi } from 'vitest';
+import { mockApi } from './test-helpers';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 if (globalThis.window !== undefined) {
@@ -112,3 +114,15 @@ globalThis.Request = class extends OriginalRequest {
     super(input, init);
   }
 } as typeof OriginalRequest;
+
+// Global Ant Design notification mock
+vi.mock("antd", async () => {
+  const actual = await vi.importActual<typeof import("antd")>("antd");
+  return {
+    ...actual,
+    notification: {
+      ...actual.notification,
+      useNotification: () => [mockApi, null],
+    },
+  };
+});

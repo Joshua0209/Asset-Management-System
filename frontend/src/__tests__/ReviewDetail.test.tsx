@@ -6,24 +6,7 @@ import { vi } from 'vitest';
 import ReviewDetail from '../pages/ReviewDetail';
 import i18n from '../i18n';
 import type { RepairRequestRecord } from '../api/repair-requests/types';
-
-const mockApi = {
-  success: vi.fn(),
-  error: vi.fn(),
-  info: vi.fn(),
-  warning: vi.fn(),
-};
-
-vi.mock('antd', async () => {
-  const actual = await vi.importActual<typeof import('antd')>('antd');
-  return {
-    ...actual,
-    notification: {
-      ...actual.notification,
-      useNotification: () => [mockApi, null],
-    },
-  };
-});
+import { mockApi } from './test-helpers';
 
 vi.mock('../components/AuthImage', () => ({
   default: ({ imageId, alt }: { imageId: string; alt?: string }) => (
