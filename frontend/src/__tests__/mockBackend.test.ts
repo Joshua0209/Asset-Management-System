@@ -141,10 +141,13 @@ describe("mocks/mockBackend", () => {
 
     const unassigned = backend.unassignAsset(created.id, {
       reason: "transfer",
+      unassignment_date: "2026-04-04",
       version: assigned.version,
     });
     expect(unassigned.status).toBe("in_stock");
     expect(unassigned.responsible_person_id).toBeNull();
+    expect(unassigned.assignment_date).toBe("2026-04-03");
+    expect(unassigned.unassignment_date).toBe("2026-04-04");
 
     const disposed = backend.disposeAsset(created.id, {
       disposal_reason: "end-of-life",
@@ -165,6 +168,7 @@ describe("mocks/mockBackend", () => {
     expect(() =>
       backend.assignAsset(stockAsset.id, {
         responsible_person_id: "mock-manager",
+        assignment_date: "2026-04-03",
         version: stockAsset.version,
       }),
     ).toThrow();
@@ -172,6 +176,7 @@ describe("mocks/mockBackend", () => {
     expect(() =>
       backend.unassignAsset(stockAsset.id, {
         reason: "invalid",
+        unassignment_date: "2026-04-03",
         version: stockAsset.version,
       }),
     ).toThrow();

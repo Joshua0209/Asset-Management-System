@@ -91,6 +91,8 @@ function ensureState(): void {
     ...asset,
     responsible_person_id: asset.responsible_person?.id ?? null,
     responsible_person: asset.responsible_person ? { ...asset.responsible_person } : null,
+    assignment_date: asset.status === "in_use" ? asset.activation_date : null,
+    unassignment_date: null,
   }));
 
   const pendingAsset = state.assets.find((asset) => asset.status === "pending_repair") ?? state.assets[0];
@@ -400,6 +402,8 @@ export function createAsset(payload: AssetCreatePayload): AssetRecord {
     department: payload.department ?? "",
     activation_date: payload.activation_date ?? null,
     warranty_expiry: payload.warranty_expiry ?? null,
+    assignment_date: null,
+    unassignment_date: null,
     status: "in_stock",
     responsible_person_id: null,
     responsible_person: null,
@@ -451,9 +455,8 @@ export function assignAsset(assetId: string, payload: AssetAssignPayload): Asset
   asset.status = "in_use";
   asset.responsible_person_id = holder.id;
   asset.responsible_person = { id: holder.id, name: holder.name };
-  if (payload.assignment_date) {
-    asset.activation_date = payload.assignment_date;
-  }
+  asset.assignment_date = payload.assignment_date;
+  asset.unassignment_date = null;
   touchAsset(asset);
   return asset;
 }
@@ -466,10 +469,21 @@ export function unassignAsset(assetId: string, payload: AssetUnassignPayload): A
   if (asset.status !== "in_use") {
     throw new ApiError(409, "invalid_transition", "Only in-use assets can be unassigned");
   }
+  if (
+    asset.assignment_date !== null &&
+    payload.unassignment_date < asset.assignment_date
+  ) {
+    throw new ApiError(
+      422,
+      "invalid_unassignment_date",
+      "unassignment_date must not be earlier than assignment_date.",
+    );
+  }
 
   asset.status = "in_stock";
   asset.responsible_person_id = null;
   asset.responsible_person = null;
+  asset.unassignment_date = payload.unassignment_date;
   touchAsset(asset);
   return asset;
 }
