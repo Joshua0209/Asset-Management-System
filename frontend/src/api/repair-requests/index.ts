@@ -6,5 +6,6 @@ export {
   getRepairRequestById,
   listRepairRequests,
   rejectRepairRequest,
+  submitRepairRequest,
   updateRepairRequestDetails,
 } from "./queries";

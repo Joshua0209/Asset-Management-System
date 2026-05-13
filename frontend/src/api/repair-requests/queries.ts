@@ -5,6 +5,7 @@ import {
   getRepairRequestById as getRepairRequestByIdFromMockBackend,
   listRepairRequests as listRepairRequestsFromMockBackend,
   rejectRepairRequest as rejectRepairRequestFromMockBackend,
+  submitRepairRequest as submitRepairRequestFromMockBackend,
   updateRepairRequestDetails as updateRepairRequestDetailsFromMockBackend,
 } from "../../mocks/mockBackend";
 import { REPAIR_REQUEST_PATHS } from "./keys";
@@ -164,6 +165,24 @@ export async function completeRepairRequest(
     method: "POST",
     url: REPAIR_REQUEST_PATHS.complete(id),
     data: payload,
+  });
+  return unwrapRepairResponse(response);
+}
+
+export async function submitRepairRequest(
+  payload: FormData,
+): Promise<RepairRequestRecord> {
+  if (USE_MOCK_AUTH) {
+    return submitRepairRequestFromMockBackend(payload);
+  }
+
+  const response = await request<RepairRequestDataResponse | RepairRequestRecord>({
+    method: "POST",
+    url: REPAIR_REQUEST_PATHS.list,
+    data: payload,
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
   });
   return unwrapRepairResponse(response);
 }
