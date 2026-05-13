@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
-import { Typography, Form, Input, Upload, Button, message, Card } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Typography, Form, Input, Select, Upload, Button, message, Card } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { RcFile, UploadFile } from 'antd/es/upload/interface';
-import { ApiError, request } from '../api';
+import { ApiError, assetsApi, request } from '../api';
+import type { AssetRecord } from '../api/assets/types';
 
 const { Title } = Typography;
 const { TextArea } = Input;
+
+const ELIGIBLE_ASSETS_PAGE_SIZE = 100;
 
 const SubmitRepairRequest: React.FC = () => {
   const { t } = useTranslation();
@@ -15,6 +18,35 @@ const SubmitRepairRequest: React.FC = () => {
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [assets, setAssets] = useState<AssetRecord[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(true);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAssetsLoading(true);
+    setAssetsError(null);
+    assetsApi
+      .listMyAssets({ status: 'in_use', perPage: ELIGIBLE_ASSETS_PAGE_SIZE })
+      .then((response) => {
+        if (cancelled) return;
+        setAssets(response.data);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const fallback = t('common.repairRequest.assetsLoadError');
+        const messageText =
+          error instanceof ApiError ? (error.message ?? fallback) : fallback;
+        setAssetsError(messageText);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setAssetsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   const getErrorMessageByCode = (code?: string, fallbackMessage?: string) => {
     switch (code) {
@@ -107,8 +139,25 @@ const SubmitRepairRequest: React.FC = () => {
             name="asset_id"
             label={t('common.repairRequest.assetId')}
             rules={[{ required: true, message: t('validation.required') }]}
+            help={assetsError ?? undefined}
+            validateStatus={assetsError ? 'error' : undefined}
           >
-            <Input placeholder={t('common.repairRequest.assetId')} />
+            <Select
+              placeholder={t('common.repairRequest.assetSelectPlaceholder')}
+              loading={assetsLoading}
+              disabled={assetsLoading || Boolean(assetsError)}
+              showSearch
+              optionFilterProp="label"
+              notFoundContent={
+                assetsLoading
+                  ? t('common.repairRequest.assetsLoading')
+                  : t('common.repairRequest.assetsEmpty')
+              }
+              options={assets.map((asset) => ({
+                value: asset.id,
+                label: `${asset.asset_code} — ${asset.name}`,
+              }))}
+            />
           </Form.Item>
 
           <Form.Item

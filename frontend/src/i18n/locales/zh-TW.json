@@ -24,6 +24,10 @@
     "repairRequest": {
       "title": "送出維修申請",
       "assetId": "資產編號",
+      "assetSelectPlaceholder": "請選擇您的資產",
+      "assetsLoading": "正在載入您的資產…",
+      "assetsEmpty": "找不到可申請維修的資產",
+      "assetsLoadError": "載入資產失敗",
       "faultDescription": "故障描述",
       "uploadImages": "上傳照片",
       "uploadLimit": "最多 5 張照片",
