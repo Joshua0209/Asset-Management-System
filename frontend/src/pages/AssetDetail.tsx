@@ -115,7 +115,9 @@ const AssetDetail: React.FC = () => {
           Modal.warning({
             title: t('errors.conflictTitle'),
             content: formatApiError(error),
-            onOk: () => void loadAsset(),
+            onOk: async () => {
+              await loadAsset();
+            },
           });
         } else {
           api.error({

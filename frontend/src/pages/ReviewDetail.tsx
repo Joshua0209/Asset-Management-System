@@ -137,7 +137,9 @@ const ReviewDetail: React.FC = () => {
           Modal.warning({
             title: t('errors.conflictTitle'),
             content: formatApiError(error),
-            onOk: () => void loadRequest(),
+            onOk: async () => {
+              await loadRequest();
+            },
           });
         } else {
           api.error({
