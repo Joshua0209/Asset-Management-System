@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
 import { Modal } from 'antd';
 import type { ParseKeys, TFunction } from 'i18next';
-import { ApiError, assetsApi } from '../../api';
-import { getApiErrorMessage } from '../../utils/apiErrors';
-import type { AssetUpdatePayload } from '../../api/assets';
+import { ApiError, assetsApi } from '@/api';
+import { getApiErrorMessage } from '@/utils/apiErrors';
+import type { AssetUpdatePayload } from '@/api/assets';
 
 export interface AssignValues {
   responsible_person_id: string;

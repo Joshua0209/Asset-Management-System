@@ -17,8 +17,8 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { ParseKeys } from "i18next";
 import { LanguageSwitcher } from "../LanguageSwitcher";
-import { useAuth } from "../../auth/AuthContext";
-import type { UserRole } from "../../api/auth";
+import { useAuth } from "@/auth/AuthContext";
+import type { UserRole } from "@/api/auth";
 
 const { Header, Sider, Content } = Layout;
 

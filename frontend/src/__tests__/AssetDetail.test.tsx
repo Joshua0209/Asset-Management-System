@@ -3,10 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-import AssetDetail from "../pages/AssetDetail";
-import i18n from "../i18n";
-import { ApiError } from "../api";
-import type { AssetRecord } from "../api/assets";
+import AssetDetail from "@/pages/AssetDetail";
+import i18n from "@/i18n";
+import { ApiError } from "@/api";
+import type { AssetRecord } from "@/api/assets";
 import {
   getModalField,
   getOpenModalContent,
@@ -22,12 +22,12 @@ const mockAssignAsset = vi.hoisted(() => vi.fn());
 const mockUnassignAsset = vi.hoisted(() => vi.fn());
 const mockDisposeAsset = vi.hoisted(() => vi.fn());
 
-vi.mock("../auth/AuthContext", () => ({
+vi.mock("@/auth/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
 
-vi.mock("../api", async () => {
-  const actual = await vi.importActual<typeof import("../api")>("../api");
+vi.mock("@/api", async () => {
+  const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
     assetsApi: {
@@ -43,7 +43,7 @@ vi.mock("../api", async () => {
   };
 });
 
-const authModule = await import("../auth/AuthContext");
+const authModule = await import("@/auth/AuthContext");
 const mockUseAuth = vi.mocked(authModule.useAuth);
 
 type TestAuthUser = typeof holderUser | typeof managerUser;

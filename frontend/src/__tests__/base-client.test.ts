@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AxiosError, AxiosHeaders, type AxiosInstance, type AxiosResponse } from "axios";
-import { ApiError, createApiClient, request } from "../api/base-client";
-import { UNAUTHORIZED_EVENT, saveSession } from "../auth/storage";
-import type { AuthSession } from "../api/auth";
+import { ApiError, createApiClient, request } from "@/api/base-client";
+import { UNAUTHORIZED_EVENT, saveSession } from "@/auth/storage";
+import type { AuthSession } from "@/api/auth";
 
 function fakeClient() {
   const requestFn = vi.fn();

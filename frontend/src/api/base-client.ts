@@ -19,7 +19,7 @@ import axios, {
   type AxiosRequestConfig,
   type InternalAxiosRequestConfig,
 } from "axios";
-import { UNAUTHORIZED_EVENT, clearSession, getToken } from "../auth/storage";
+import { UNAUTHORIZED_EVENT, clearSession, getToken } from "@/auth/storage";
 
 export const API_BASE = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1"

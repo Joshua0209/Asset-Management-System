@@ -5,7 +5,7 @@ import type {
   PaginatedUsersResponse,
   UsersListResponse,
 } from "./types";
-import { listUsers as listUsersFromMockBackend } from "../../mocks/mockBackend";
+import { listUsers as listUsersFromMockBackend } from "@/mocks/mockBackend";
 
 const USE_MOCK_AUTH = import.meta.env.VITE_USE_MOCK_AUTH === "true";
 const DEFAULT_PAGE = 1;

@@ -14,14 +14,14 @@ import {
 } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../../auth/AuthContext';
-import { assetsApi, ApiError, usersApi } from '../../api';
-import { getApiErrorMessage } from '../../utils/apiErrors';
-import type { AssetRecord } from '../../api/assets';
-import type { UserRecord } from '../../api/users';
-import { STATUS_COLORS } from '../../components/assets/constants';
-import { formatDateValue, formatAmountValue } from '../../utils/format';
-import type { AssetFormPayload } from '../../components/assets/assetFormShared';
+import { useAuth } from '@/auth/AuthContext';
+import { assetsApi, ApiError, usersApi } from '@/api';
+import { getApiErrorMessage } from '@/utils/apiErrors';
+import type { AssetRecord } from '@/api/assets';
+import type { UserRecord } from '@/api/users';
+import { STATUS_COLORS } from '@/components/assets/constants';
+import { formatDateValue, formatAmountValue } from '@/utils/format';
+import type { AssetFormPayload } from '@/components/assets/assetFormShared';
 
 import EditAssetModal from './EditAssetModal';
 import AssignAssetModal, { type AssignFormValues } from './AssignAssetModal';

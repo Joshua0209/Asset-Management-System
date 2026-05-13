@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Image, Skeleton } from 'antd';
 import type { ImageProps } from 'antd';
-import { apiClient } from '../api';
+import { apiClient } from '@/api';
 
 interface AuthImageProps extends Omit<ImageProps, 'src'> {
   imageId: string;

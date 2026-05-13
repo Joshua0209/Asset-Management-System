@@ -8,7 +8,7 @@ import {
   listMyAssets as listMyAssetsFromMockBackend,
   unassignAsset as unassignAssetFromMockBackend,
   updateAsset as updateAssetFromMockBackend,
-} from "../../mocks/mockBackend";
+} from "@/mocks/mockBackend";
 import { ASSET_PATHS } from "./keys";
 import type {
   AssetAssignPayload,

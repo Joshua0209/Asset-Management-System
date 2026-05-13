@@ -7,7 +7,7 @@ import {
   rejectRepairRequest as rejectRepairRequestFromMockBackend,
   submitRepairRequest as submitRepairRequestFromMockBackend,
   updateRepairRequestDetails as updateRepairRequestDetailsFromMockBackend,
-} from "../../mocks/mockBackend";
+} from "@/mocks/mockBackend";
 import { REPAIR_REQUEST_PATHS } from "./keys";
 import type {
   ListRepairRequestsParams,

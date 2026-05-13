@@ -7,26 +7,26 @@ import {
   type RouteObject,
 } from "react-router-dom";
 import { ConfigProvider, theme } from "antd";
-import MainLayout from "./components/layout/MainLayout";
-import Dashboard from "./pages/manager/Dashboard";
-import AssetList from "./pages/manager/AssetList";
-import MyAssetList from "./pages/holder/MyAssetList";
-import AssetDetail from "./pages/AssetDetail";
-import Reviews from "./pages/manager/Reviews";
-import ReviewDetail from "./pages/manager/ReviewDetail";
-import RepairRequestList from "./pages/holder/RepairRequestList";
-import RepairRequestDetail from "./pages/holder/RepairRequestDetail";
-import Login from "./pages/auth/Login";
-import Register from "./pages/auth/Register";
-import Forbidden from "./pages/Forbidden";
-import { AuthProvider } from "./auth/AuthContext";
-import { ProtectedRoute } from "./auth/ProtectedRoute";
-import { PublicOnlyRoute } from "./auth/PublicOnlyRoute";
-import RoleLandingRedirect from "./auth/RoleLandingRedirect";
-import SubmitRepairRequest from "./pages/holder/SubmitRepairRequest";
+import MainLayout from "@/components/layout/MainLayout";
+import Dashboard from "@/pages/manager/Dashboard";
+import AssetList from "@/pages/manager/AssetList";
+import MyAssetList from "@/pages/holder/MyAssetList";
+import AssetDetail from "@/pages/AssetDetail";
+import Reviews from "@/pages/manager/Reviews";
+import ReviewDetail from "@/pages/manager/ReviewDetail";
+import RepairRequestList from "@/pages/holder/RepairRequestList";
+import RepairRequestDetail from "@/pages/holder/RepairRequestDetail";
+import Login from "@/pages/auth/Login";
+import Register from "@/pages/auth/Register";
+import Forbidden from "@/pages/Forbidden";
+import { AuthProvider } from "@/auth/AuthContext";
+import { ProtectedRoute } from "@/auth/ProtectedRoute";
+import { PublicOnlyRoute } from "@/auth/PublicOnlyRoute";
+import RoleLandingRedirect from "@/auth/RoleLandingRedirect";
+import SubmitRepairRequest from "@/pages/holder/SubmitRepairRequest";
 
 // Initialize i18n
-import "./i18n";
+import "@/i18n";
 
 interface ThemeModeValue {
   isDarkMode: boolean;

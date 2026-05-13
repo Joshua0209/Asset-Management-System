@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import SubmitRepairRequest from '../pages/holder/SubmitRepairRequest';
+import SubmitRepairRequest from '@/pages/holder/SubmitRepairRequest';
 import { ConfigProvider } from 'antd';
-import { ApiError, apiClient } from '../api';
+import { ApiError, apiClient } from '@/api';
 import { buildAssetResponse } from './test-helpers';
 
 // Mock i18next

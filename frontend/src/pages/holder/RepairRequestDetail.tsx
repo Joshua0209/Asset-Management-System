@@ -17,11 +17,11 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ToolOutlined } from '@ant-design/icons';
 
-import { ApiError, repairRequestsApi } from '../../api';
-import type { RepairRequestRecord } from '../../api/repair-requests';
-import AuthImage from '../../components/AuthImage';
-import { REPAIR_REQUEST_STATUS_COLORS } from '../../components/repair-requests/constants';
-import { formatDateTime, formatRepairCost } from '../../utils/format';
+import { ApiError, repairRequestsApi } from '@/api';
+import type { RepairRequestRecord } from '@/api/repair-requests';
+import AuthImage from '@/components/AuthImage';
+import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
+import { formatDateTime, formatRepairCost } from '@/utils/format';
 
 const RepairRequestDetail: React.FC = () => {
   const { t } = useTranslation();

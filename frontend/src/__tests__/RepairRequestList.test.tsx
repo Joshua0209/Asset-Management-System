@@ -1,12 +1,12 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import RepairRequestList from "../pages/holder/RepairRequestList";
-import i18n from "../i18n";
-import type { PaginatedRepairRequestResponse } from "../api/repair-requests/types";
+import RepairRequestList from "@/pages/holder/RepairRequestList";
+import i18n from "@/i18n";
+import type { PaginatedRepairRequestResponse } from "@/api/repair-requests/types";
 
-vi.mock("../api", async () => {
-  const actual = await vi.importActual<typeof import("../api")>("../api");
+vi.mock("@/api", async () => {
+  const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
     repairRequestsApi: {
@@ -15,7 +15,7 @@ vi.mock("../api", async () => {
   };
 });
 
-const apiModule = await import("../api");
+const apiModule = await import("@/api");
 const mockListRepairRequests = vi.mocked(apiModule.repairRequestsApi.listRepairRequests);
 
 const mockRequests = {

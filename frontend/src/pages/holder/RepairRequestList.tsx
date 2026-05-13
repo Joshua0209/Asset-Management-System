@@ -13,9 +13,9 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { PlusOutlined } from '@ant-design/icons';
 
-import { ApiError, repairRequestsApi } from '../../api';
-import type { RepairRequestRecord, RepairRequestStatus } from '../../api/repair-requests';
-import { REPAIR_REQUEST_STATUS_COLORS } from '../../components/repair-requests/constants';
+import { ApiError, repairRequestsApi } from '@/api';
+import type { RepairRequestRecord, RepairRequestStatus } from '@/api/repair-requests';
+import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 

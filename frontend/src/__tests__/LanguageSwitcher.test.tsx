@@ -1,8 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { LanguageSwitcher } from "../components/LanguageSwitcher";
-import i18n from "../i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import i18n from "@/i18n";
 
 describe("LanguageSwitcher", () => {
   afterEach(async () => {

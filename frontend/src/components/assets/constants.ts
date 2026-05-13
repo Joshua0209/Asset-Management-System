@@ -1,4 +1,4 @@
-import type { AssetStatus } from '../../api/assets';
+import type { AssetStatus } from '@/api/assets';
 
 export const STATUS_COLORS: Record<AssetStatus, string> = {
   in_stock: 'default',

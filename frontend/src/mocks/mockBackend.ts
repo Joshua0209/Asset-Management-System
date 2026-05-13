@@ -1,4 +1,4 @@
-import { ApiError } from "../api/base-client";
+import { ApiError } from "@/api/base-client";
 import type {
   AssetAssignPayload,
   AssetCreatePayload,
@@ -8,7 +8,7 @@ import type {
   AssetUpdatePayload,
   ListAssetsParams,
   PaginatedAssetResponse,
-} from "../api/assets/types";
+} from "@/api/assets/types";
 import type {
   ListRepairRequestsParams,
   PaginatedRepairRequestResponse,
@@ -18,9 +18,9 @@ import type {
   RepairRequestRecord,
   RepairRequestRejectPayload,
   RepairRequestStatus,
-} from "../api/repair-requests/types";
-import type { ListUsersParams, PaginatedUsersResponse, UserRecord } from "../api/users/types";
-import { loadSession } from "../auth/storage";
+} from "@/api/repair-requests/types";
+import type { ListUsersParams, PaginatedUsersResponse, UserRecord } from "@/api/users/types";
+import { loadSession } from "@/auth/storage";
 import { DUMMY_ASSETS, DUMMY_HOLDERS } from "./assets";
 
 interface MockState {

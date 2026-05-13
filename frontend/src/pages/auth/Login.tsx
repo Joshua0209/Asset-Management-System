@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { Alert, Button, Card, Form, Input, Space, Typography } from "antd";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useAuth } from "../../auth/AuthContext";
-import { ApiError } from "../../api";
-import { LanguageSwitcher } from "../../components/LanguageSwitcher";
+import { useAuth } from "@/auth/AuthContext";
+import { ApiError } from "@/api";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 interface LocationState {
   from?: string;

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Form, Input, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import { createAmountValidator } from '../../../utils/validators';
+import { createAmountValidator } from '@/utils/validators';
 import type { RepairDetailsValues } from './useReviewActions';
 
 interface UpdateRepairDetailsModalProps {
