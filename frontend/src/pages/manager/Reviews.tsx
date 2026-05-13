@@ -12,12 +12,12 @@ import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { ApiError, repairRequestsApi } from '../api';
-import { getApiErrorMessage } from '../utils/apiErrors';
+import { ApiError, repairRequestsApi } from '../../api';
+import { getApiErrorMessage } from '../../utils/apiErrors';
 import type {
   RepairRequestRecord,
   RepairRequestStatus,
-} from '../api/repair-requests';
+} from '../../api/repair-requests';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20];
 

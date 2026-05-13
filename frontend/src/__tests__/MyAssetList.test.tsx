@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
-import MyAssetList from "../pages/MyAssetList";
+import MyAssetList from "../pages/holder/MyAssetList";
 import i18n from "../i18n";
 import { holderUser, buildAssetResponse } from "./test-helpers";
 
