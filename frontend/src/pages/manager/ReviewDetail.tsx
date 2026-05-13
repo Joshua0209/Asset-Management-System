@@ -19,17 +19,12 @@ import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { ApiError, repairRequestsApi } from '../../api';
-import type { RepairRequestRecord, RepairRequestStatus } from '../../api/repair-requests';
+import type { RepairRequestRecord } from '../../api/repair-requests';
 import { getApiErrorMessage } from '../../utils/apiErrors';
+import { formatDateTime, formatRepairCost } from '../../utils/format';
 import { createAmountValidator } from '../../utils/validators';
 import AuthImage from '../../components/AuthImage';
-
-const STATUS_COLORS: Record<RepairRequestStatus, string> = {
-  pending_review: 'warning',
-  under_repair: 'processing',
-  completed: 'success',
-  rejected: 'error',
-};
+import { REPAIR_REQUEST_STATUS_COLORS } from '../../components/repair-requests/constants';
 
 interface ApproveFormValues {
   repair_plan: string;
@@ -91,18 +86,6 @@ const ReviewDetail: React.FC = () => {
     (apiError: ApiError): string => getApiErrorMessage(apiError, t),
     [t],
   );
-
-  const formatDateTime = (value: string | null | undefined): string => {
-    if (!value) {
-      return '-';
-    }
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
-  };
-
-  const formatRepairCost = (
-    value: string | number | null | undefined,
-  ): string => (value === null || value === undefined || value === '' ? '-' : `TWD ${value}`);
 
   const loadRequest = React.useCallback(async () => {
     if (!id) {
@@ -374,7 +357,7 @@ const ReviewDetail: React.FC = () => {
           <Card title={t('repairRequestDetail.sections.basic')}>
             <Descriptions column={{ xs: 1, sm: 2 }}>
               <Descriptions.Item label={t('repairRequestDetail.fields.status')}>
-                <Tag color={STATUS_COLORS[request.status]}>{t(`reviews.status.${request.status}`)}</Tag>
+                <Tag color={REPAIR_REQUEST_STATUS_COLORS[request.status]}>{t(`reviews.status.${request.status}`)}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label={t('reviews.columns.requester')}>
                 {request.requester.name}

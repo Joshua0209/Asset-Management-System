@@ -14,19 +14,14 @@ import { useNavigate } from 'react-router-dom';
 
 import { ApiError, repairRequestsApi } from '../../api';
 import { getApiErrorMessage } from '../../utils/apiErrors';
+import { formatDateTime } from '../../utils/format';
+import { REPAIR_REQUEST_STATUS_COLORS } from '../../components/repair-requests/constants';
 import type {
   RepairRequestRecord,
   RepairRequestStatus,
 } from '../../api/repair-requests';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20];
-
-const STATUS_COLORS: Record<RepairRequestStatus, string> = {
-  pending_review: 'warning',
-  under_repair: 'processing',
-  completed: 'success',
-  rejected: 'error',
-};
 
 const Reviews: React.FC = () => {
   const { t } = useTranslation();
@@ -98,7 +93,7 @@ const Reviews: React.FC = () => {
       key: 'status',
       width: 140,
       render: (status: RepairRequestStatus) => (
-        <Tag color={STATUS_COLORS[status]}>{t(`reviews.status.${status}`)}</Tag>
+        <Tag color={REPAIR_REQUEST_STATUS_COLORS[status]}>{t(`reviews.status.${status}`)}</Tag>
       ),
     },
     {
@@ -106,7 +101,7 @@ const Reviews: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (value: string) => new Date(value).toLocaleString(),
+      render: (value: string) => formatDateTime(value),
     },
     {
       title: t('reviews.columns.actions'),

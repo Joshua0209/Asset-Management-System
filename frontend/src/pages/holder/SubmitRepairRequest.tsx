@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import type { RcFile, UploadFile } from 'antd/es/upload/interface';
 import { ApiError, assetsApi, repairRequestsApi } from '../../api';
 import type { AssetRecord } from '../../api/assets/types';
+import { getApiErrorMessage } from '../../utils/apiErrors';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -48,33 +49,6 @@ const SubmitRepairRequest: React.FC = () => {
     };
   }, [t]);
 
-  const getErrorMessageByCode = (code?: string, fallbackMessage?: string) => {
-    switch (code) {
-      case 'unauthorized':
-        return t('errors.unauthorized');
-      case 'forbidden':
-        return t('errors.forbidden');
-      case 'not_found':
-        return t('errors.notFound');
-      case 'conflict':
-        return t('errors.conflict');
-      case 'duplicate_request':
-        return t('errors.duplicateRequest');
-      case 'invalid_transition':
-        return t('errors.invalidTransition');
-      case 'validation_error':
-        return t('errors.validationError');
-      case 'payload_too_large':
-        return t('errors.payloadTooLarge');
-      case 'unsupported_media_type':
-        return t('errors.unsupportedMediaType');
-      case 'rate_limit_exceeded':
-        return t('errors.rateLimitExceeded');
-      default:
-        return fallbackMessage || t('common.repairRequest.errorMessage');
-    }
-  };
-
   const onFinish = async (values: { asset_id: string; fault_description: string }) => {
     setSubmitting(true);
     const formData = new FormData();
@@ -93,7 +67,7 @@ const SubmitRepairRequest: React.FC = () => {
       navigate('/repairs');
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(getErrorMessageByCode(error.code, error.message));
+        message.error(getApiErrorMessage(error, t));
       } else {
         console.error('Submission error:', error);
         message.error(t('common.repairRequest.errorMessage'));
