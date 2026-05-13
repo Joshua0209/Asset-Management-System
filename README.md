@@ -43,7 +43,7 @@ Audit log + `GET /assets/:id/history` was explicitly deferred from Week 3's API 
 | Task | Target | Notes |
 |------|--------|-------|
 | Search & filter UI (multi-dimensional) | Mon–Wed | Filter bar with dropdowns + text search. Debounced API calls |
-| Optimistic locking conflict UI | Wed–Thu | Show "this record was modified by someone else" dialog on 409 `version_conflict` |
+| ✅ Optimistic locking conflict UI | Wed–Thu | Show "this record was modified by someone else" dialog on 409 `version_conflict` |
 | i18n: all pages translated | Thu–Fri | zh-TW primary, en secondary. All user-facing strings externalized |
 | UX polish: loading states, empty states, error toasts | Rolling | Consistent patterns across all pages |
 
@@ -52,7 +52,7 @@ Audit log + `GET /assets/:id/history` was explicitly deferred from Week 3's API 
 - [ ] M3 carry-over closed: issue #29 fixed (PR #27 image display merged 2026-05-06)
 - [x] Audit log (`asset_action_histories`) + `GET /assets/:id/history` shipped — every FSM transition writes a history row in the same transaction, manager-only paginated read endpoint exposes the trail
 - [ ] Multi-dimensional search works with all filter combinations
-- [ ] Optimistic locking: concurrent edit shows conflict to second user
+- [x] Optimistic locking: concurrent edit shows conflict to second user
 - [ ] All UI text is i18n-ready (language switcher works)
 - [ ] No broken flows end-to-end
 - [ ] Rate limiting active on all endpoints
