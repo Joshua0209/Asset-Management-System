@@ -15,6 +15,23 @@ const mockUpdateAsset = vi.hoisted(() => vi.fn());
 const mockAssignAsset = vi.hoisted(() => vi.fn());
 const mockUnassignAsset = vi.hoisted(() => vi.fn());
 const mockDisposeAsset = vi.hoisted(() => vi.fn());
+const mockApi = {
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
+};
+
+vi.mock("antd", async () => {
+  const actual = await vi.importActual<typeof import("antd")>("antd");
+  return {
+    ...actual,
+    notification: {
+      ...actual.notification,
+      useNotification: () => [mockApi, null],
+    },
+  };
+});
 
 vi.mock("../auth/AuthContext", () => ({
   useAuth: vi.fn(),
@@ -131,6 +148,8 @@ describe("AssetDetail", () => {
     mockAssignAsset.mockReset();
     mockUnassignAsset.mockReset();
     mockDisposeAsset.mockReset();
+    mockApi.success.mockReset();
+    mockApi.error.mockReset();
     setAuthUser(holderUser);
     mockUpdateAsset.mockResolvedValue({});
     mockAssignAsset.mockResolvedValue({});
@@ -367,6 +386,36 @@ describe("AssetDetail", () => {
     // Verify refresh
     await waitFor(() => {
       expect(mockGetAsset).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("shows a generic error toast for other ApiErrors during update", async () => {
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockGetAsset.mockResolvedValue(buildAsset());
+
+    mockUpdateAsset.mockRejectedValueOnce(
+      new ApiError(400, "validation_error", "Bad request")
+    );
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const editModal = getOpenModalContent();
+    await user.click(within(editModal).getByRole("button", { name: "Save" }));
+
+    // Verify error toast
+    await waitFor(() => {
+      expect(mockApi.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Action failed",
+          description: "Invalid input",
+        })
+      );
     });
   });
 });

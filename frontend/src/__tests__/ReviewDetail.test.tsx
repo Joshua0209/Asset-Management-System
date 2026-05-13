@@ -7,6 +7,24 @@ import ReviewDetail from '../pages/ReviewDetail';
 import i18n from '../i18n';
 import type { RepairRequestRecord } from '../api/repair-requests/types';
 
+const mockApi = {
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
+};
+
+vi.mock('antd', async () => {
+  const actual = await vi.importActual<typeof import('antd')>('antd');
+  return {
+    ...actual,
+    notification: {
+      ...actual.notification,
+      useNotification: () => [mockApi, null],
+    },
+  };
+});
+
 vi.mock('../components/AuthImage', () => ({
   default: ({ imageId, alt }: { imageId: string; alt?: string }) => (
     <img data-testid={`fault-image-${imageId}`} alt={alt ?? 'Fault'} />
@@ -106,6 +124,8 @@ describe('ReviewDetail', () => {
     mockRejectRepairRequest.mockReset();
     mockUpdateRepairRequestDetails.mockReset();
     mockCompleteRepairRequest.mockReset();
+    mockApi.success.mockReset();
+    mockApi.error.mockReset();
     mockApproveRepairRequest.mockResolvedValue({} as RepairRequestRecord);
     mockRejectRepairRequest.mockResolvedValue({} as RepairRequestRecord);
     mockUpdateRepairRequestDetails.mockResolvedValue({} as RepairRequestRecord);
@@ -308,6 +328,59 @@ describe('ReviewDetail', () => {
     // Verify refresh
     await waitFor(() => {
       expect(mockGetRepairRequestById).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('shows a generic error toast for other ApiErrors during action', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
+    mockApproveRepairRequest.mockRejectedValueOnce(
+      new apiModule.ApiError(400, 'validation_error', 'Bad request'),
+    );
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    });
+
+    await clickButton(user, 'Approve');
+    await typeLabel(user, 'Repair Plan', 'Plan');
+    await typeLabel(user, 'Repair Vendor', 'Vendor');
+    await typeLabel(user, 'Repair Cost', '100');
+    await typeLabel(user, 'Planned Date', '2026-05-01');
+    await clickLastButton(user, 'Approve');
+
+    await waitFor(() => {
+      expect(mockApi.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Action failed',
+          description: 'Invalid input',
+        }),
+      );
+    });
+  });
+
+  it('does nothing if error is not an ApiError in showActionError', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
+    mockApproveRepairRequest.mockRejectedValueOnce(new Error('Non-API error'));
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    });
+
+    await clickButton(user, 'Approve');
+    await typeLabel(user, 'Repair Plan', 'Plan');
+    await typeLabel(user, 'Repair Vendor', 'Vendor');
+    await typeLabel(user, 'Repair Cost', '100');
+    await typeLabel(user, 'Planned Date', '2026-05-01');
+    await clickLastButton(user, 'Approve');
+
+    await waitFor(() => {
+      expect(mockApi.error).not.toHaveBeenCalled();
     });
   });
 });
