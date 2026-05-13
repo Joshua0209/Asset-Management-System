@@ -6,56 +6,66 @@ Course project for a cloud computing / software engineering class. The repositor
 - `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
 
-## Status (as of Week 4 — Active, 2026-05-06)
+## Status (as of Week 5 — Active, 2026-05-13)
 
-**Weeks 1–3 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud), Auth API, Asset CRUD, the full repair-request workflow (submit → review → approve/reject → in-repair → complete), asset FSM transitions (assign / unassign / dispose), image upload + retrieval, manager workflow pages, and holder pages all shipped. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
+**Weeks 1–4 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud), Auth API, Asset CRUD, the full repair-request workflow (submit → review → approve/reject → in-repair → complete), asset FSM transitions (assign / unassign / dispose), image upload + retrieval, manager + holder pages, audit log + `GET /assets/:id/history`, composite search indexes, optimistic-locking pin tests, rate limiting + CORS tightening, and full i18n parity (212 keys × 2 locales) all shipped. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
 
-**Currently working on Week 4 — Advanced Features & Integration (May 5–9).** Goal: multi-dimensional search, optimistic-locking conflict UI, audit log + asset history endpoint, API hardening (rate limiting, CORS), and i18n coverage across all pages. One M3 carry-over item lands first this week (see below).
+**Currently working on Week 5 — Infra + Testing + Polish (May 12–16).** Goal: production multi-stage Dockerfiles, AWS deployment (EC2 ×2 + ALB + RDS Multi-AZ), CI/CD push-to-deploy, ≥ 80% test coverage with E2E for 6 critical flows, plus the one remaining W4 FE carry-over — multi-dimensional search/filter UI on the asset list.
 
-### Week 3 leftover (carry-over into Week 4)
+### Week 4 carry-over into Week 5
 
-M3 is now 5/5 complete on the BE/FE delivery axis — PR [#27](https://github.com/Joshua0209/Asset-Management-System/pull/27) (image display on repair detail, via the new `AuthImage` component) merged 2026-05-06. One holder-flow UX gap surfaced during the W3 smoke test still needs to land first thing in Week 4:
+W4 closed late on Tuesday May 13 (PR [#39](https://github.com/Joshua0209/Asset-Management-System/pull/39) rate limiting + CORS and PR [#52](https://github.com/Joshua0209/Asset-Management-System/pull/52) issue #29 dropdown both merged that morning). Audit log, composite indexes, optimistic-locking pin tests, full i18n parity, and granular 409 surfacing all shipped — see [docs/roadmap.md](docs/roadmap.md) Week 4 section for the full ledger. **One FE item carries:**
 
 | Task | Owner | Target | Notes |
 |------|-------|--------|-------|
-| **Resolve [issue #29](https://github.com/Joshua0209/Asset-Management-System/issues/29)** — asset-code dropdown on repair-submit form | FE-2 | Wed–Thu | `POST /repair-requests` requires asset UUID, but holders only know asset codes. Surfaced via the W3 integration smoke test. Fix: fetch the holder's own assets on page load, render `Select` (display `asset_code — name`, value = UUID); switch the `asset_id` field from text input |
+| **Multi-dimensional search/filter UI** on `AssetList.tsx` | Dev seat (FE) | Mon–Tue | Filter bar with text search (`q`) + dropdowns (`status`, `category`, `department`, `location`, `responsible_person_id`). Debounced, URL-state-driven. BE filter API + composite indexes already shipped — this is pure FE. Closes the last open M4 outcome |
 
-### Week 4 — Advanced Features & Integration (May 5–9) — Active
+### Week 5 — Infra + Testing + Polish (May 12–16) — Active
 
-Two server-side capabilities from the original W4 plan **already shipped earlier:**
+Resource shift this week: 5 devs → **2 dev (bug fixes + the W4 search-UI carry-over)** + **2 infra/DevOps (Docker prod, AWS, CI/CD deploy)** + **1 QA (E2E + manual)**.
 
-- Multi-dim asset search — `GET /assets` already accepts `q` (across `asset_code`/`name`/`model`), `status`, `category`, `department`, `location`, `responsible_person_id`. W4 BE narrows to **composite indexes** per [docs/system-design/07-database-design.md § Index Strategy](docs/system-design/07-database-design.md); the FE filter bar is the remaining bulk.
-- Optimistic locking is enforced on every update path — 4 endpoints in `assets.py` and 5 transitions in `repair_requests.py` check `version` and emit granular 409 codes (PR [#24](https://github.com/Joshua0209/Asset-Management-System/pull/24)). W4 work narrows to a verification pass + the FE conflict-resolution dialog.
+**In-flight on `feat/cicd-prod-pipeline` (not yet PR'd):** six commits already code-complete most of the W5 infra checklist — production Dockerfiles (BE gunicorn+UvicornWorker, FE nginx:alpine), `/health` liveness + `/ready` DB-readiness, `S3ImageStorage` behind the existing `ImageStorage` Protocol, full SCA gates (pip-audit + npm audit + OWASP Dependency-Check), and a deploy workflow (`.github/workflows/deploy.yml`) that builds → pushes to ECR → renders ECS task defs → rolling update with `wait-for-service-stability`. Auth via GitHub OIDC. **Architecture pivot:** EC2 ×2 → ECS Fargate. Task defs committed under `infra/ecs/` with placeholders documented in `infra/ecs/README.md`. **Pending operator action:** AWS provisioning of ECR + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role.
 
-Audit log + `GET /assets/:id/history` was explicitly deferred from Week 3's API contract review (PR [#28](https://github.com/Joshua0209/Asset-Management-System/pull/28)) and lands this week.
-
-#### Backend (2 people)
+#### Infra (2 people)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| ✅ Composite SQL indexes for asset search | Mon–Wed | Search API already shipped; performance-tune per [docs/system-design/07-database-design.md § Index Strategy](docs/system-design/07-database-design.md). Phase 2 indexes landed in PR [#46](https://github.com/Joshua0209/Asset-Management-System/pull/46) |
-| Optimistic locking verification pass | Mon | Done (PR #45) — 9 pin tests added, granular 409 codes documented per endpoint |
-| Audit log (event stream) + `GET /assets/:id/history` | Wed–Thu | New `asset_action_histories` model + migration. Endpoint deferred from Week 3 (PR #28). Per design decision Q13 |
-| API hardening: rate limiting, CORS | Thu–Fri | `slowapi` for rate limiting at 100 req/min/user. CORS already wired (`cors_allowed_origins`); audit allowed origins for the AWS rollout |
+| Production multi-stage Dockerfiles (FE + BE) | Mon–Tue | ✅ Code-complete on `feat/cicd-prod-pipeline`. PR + merge still required |
+| AWS setup: ECS Fargate + ALB + RDS Multi-AZ | Tue–Thu | Pending operator action. ECS task definitions committed; see `infra/ecs/README.md` for required GitHub Actions secrets/vars |
+| CI/CD pipeline expansion (deploy to ECR + ECS) | Wed–Thu | ✅ Code-complete on `feat/cicd-prod-pipeline`. OIDC-based deploy, no long-lived AWS keys |
+| Zero-downtime rolling deploy | Thu–Fri | ✅ Code-complete on `feat/cicd-prod-pipeline`. `wait-for-service-stability` + `/ready` drains bad targets during RDS failover |
+| S3 bucket for images | Wed | ✅ Code-complete on `feat/cicd-prod-pipeline`. `S3ImageStorage` selected via `REPAIR_IMAGE_BACKEND=s3`; storage keys unchanged so cutover needs no DB rewrite |
+| Security CI gates (full SCA) | Wed–Thu | ✅ Code-complete on `feat/cicd-prod-pipeline`. `pip-audit` + `npm audit --omit=dev --audit-level=high` + `dependency-check --failOnCVSS 7` |
+| Health check endpoints (`/health` + `/ready`) | Mon–Tue | ✅ Code-complete on `feat/cicd-prod-pipeline`. Compose healthcheck already points at `/ready` |
 
-#### Frontend (3 people)
+#### Testing (1 QA + all devs contribute)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Search & filter UI (multi-dimensional) | Mon–Wed | Filter bar with dropdowns + text search. Debounced API calls |
-| ✅ Optimistic locking conflict UI | Wed–Thu | Show "this record was modified by someone else" dialog on 409 `version_conflict` |
-| i18n: all pages translated | Thu–Fri | zh-TW primary, en secondary. All user-facing strings externalized |
-| UX polish: loading states, empty states, error toasts | Rolling | Consistent patterns across all pages |
+| Unit tests: business logic, validation, auth | Mon–Thu | pytest — focus on status transitions, optimistic locking, RBAC |
+| Integration tests: all API endpoints | Wed–Fri | httpx + pytest covering all CRUD + workflow + error cases |
+| E2E: 6 critical flows | Thu–Fri | Playwright — login, submit repair, approve, complete, search, register asset |
 
-#### Week 4 milestone — `M4 — Feature Complete (Full)`
+#### Dev (2 people — bug fixes + W4 carry-over)
 
-- [ ] M3 carry-over closed: issue #29 fixed (PR #27 image display merged 2026-05-06)
-- [x] Audit log (`asset_action_histories`) + `GET /assets/:id/history` shipped — every FSM transition writes a history row in the same transaction, manager-only paginated read endpoint exposes the trail
-- [ ] Multi-dimensional search works with all filter combinations
-- [x] Optimistic locking: concurrent edit shows conflict to second user
-- [ ] All UI text is i18n-ready (language switcher works)
-- [ ] No broken flows end-to-end
-- [ ] Rate limiting active on all endpoints
+| Task | Target | Notes |
+|------|--------|-------|
+| Multi-dim search/filter UI on `AssetList.tsx` | Mon–Tue | W4 FE carry-over described above |
+| Bug fixes from integration testing | Rolling | Prioritize workflow-breaking bugs |
+| Edge cases: empty states, validation errors | Mon–Wed | |
+| Performance: add DB indexes if queries slow | Thu–Fri | Per `07-database-design.md § Index Strategy` |
+
+#### Week 5 milestone — `M5 — Deployed & Tested`
+
+- [ ] W4 FE carry-over closed: search/filter UI on Asset List
+- [ ] `feat/cicd-prod-pipeline` reviewed, PR'd, merged
+- [ ] AWS resources provisioned (ECR + ECS + RDS + S3 + OIDC IAM role)
+- [ ] App running on AWS (accessible via public URL)
+- [ ] CI/CD: push to main auto-deploys
+- [ ] Zero-downtime deploy demonstrated
+- [ ] Test coverage ≥ 80% (unit + integration)
+- [ ] E2E: 6 flows passing
+- [ ] All security CI gates passing (SAST + SCA + secret scan)
 
 > Full weekly plan, risks, resource allocation, and rubric mapping live in [docs/roadmap.md](docs/roadmap.md).
 

@@ -21,7 +21,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
         Jun 02     ▶ Presentation
 ```
 
-**Status (2026-05-06):** W1–W3 done. **W4 active (Wed).** PR #27 (image display on repair detail) merged 2026-05-06; one M3 carry-over item remaining (issue #29 asset-code dropdown), landing first.
+**Status (2026-05-13):** W1–W4 done. **W5 active (Tue).** W4 closed with backend fully delivered (audit log, composite indexes, optimistic-locking pin tests, rate limiting + CORS) and FE mostly delivered (issue #29 dropdown, manager review detail page, full i18n parity, granular 409 error surfacing). **One FE item carries into W5:** multi-dimensional search/filter UI on `AssetList.tsx` (backend already shipped).
 
 ---
 
@@ -196,70 +196,92 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 ---
 
-## Week 4 — Advanced Features & Integration (May 5–9) — **Active (Wed)**
+## Week 4 — Advanced Features & Integration (May 5–9) — **Done (one FE carry-over)**
 
 **Goal:** All advanced features working. System fully integrated and polished.
 
 **Resources:** 2 BE + 3 FE
 
-**Status (2026-05-06):** PR #27 (image display on repair detail) merged 2026-05-06, closing the last open M3 outcome. One M3 carry-over item remaining (issue #29 asset-code dropdown), landing first before new W4 scope kicks off. Several backend capabilities already partially shipped (see notes below).
+**Status (2026-05-13):** Backend fully shipped — audit log + `GET /assets/:id/history`, composite indexes, optimistic-locking pin tests, rate limiting + CORS tightening. FE shipped issue #29 dropdown, the manager review detail page, full i18n parity (212 keys × 2 locales), and granular 409 surfacing via `formatApiError`. **One real carry-over into W5:** multi-dimensional search/filter UI on `AssetList.tsx` (BE filter API already accepts every dimension).
 
-**Carry-over from Week 3 (FE):**
+**Carry-over from Week 3 (FE) — closed:**
 
 | Task | Owner | Target | Notes |
 |------|-------|--------|-------|
-| **Resolve [issue #29](https://github.com/Joshua0209/Asset-Management-System/issues/29)** — asset-code dropdown on repair-submit form | FE-2 | Wed–Thu | Switch UUID input to `Select` populated by `GET /assets/mine` |
+| **Resolve [issue #29](https://github.com/Joshua0209/Asset-Management-System/issues/29)** — asset-code dropdown on repair-submit form | FE-2 | Wed–Thu | ✅ Done (PR [#52](https://github.com/Joshua0209/Asset-Management-System/pull/52), merged 2026-05-13). `SubmitRepairRequest.tsx` now fetches `GET /assets/mine` and renders a `Select` showing `asset_code — name`. Holder happy path is unblocked end-to-end |
 
-### Backend (2 people)
-
-| Task | Target | Notes |
-|------|--------|-------|
-| Multi-dimensional search & filter API | Mon–Wed | Filter by: asset ID, name, model, location, person, status, department, category. Composite SQL indexes per design.md §5.5. **Partially shipped** — `GET /assets` already accepts `q` (across asset_code/name/model), `status`, `category`, `department`, `location`, `responsible_person_id` (`assets.py:140`). Remaining BE work: composite indexes only |
-| Optimistic locking enforcement | Mon–Wed | `WHERE version = ?` on all update endpoints. Return HTTP 409 on conflict. **Already enforced** server-side — 4 endpoints in `assets.py`, 5 transitions in `repair_requests.py`; granular 409 codes via PR #24. Remaining BE work: verification pass + document codes for FE consumption |
-| Audit log (event stream) | Wed–Thu | Log every asset/request state change to `asset_action_histories` table. Per design decision Q13. **Includes `GET /assets/:id/history`** (deferred from Week 3 PR #28) |
-| API hardening: rate limiting, CORS | Thu–Fri | `slowapi` for rate limiting at 100 req/min/user. CORS already wired (`cors_allowed_origins` setting); audit allowed origins for AWS rollout |
-
-### Frontend (3 people)
+### Backend (2 people) — ✅ Done
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Search & filter UI (multi-dimensional) | Mon–Wed | Filter bar with dropdowns + text search. Debounced API calls |
-| Optimistic locking conflict UI | Wed–Thu | Show "this record was modified by someone else" dialog on 409 `version_conflict` (granular code already returned by BE via PR #24) |
-| i18n: all pages translated | Thu–Fri | zh-TW primary, en secondary. All user-facing strings externalized |
-| UX polish: loading states, empty states, error toasts | Rolling | Consistent patterns across all pages |
+| Composite SQL indexes for asset search | Mon–Wed | ✅ Done (PR [#46](https://github.com/Joshua0209/Asset-Management-System/pull/46)). New Alembic migration `20260511_0004_add_composite_indexes.py` adds Phase 2 indexes per `07-database-design.md § Index Strategy`. Backend filter API itself already shipped earlier (`assets.py:140`) — `q`, `status`, `category`, `department`, `location`, `responsible_person_id` |
+| Optimistic locking verification pass | Mon | ✅ Done (PR [#45](https://github.com/Joshua0209/Asset-Management-System/pull/45)). 9 pin tests added, granular 409 codes documented per endpoint (4 in `assets.py`, 5 transitions in `repair_requests.py`). Codes consumed by FE via `formatApiError` |
+| Audit log + `GET /assets/:id/history` | Wed–Thu | ✅ Done (PR [#38](https://github.com/Joshua0209/Asset-Management-System/pull/38), refined by [#49](https://github.com/Joshua0209/Asset-Management-System/pull/49) discriminated union + [#50](https://github.com/Joshua0209/Asset-Management-System/pull/50) `asset_deleted_at` meta). Every FSM transition writes an `asset_action_histories` row in the same transaction; manager-only paginated read endpoint exposes the trail. Implements design decision Q13; deferred from W3 PR #28 |
+| API hardening: rate limiting + CORS | Thu–Fri | ✅ Done (PR [#39](https://github.com/Joshua0209/Asset-Management-System/pull/39), merged 2026-05-13 03:47Z). `slowapi` configured with three tiers — authenticated (100/min), anonymous on auth endpoints (30/min/IP), images (300/min for attachment fan-out). CORS `methods` + `headers` allowlists narrowed to actual surface area; env-driven for prod-vs-dev. Master kill switch via `RATE_LIMIT_ENABLED` for load tests |
+
+**Bonus scope landed mid-week (not in original plan):**
+
+| Task | PR | Notes |
+|------|----|-------|
+| Assignment dates + `repair_id` field on assets | PR [#37](https://github.com/Joshua0209/Asset-Management-System/pull/37) | Tracks when each assignment/unassignment occurred and which repair currently owns the asset. Migration `20260506_0004_add_assignment_dates_and_repair_id.py` |
+| Manager review workflow moved to full detail page | PR [#44](https://github.com/Joshua0209/Asset-Management-System/pull/44) | Replaces inline modal with `ReviewDetail.tsx` route — better for long repair plans + audit context |
+| Manager asset actions consolidated on Asset Detail | PR [#43](https://github.com/Joshua0209/Asset-Management-System/pull/43) | Edit/assign/dispose actions all live on `AssetDetail.tsx`; removes Antd deprecation warnings |
+| Model registry hardening | PR [#48](https://github.com/Joshua0209/Asset-Management-System/pull/48) | Eagerly registers all model modules in `app/models/__init__.py` to prevent mapper-init failures in scripts |
+| Seed-image binary fix | PR [#51](https://github.com/Joshua0209/Asset-Management-System/pull/51) | Replaced placeholder JPEG with valid JFIF binary so seed data passes image-type validation |
+
+### Frontend (3 people) — ⚠ Partial (multi-dim search UI carries)
+
+| Task | Target | Notes |
+|------|--------|-------|
+| Search & filter UI (multi-dimensional) | Mon–Wed | ❌ Not done — **carries to W5.** `AssetList.tsx` still has no search/filter primitives. BE accepts the full filter set; the FE bar is the entirety of the remaining work. Status filter on `Reviews.tsx` is in place (1-dim) but does not satisfy the M4 multi-dim requirement |
+| Optimistic locking conflict UI | Wed–Thu | ✅ Done at envelope level. `utils/apiErrors.ts` maps every granular 409 code (`conflict`, `duplicate_request`, `invalid_transition`, `validation_error`, `payload_too_large`, `unsupported_media_type`, `rate_limit_exceeded`) into translated messages via `formatApiError`. Both locales carry `errors.conflict` = "This record was modified by someone else. Please refresh and try again." The purpose-built refresh-button modal was not built — flagged as a W6 polish item if needed |
+| i18n: all pages translated | Thu–Fri | ✅ Done. 212 keys × 2 locales (en, zh-TW), perfect parity. 8 sections: `common`, `auth`, `validation`, `errors`, `assetList`, `reviews`, `repairRequestList`, `repairRequestDetail`. Zero hardcoded user-facing strings |
+| UX polish: loading states, empty states, error toasts | Rolling | ✅ Done. Consistent Antd `Spin`/`Empty`/`notification` patterns across manager + holder surfaces, surfaced from FE-3 work in W3 and reinforced by PR #43/#44 |
 
 ### Milestone: `M4 — Feature Complete (Full)`
-- [ ] M3 carry-over closed: issue #29 fixed (PR #27 image display merged 2026-05-06)
-- [ ] Multi-dimensional search works with all filter combinations
-- [ ] Optimistic locking: concurrent edit shows conflict to second user
-- [ ] All UI text is i18n-ready (language switcher works)
-- [ ] No broken flows end-to-end
-- [ ] Rate limiting active on all endpoints
+- [x] M3 carry-over closed: issue #29 fixed (PR [#52](https://github.com/Joshua0209/Asset-Management-System/pull/52))
+- [x] Audit log (`asset_action_histories`) + `GET /assets/:id/history` shipped (PR [#38](https://github.com/Joshua0209/Asset-Management-System/pull/38))
+- [x] Optimistic locking: concurrent edit shows conflict to second user — translated error message via `formatApiError` for every 409 code (PR [#45](https://github.com/Joshua0209/Asset-Management-System/pull/45) pinned + documented the codes). _Note: dedicated refresh-button modal still pending if needed for demo polish_
+- [x] All UI text is i18n-ready (language switcher works) — 212-key parity, zh-TW + en, audited 2026-05-13
+- [x] Rate limiting active on all endpoints (PR [#39](https://github.com/Joshua0209/Asset-Management-System/pull/39))
+- [ ] **Multi-dimensional search works with all filter combinations** — BE shipped (composite indexes + filter API); **FE filter bar carries into W5**
+- [ ] No broken flows end-to-end — depends on E2E run in W5
 
 ---
 
-## Week 5 — Infra + Testing + Polish (May 12–16)
+## Week 5 — Infra + Testing + Polish (May 12–16) — **Active (Tue)**
 
 **Goal:** App is Dockerized, deployed to AWS, CI/CD pipeline green, test coverage ≥ 80%.
+
+**Status (2026-05-13):** W5 just kicked off after a late W4 close (PR #39 + #52 both merged on May 13). The resource shift now applies — five engineers redistribute into 2 dev seats (bug fixes + W4 search-UI carry-over), 2 infra seats (Docker prod + AWS), and 1 QA seat (E2E + manual testing). Search-UI carry-over from W4 is the only feature gap; everything else is hardening, deployment, and verification.
+
+**In-flight infra work on `feat/cicd-prod-pipeline` (not yet PR'd):** 6 commits already code-complete most of the W5 infra checklist — production multi-stage Dockerfiles (BE: gunicorn + UvicornWorker + non-root; FE: nginx:alpine), `/health` (liveness) + `/ready` (DB `SELECT 1`, 503 on failure), `S3ImageStorage` behind the existing `ImageStorage` Protocol (selected via `REPAIR_IMAGE_BACKEND=s3`), full SCA gates (pip-audit + npm audit + OWASP Dependency-Check), and a deploy workflow (`.github/workflows/deploy.yml`) that builds → pushes to ECR → renders ECS task defs → rolling update with `wait-for-service-stability`. Auth uses GitHub OIDC (no long-lived AWS keys). **Architecture pivot:** EC2 ×2 → ECS Fargate (cheaper, no manual orchestration). Task defs committed under `infra/ecs/` with placeholders documented in `infra/ecs/README.md`. **Pending operator action** (not code): AWS provisioning of ECR repos + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role, and `ACCOUNT_ID` / `REGION` substitution after `terraform apply`.
+
+**Carry-over from W4 (FE):**
+
+| Task | Owner | Target | Notes |
+|------|-------|--------|-------|
+| **Multi-dimensional search/filter UI** on `AssetList.tsx` | Dev seat (FE) | Mon–Tue | Filter bar with text search (`q`) + dropdowns (`status`, `category`, `department`, `location`, `responsible_person_id`). Debounced; URL-state-driven so refresh preserves filters. BE filter API + composite indexes (PR #46) already in place — this is pure FE. Closes the last open M4 outcome |
 
 **Resources shift:**
 
 | Role | People | Focus |
 |------|--------|-------|
-| Dev (bug fixes) | 2 | Fix issues found during testing, edge cases |
-| Infra / DevOps | 2 | Docker, AWS, CI/CD, monitoring |
+| Dev (bug fixes + W4 carry-over) | 2 | Fix issues found during testing, edge cases, ship the search/filter UI |
+| Infra / DevOps | 2 | Docker prod images, AWS, CI/CD, monitoring |
 | QA / Testing | 1 | E2E tests, manual testing |
 
 ### Infra (2 people)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Dockerize FE + BE (multi-stage builds) | Mon–Tue | ~~`docker compose` for local dev.~~ Dev compose stack ✅ pulled forward to W3 (PR #24) — `mysql` + `backend` + `frontend` with bind-mount hot-reload. **Remaining W5 work narrows to production multi-stage Dockerfiles** (optimized layer caching, non-root user, no dev deps in final stage) |
-| AWS setup: EC2 ×2 + ALB + RDS Multi-AZ | Tue–Thu | Per design.md §5.4. Use Terraform or manual setup |
-| CI/CD pipeline expansion (deploy) | Wed–Thu | Push to `main` → build → test → deploy to AWS |
-| Zero-downtime rolling deploy | Thu–Fri | ALB health checks + rolling update |
-| S3 bucket for images | Wed | Migrate from local disk to S3. CloudFront optional |
-| Security CI gates (full) | Wed–Thu | Add SonarQube, npm audit, pip-audit, OWASP Dependency-Check (per `09-testing-strategy.md` §SCA) |
+| Dockerize FE + BE (multi-stage builds) | Mon–Tue | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `backend/Dockerfile.prod` (gunicorn + UvicornWorker, slim final stage, non-root) and `frontend/Dockerfile.prod` (nginx:alpine serving Vite build with SPA fallback + asset cache headers). Dev compose stack (W3 PR #24) stays separate. PR + merge still required |
+| AWS setup: ECS Fargate + ALB + RDS Multi-AZ | Tue–Thu | **Pending operator action.** Architecture pivoted from "EC2 ×2 + manual orchestration" to ECS Fargate (cheaper, less ops surface). Task definitions committed on the branch under `infra/ecs/`; ECR repos + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role still need to be provisioned (Terraform skeleton TBD). See `infra/ecs/README.md` for required GitHub Actions secrets/vars |
+| CI/CD pipeline expansion (deploy) | Wed–Thu | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `.github/workflows/deploy.yml` triggers on push to `main`: builds both prod images, pushes to ECR (cached layers via `docker/build-push-action`), then renders task defs and runs ECS rolling update with `wait-for-service-stability`. Auth via GitHub OIDC — no long-lived AWS keys |
+| Zero-downtime rolling deploy | Thu–Fri | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `aws-actions/amazon-ecs-deploy-task-definition` with `wait-for-service-stability: true` blocks until the new task set passes ALB health checks (10-min timeout). Backend `/ready` endpoint returns 503 on DB failure so ALB can drain a bad target during RDS Multi-AZ failover without killing the container |
+| S3 bucket for images | Wed | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `S3ImageStorage` lives next to `LocalImageStorage` behind the existing `ImageStorage` Protocol; selected via `REPAIR_IMAGE_BACKEND=s3`. Storage keys are unchanged so the local→S3 cutover needs no DB rewrite. Bucket creation pending operator action |
+| Security CI gates (full) | Wed–Thu | **✅ Code-complete on `feat/cicd-prod-pipeline`.** SonarQube already shipped W1; the branch adds `pip-audit` (Python SCA, fails on any advisory in prod deps), `npm audit --omit=dev --audit-level=high`, and `dependency-check --failOnCVSS 7`. Optional `NVD_API_KEY` secret bumps NVD rate limit |
+| Health check endpoints (`/health` + `/ready`) | Mon–Tue | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `/health` is liveness (always 200); `/ready` runs `SELECT 1` (503 on DB failure) so ALB target groups can drain bad backends during RDS failover. Compose healthcheck already points at `/ready` |
 
 ### Testing (1 person + all devs contribute)
 
@@ -306,7 +328,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | CloudWatch metrics + alarms | Mon–Wed | CPU, error rate, latency, health check. Per design.md §5.8 |
 | Load test with k6 or Locust | Wed–Thu | Sustain peak QPS for 10 min. Capture metrics for presentation |
 | Stress test: find breaking point | Thu | Document max QPS before P95 > 3s |
-| Health check endpoint (`/health`) | Mon–Tue | ~~DB connectivity + app readiness~~ Stub endpoint (`{"status": "ok"}`) ✅ shipped W1 (`a0dfd95`, `backend/app/main.py:167`) and wired into compose backend healthcheck. **Remaining W6 work:** add real readiness signal (DB connectivity) so ALB doesn't route to a backend that can't reach RDS; configure ALB target-group health checks against it |
+| Health check endpoints (`/health` + `/ready`) | Mon–Tue | Liveness `/health` shipped W1 (`a0dfd95`); readiness `/ready` (DB `SELECT 1`, 503 on failure) **✅ code-complete on `feat/cicd-prod-pipeline`** and pulled into W5 scope. **Remaining W6 work:** configure ALB target-group health checks against `/ready` once the ECS cluster is provisioned |
 
 ### Presentation (2 people)
 
@@ -415,7 +437,11 @@ Legend:
 | Live demo fails during presentation | Low | High | Record backup demo video in Buffer week. Have screenshots as fallback |
 | Security CI gates too strict / slow | Low | Medium | Start with minimal gates in W1 (lint + gitleaks), expand progressively in W5 |
 | ~~**PR #27 (image display) holds Wednesday**~~ | ~~Active~~ Resolved | Low | Merged 2026-05-06 (W4 Wed) — first day of W4 as planned. M3 image-display outcome closed |
-| **Issue #29 (asset-code dropdown UX) blocks the holder happy path** | Active | Medium | Holders cannot submit a real repair request through the UI today (UUID input is unusable). FE-2 picks up Wed–Thu. Workaround in the meantime: smoke-test via DevTools or Postman, not the form |
+| ~~**Issue #29 (asset-code dropdown UX) blocks the holder happy path**~~ | ~~Active~~ Resolved | Medium | Closed by PR [#52](https://github.com/Joshua0209/Asset-Management-System/pull/52) merged 2026-05-13. Holders now pick assets from a dropdown sourced from `GET /assets/mine` |
+| **W4 closed late (May 13 instead of May 9)** — eats into W5 capacity | Active | Medium | PR #39 (rate limiting) and PR #52 (issue #29) both merged on the first morning of W5. Effective W5 length is ~4 working days, not 5. **Mitigation:** the only W4 feature carry-over (search/filter UI) lands Mon–Tue of W5, before AWS work starts in earnest |
+| **Multi-dim search/filter UI is the only thing standing between M4 and "complete"** | Active | Low | Pure FE work; BE is fully ready. One dev seat picks it up Mon–Tue of W5 |
+| **AWS setup compresses if W5 dev seat is over-allocated** | Active | High | 2 dev seats absorb both bug fixes + the search-UI carry-over. If integration testing surfaces lots of edge cases, the search bar could slip to mid-week and trigger a cascade. **Mitigation:** ship search UI Mon–Tue (small, well-scoped); push edge-case fixes to Wed–Fri. If still slipping by Wed EOD, swap one infra seat onto bug fixes for half a day |
+| **Production multi-stage Dockerfiles are net-new W5 work** | Active | Medium | Dev compose stack already exists (PR #24) but prod multi-stage builds (non-root user, no dev deps in final layer) have not been written. Infra seat owns Mon–Tue |
 
 ---
 
