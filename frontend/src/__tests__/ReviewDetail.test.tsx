@@ -271,4 +271,43 @@ describe('ReviewDetail', () => {
       expect(screen.getByText('Resource not found')).toBeInTheDocument();
     });
   });
+
+  it('shows a warning modal on 409 conflict error and refreshes data', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildRequest('pending_review'))
+      .mockResolvedValueOnce(buildRequest('pending_review'));
+
+    mockApproveRepairRequest.mockRejectedValueOnce(
+      new apiModule.ApiError(409, 'conflict', 'Conflict occurred'),
+    );
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    });
+
+    await clickButton(user, 'Approve');
+    await typeLabel(user, 'Repair Plan', 'Plan');
+    await typeLabel(user, 'Repair Vendor', 'Vendor');
+    await typeLabel(user, 'Repair Cost', '100');
+    await typeLabel(user, 'Planned Date', '2026-05-01');
+    await clickLastButton(user, 'Approve');
+
+    // Wait for conflict dialog
+    await waitFor(() => {
+      expect(screen.getAllByText('Update Conflict')[0]).toBeInTheDocument();
+    });
+
+    // Dismiss the dialog
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: 'OK' }));
+    });
+
+    // Verify refresh
+    await waitFor(() => {
+      expect(mockGetRepairRequestById).toHaveBeenCalledTimes(2);
+    });
+  });
 });

@@ -87,6 +87,7 @@
     "forbiddenTitle": "Access denied",
     "backHome": "Back to home",
     "notFound": "Resource not found",
+    "conflictTitle": "Update Conflict",
     "conflict": "This record was modified by someone else. Please refresh and try again.",
     "duplicateRequest": "An active repair request already exists for this asset.",
     "invalidTransition": "This action is not allowed for the current record status.",

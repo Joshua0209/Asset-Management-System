@@ -333,4 +333,40 @@ describe("AssetDetail", () => {
       });
     });
   });
+
+  it("shows a warning modal on 409 conflict error and refreshes data", async () => {
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockGetAsset
+      .mockResolvedValueOnce(buildAsset()) // Initial load
+      .mockResolvedValueOnce(buildAsset({ version: 2 })); // Refresh load
+
+    mockUpdateAsset.mockRejectedValueOnce(
+      new ApiError(409, "conflict", "Conflict message")
+    );
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    const editModal = getOpenModalContent();
+    await user.click(within(editModal).getByRole("button", { name: "Save" }));
+
+    // Wait for the conflict dialog
+    await waitFor(() => {
+      expect(screen.getAllByText("Update Conflict")[0]).toBeInTheDocument();
+    });
+
+    // Dismiss the dialog
+    await user.click(screen.getByRole("button", { name: "OK" }));
+
+    // Verify refresh
+    await waitFor(() => {
+      expect(mockGetAsset).toHaveBeenCalledTimes(2);
+    });
+  });
 });
