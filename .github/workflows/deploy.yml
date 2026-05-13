@@ -1,0 +1,159 @@
+name: Deploy
+
+# Triggered automatically on push to main, plus manual dispatch for hotfix
+# rollouts that need a re-deploy without a new commit.
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+# Prevent overlapping deploys racing each other to ECS. cancel-in-progress
+# is intentionally false: if two deploys queue up we want the older one to
+# finish (it might be a security patch) before the newer one starts.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+# OIDC requires id-token: write at the workflow or job level. contents:
+# read is the minimum to clone the repo.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  IMAGE_TAG: sha-${{ github.sha }}
+
+jobs:
+  build-and-push:
+    name: Build and push images to ECR
+    runs-on: ubuntu-latest
+    outputs:
+      backend-image: ${{ steps.meta.outputs.backend-image }}
+      frontend-image: ${{ steps.meta.outputs.frontend-image }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        # Federated identity - no AWS_ACCESS_KEY_ID secret. The role's trust
+        # policy restricts assumption to this repo + branch (see
+        # infra/ecs/README.md). Tokens are short-lived (1 hour default).
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@4625ce35226a7557230889aae2f52eb50ec3dcda # v2.0.1
+
+      - name: Set up Docker Buildx
+        # Buildx enables multi-platform builds and a more efficient cache
+        # backend than the legacy builder.
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:latest
+          # Layer caching against a sidecar :cache tag - cuts cold-build
+          # time from ~5 min to ~1 min on dependency-clean rebuilds.
+          cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:cache
+          cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:cache,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: true
+          # Vite inlines build-args, so the API base URL is baked into the
+          # bundle. If FE/BE share an ALB with path routing, /api/v1 keeps
+          # requests same-origin and avoids CORS entirely.
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '/api/v1' }}
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:latest
+          cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:cache
+          cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:cache,mode=max
+
+      - name: Expose image URIs to downstream jobs
+        id: meta
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          BACKEND_REPO: ${{ vars.ECR_REPOSITORY_BACKEND }}
+          FRONTEND_REPO: ${{ vars.ECR_REPOSITORY_FRONTEND }}
+        run: |
+          echo "backend-image=${REGISTRY}/${BACKEND_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "frontend-image=${REGISTRY}/${FRONTEND_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+  deploy-backend:
+    name: Deploy backend (ECS rolling update)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Render backend task definition
+        # Patches the container image into the committed task-def template.
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/backend-task-def.json
+          container-name: backend
+          image: ${{ needs.build-and-push.outputs.backend-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@817071763d92bbe2ae01a5ec32f1d999dd2293a0 # v2.1.0
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_BACKEND }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          # Block until the new task set passes ALB health checks. Without
+          # this the workflow would return success while the new task is
+          # crash-looping and the old image is still serving traffic.
+          wait-for-service-stability: true
+          # 10 min covers cold-start + slow ALB drain. If a deploy stalls
+          # past this, fail loud rather than hang the workflow.
+          wait-for-minutes: 10
+
+  deploy-frontend:
+    name: Deploy frontend (ECS rolling update)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Render frontend task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/frontend-task-def.json
+          container-name: frontend
+          image: ${{ needs.build-and-push.outputs.frontend-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@817071763d92bbe2ae01a5ec32f1d999dd2293a0 # v2.1.0
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_FRONTEND }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10

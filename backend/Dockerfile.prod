@@ -1,0 +1,75 @@
+# Production image for the FastAPI backend.
+#
+# Multi-stage:
+#   1. builder — installs runtime deps (no [dev]) into a wheelhouse
+#   2. final   — slim runtime, copies wheels + app, drops root, runs gunicorn
+#
+# This image is what gets pushed to ECR and run on ECS. The dev image
+# (./Dockerfile) is bind-mount + uvicorn --reload and stays separate.
+
+# ─── Stage 1: builder ──────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /build
+
+# Build deps for any wheels that don't ship pre-compiled (cryptography, etc.).
+# Pruned in the final stage — none of this goes to runtime.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+
+# Install with the [prod] extra (gunicorn) but NOT [dev]. `--prefix=/install`
+# stages everything under one tree we copy into the final image in one go.
+RUN pip install --upgrade pip \
+    && pip install --prefix=/install '.[prod]'
+
+# ─── Stage 2: final ────────────────────────────────────────────────────────
+FROM python:3.11-slim AS final
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # gunicorn worker count tuned for t4g.medium (2 vCPU). Override in ECS
+    # task def if the instance class changes — the rule of thumb is
+    # `(2 × $cpu_cores) + 1` but uvicorn workers are async, so we run fewer.
+    GUNICORN_WORKERS=2 \
+    GUNICORN_TIMEOUT=30
+
+WORKDIR /app
+
+# curl stays out of the final image — ALB does HTTP probes directly. If a
+# future debugging need calls for an in-container probe, prefer python -c.
+RUN useradd --create-home --uid 1000 app \
+    && mkdir -p /var/lib/ams/uploads \
+    && chown -R app:app /app /var/lib/ams
+
+# Copy installed deps from the builder stage.
+COPY --from=builder /install /usr/local
+COPY --chown=app:app app ./app
+COPY --chown=app:app alembic ./alembic
+COPY --chown=app:app alembic.ini ./alembic.ini
+
+USER app
+
+EXPOSE 8000
+
+# gunicorn supervises uvicorn workers; --graceful-timeout matches ALB drain
+# defaults so in-flight requests finish before the container is killed.
+CMD ["sh", "-c", "gunicorn app.main:app \
+    --workers ${GUNICORN_WORKERS} \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    --timeout ${GUNICORN_TIMEOUT} \
+    --graceful-timeout 30 \
+    --access-logfile - \
+    --error-logfile -"]

@@ -31,7 +31,14 @@ jobs:
       - name: Mypy strict
         run: mypy app
       - name: Pytest with coverage
-        run: pytest --cov=app --cov-report=term --cov-report=xml
+        # -n auto + --dist=loadfile mirrors .githooks/pre-push: parallelise
+        # across the runner's vCPUs (4 on ubuntu-latest), with file-scoped
+        # distribution so the autouse db_tables create_all/drop_all stays
+        # predictable. Safe because each xdist worker is its own process
+        # with its own module-scoped in-memory SQLite engine (see
+        # tests/conftest.py) and UUID-keyed upload paths avoid filename
+        # collisions in the shared REPAIR_UPLOAD_DIR.
+        run: pytest -n auto --dist=loadfile --cov=app --cov-report=term --cov-report=xml
       - name: Upload coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -91,6 +98,96 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Semgrep
         run: semgrep scan --config p/owasp-top-ten --error
+  pip-audit:
+    name: SCA - Python (pip-audit)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Install runtime deps
+        # Audit only the prod dependency closure - dev tools (pytest, mypy,
+        # ruff) never ship to production, so their CVEs would be noise here.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: pip-audit
+        # Strict mode also fails when the audit DB itself is unreachable -
+        # a "no findings, but we cannot actually tell" outcome is treated
+        # as failure, not silent pass.
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
+        with:
+          inputs: backend
+          strict: true
+  npm-audit:
+    name: SCA - Node (npm audit)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: npm audit (production deps, high+)
+        # --omit=dev mirrors what the production image installs.
+        # --audit-level=high blocks HIGH and CRITICAL only; MEDIUM/LOW
+        # advisories would be constant noise without a security trade-off.
+        run: npm audit --omit=dev --audit-level=high
+  dependency-check:
+    name: SCA - OWASP Dependency-Check
+    runs-on: ubuntu-latest
+    # Heavier than pip-audit/npm audit (downloads the NVD database). Keep
+    # PR + main only so it does not block feature branches on every push.
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Cache NVD database
+        # Without this cache, every run re-downloads ~500 MB from the NIST
+        # NVD feed. The data directory is what dependency-check checksums
+        # against; the path is fixed by the action.
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        env:
+          CACHE_KEY_HASH: ${{ hashFiles('backend/pyproject.toml', 'frontend/package-lock.json') }}
+        with:
+          path: ~/.dependency-check
+          key: dep-check-${{ runner.os }}-${{ env.CACHE_KEY_HASH }}
+          restore-keys: |
+            dep-check-${{ runner.os }}-
+      - name: OWASP Dependency-Check
+        # CVSS 7+ = HIGH or CRITICAL severity. Matches the roadmap's
+        # "block on HIGH/CRITICAL CVE" gate (Week 5 SCA spec).
+        uses: dependency-check/Dependency-Check_Action@75ba02d6183445fe0761d26e836bde58b1560600 # v1.1.0
+        with:
+          project: asset-management-system
+          path: "."
+          format: HTML
+          args: >-
+            --failOnCVSS 7
+            --enableRetired
+        env:
+          # Public NVD API key bumps the rate limit from 5 to 50 req/30s.
+          # Optional - the action falls back to the unauthenticated rate
+          # if the secret is unset, only making the run slower.
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+      - name: Upload dependency-check report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-check-report
+          path: reports
+          if-no-files-found: ignore
   sonarqube:
     name: SonarQube quality gate
     runs-on: ubuntu-latest

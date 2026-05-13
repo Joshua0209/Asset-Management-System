@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     bootstrap_manager_department: str = "IT"
 
     repair_upload_dir: str = "uploads/repair-requests"
+    # Image storage backend selector. "local" uses the disk-backed
+    # LocalImageStorage (default for dev / docker compose); "s3" uses the
+    # S3-backed adapter and requires repair_s3_bucket to be set. The
+    # production ECS task definition sets this to "s3".
+    repair_image_backend: str = "local"
+    repair_s3_bucket: str = ""
+    repair_s3_prefix: str = "repair-requests"
 
     # Rate limiting (slowapi, in-memory per-process — see
     # docs/system-design/05-phase2-architecture.md for the no-Redis decision).

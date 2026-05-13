@@ -58,7 +58,10 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      # /ready exercises DB connectivity (SELECT 1); /health is liveness only.
+      # Compose uses readiness so `depends_on: service_healthy` blocks the
+      # frontend until the DB-backed API is actually serving requests.
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/ready"]
       interval: 10s
       timeout: 5s
       retries: 10
