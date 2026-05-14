@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 
-import { ApiError } from '../api';
+import { ApiError } from '@/api';
 
 export function getApiErrorMessage(apiError: ApiError, t: TFunction): string {
   switch (apiError.code) {

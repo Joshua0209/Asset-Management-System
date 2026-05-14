@@ -5,8 +5,8 @@ import {
   getToken,
   loadSession,
   saveSession,
-} from "../auth/storage";
-import type { AuthSession } from "../api/auth";
+} from "@/auth/storage";
+import type { AuthSession } from "@/api/auth";
 
 const STORAGE_KEY = "ams-auth";
 

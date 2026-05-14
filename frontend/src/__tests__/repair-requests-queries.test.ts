@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../api/base-client", () => ({
+vi.mock("@/api/base-client", () => ({
   request: vi.fn(),
 }));
 
-const baseClientModule = await import("../api/base-client");
+const baseClientModule = await import("@/api/base-client");
 const mockRequest = vi.mocked(baseClientModule.request);
 
-type RepairQueriesModule = typeof import("../api/repair-requests/queries");
+type RepairQueriesModule = typeof import("@/api/repair-requests/queries");
 
 describe("api/repair-requests/queries", () => {
   afterEach(() => {
@@ -26,7 +26,7 @@ describe("api/repair-requests/queries", () => {
       meta: { total: 0, page: 1, per_page: 20, total_pages: 0 },
     });
 
-    const mod: RepairQueriesModule = await import("../api/repair-requests/queries");
+    const mod: RepairQueriesModule = await import("@/api/repair-requests/queries");
     await mod.listRepairRequests({
       page: 2,
       perPage: 10,
@@ -101,7 +101,7 @@ describe("api/repair-requests/queries", () => {
         },
       });
 
-    const mod: RepairQueriesModule = await import("../api/repair-requests/queries");
+    const mod: RepairQueriesModule = await import("@/api/repair-requests/queries");
     const result = await mod.approveRepairRequest("rr-1", {
       version: 1,
       repair_plan: "replace board",
@@ -134,7 +134,7 @@ describe("api/repair-requests/queries", () => {
       data: { id: "rr-1", version: 2, status: "under_repair" },
     });
 
-    const mod: RepairQueriesModule = await import("../api/repair-requests/queries");
+    const mod: RepairQueriesModule = await import("@/api/repair-requests/queries");
     const result = await mod.approveRepairRequest("rr-1", { version: 1 });
 
     expect(mockRequest).toHaveBeenCalledTimes(1);
@@ -151,7 +151,7 @@ describe("api/repair-requests/queries", () => {
       .mockResolvedValueOnce({ data: { id: "rr-1", version: 1 } })
       .mockResolvedValueOnce({ id: "rr-2", version: 1 });
 
-    const mod: RepairQueriesModule = await import("../api/repair-requests/queries");
+    const mod: RepairQueriesModule = await import("@/api/repair-requests/queries");
     const wrapped = await mod.getRepairRequestById("rr-1");
     const unwrapped = await mod.getRepairRequestById("rr-2");
 
@@ -168,7 +168,7 @@ describe("api/repair-requests/queries", () => {
       .mockResolvedValueOnce({ data: { id: "rr-1", status: "rejected", version: 2 } })
       .mockResolvedValueOnce({ data: { id: "rr-2", status: "rejected", version: 2 } });
 
-    const mod: RepairQueriesModule = await import("../api/repair-requests/queries");
+    const mod: RepairQueriesModule = await import("@/api/repair-requests/queries");
     await mod.rejectRepairRequest("rr-1", { version: 1, rejection_reason: "no fault" });
     await mod.rejectRepairRequest("rr-2", { version: 1, reason: "fallback" });
 
@@ -187,7 +187,7 @@ describe("api/repair-requests/queries", () => {
   it("updateRepairRequestDetails patches the repair-details endpoint", async () => {
     mockRequest.mockResolvedValueOnce({ data: { id: "rr-1", version: 2 } });
 
-    const mod: RepairQueriesModule = await import("../api/repair-requests/queries");
+    const mod: RepairQueriesModule = await import("@/api/repair-requests/queries");
     await mod.updateRepairRequestDetails("rr-1", {
       version: 1,
       fault_content: "connector",
@@ -210,7 +210,7 @@ describe("api/repair-requests/queries", () => {
   it("completeRepairRequest posts complete payload", async () => {
     mockRequest.mockResolvedValueOnce({ data: { id: "rr-1", status: "completed", version: 3 } });
 
-    const mod: RepairQueriesModule = await import("../api/repair-requests/queries");
+    const mod: RepairQueriesModule = await import("@/api/repair-requests/queries");
     const result = await mod.completeRepairRequest("rr-1", {
       version: 2,
       repair_date: "2026-04-25",
@@ -241,7 +241,7 @@ describe("api/repair-requests/queries", () => {
     });
 
     it("delegates list/get/approve/reject/details/complete to mock backend", async () => {
-      vi.doMock("../mocks/mockBackend", () => ({
+      vi.doMock("@/mocks/mockBackend", () => ({
         listRepairRequests: vi.fn().mockReturnValue({ data: [], meta: { total: 0, page: 1, per_page: 20, total_pages: 0 } }),
         getRepairRequestById: vi.fn().mockReturnValue({ id: "rr-1" }),
         approveRepairRequest: vi.fn().mockReturnValue({ id: "rr-1", version: 2 }),
@@ -250,7 +250,7 @@ describe("api/repair-requests/queries", () => {
         completeRepairRequest: vi.fn().mockReturnValue({ id: "rr-1", version: 3 }),
       }));
 
-      const mod: RepairQueriesModule = await import("../api/repair-requests/queries");
+      const mod: RepairQueriesModule = await import("@/api/repair-requests/queries");
 
       await mod.listRepairRequests({ page: 1, perPage: 5 });
       const got = await mod.getRepairRequestById("rr-1");

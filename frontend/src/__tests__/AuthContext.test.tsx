@@ -1,17 +1,17 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { AuthProvider, useAuth } from "../auth/AuthContext";
-import { UNAUTHORIZED_EVENT, saveSession } from "../auth/storage";
-import type { AuthSession } from "../api/auth";
+import { AuthProvider, useAuth } from "@/auth/AuthContext";
+import { UNAUTHORIZED_EVENT, saveSession } from "@/auth/storage";
+import type { AuthSession } from "@/api/auth";
 
-vi.mock("../api", () => ({
+vi.mock("@/api", () => ({
   authApi: {
     login: vi.fn(),
   },
 }));
 
-const { authApi } = await import("../api");
+const { authApi } = await import("@/api");
 const mockLogin = vi.mocked(authApi.login);
 
 const wrapper = ({ children }: { children: ReactNode }) => (

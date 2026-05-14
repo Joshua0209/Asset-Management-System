@@ -2,16 +2,16 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
-import MyAssetList from "../pages/MyAssetList";
-import i18n from "../i18n";
+import MyAssetList from "@/pages/holder/MyAssetList";
+import i18n from "@/i18n";
 import { holderUser, buildAssetResponse } from "./test-helpers";
 
-vi.mock("../auth/AuthContext", () => ({
+vi.mock("@/auth/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
 
-vi.mock("../api", async () => {
-  const actual = await vi.importActual<typeof import("../api")>("../api");
+vi.mock("@/api", async () => {
+  const actual = await vi.importActual<typeof import("@/api")>("@/api");
   return {
     ...actual,
     assetsApi: {
@@ -21,8 +21,8 @@ vi.mock("../api", async () => {
   };
 });
 
-const authModule = await import("../auth/AuthContext");
-const apiModule = await import("../api");
+const authModule = await import("@/auth/AuthContext");
+const apiModule = await import("@/api");
 
 const mockUseAuth = vi.mocked(authModule.useAuth);
 const mockListMyAssets = vi.mocked(apiModule.assetsApi.listMyAssets);

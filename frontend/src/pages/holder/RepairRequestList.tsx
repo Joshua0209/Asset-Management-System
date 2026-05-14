@@ -13,15 +13,9 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { PlusOutlined } from '@ant-design/icons';
 
-import { ApiError, repairRequestsApi } from '../api';
-import type { RepairRequestRecord, RepairRequestStatus } from '../api/repair-requests';
-
-const STATUS_COLORS: Record<RepairRequestStatus, string> = {
-  pending_review: 'processing',
-  under_repair: 'warning',
-  completed: 'success',
-  rejected: 'error',
-};
+import { ApiError, repairRequestsApi } from '@/api';
+import type { RepairRequestRecord, RepairRequestStatus } from '@/api/repair-requests';
+import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -102,7 +96,7 @@ const RepairRequestList: React.FC = () => {
       key: 'status',
       width: 140,
       render: (status: RepairRequestStatus) => (
-        <Tag color={STATUS_COLORS[status]}>{t(`repairRequestList.status.${status}`)}</Tag>
+        <Tag color={REPAIR_REQUEST_STATUS_COLORS[status]}>{t(`repairRequestList.status.${status}`)}</Tag>
       ),
     },
     {

@@ -1,7 +1,7 @@
 import { Segmented } from "antd";
 import { useTranslation } from "react-i18next";
 
-import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "../i18n";
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/i18n";
 
 const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
   zh: "中",
