@@ -1,8 +1,7 @@
-import { useCallback, useState } from 'react';
-import { Modal } from 'antd';
-import type { ParseKeys, TFunction } from 'i18next';
-import { ApiError, repairRequestsApi } from '@/api';
-import { getApiErrorMessage } from '@/utils/apiErrors';
+import { useCallback } from 'react';
+import type { TFunction } from 'i18next';
+import { repairRequestsApi } from '@/api';
+import { useSubmitAction } from '@/hooks/useSubmitAction';
 
 export interface ApproveValues {
   repair_plan: string;
@@ -45,40 +44,12 @@ interface UseReviewActionsArgs {
 }
 
 export function useReviewActions({ requestId, version, reload, api, t }: UseReviewActionsArgs) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const run = useCallback(
-    async (call: () => Promise<unknown>, successKey: ParseKeys): Promise<boolean> => {
-      setIsSubmitting(true);
-      try {
-        await call();
-        await reload();
-        api.success({ title: t(successKey) });
-        return true;
-      } catch (e) {
-        if (e instanceof ApiError) {
-          if (e.code === 'conflict') {
-            Modal.warning({
-              title: t('errors.conflictTitle'),
-              content: getApiErrorMessage(e, t),
-              onOk: async () => {
-                await reload();
-              },
-            });
-          } else {
-            api.error({
-              title: t('reviews.actionFailedTitle'),
-              description: getApiErrorMessage(e, t),
-            });
-          }
-        }
-        return false;
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [api, reload, t],
-  );
+  const { isSubmitting, run } = useSubmitAction({
+    reload,
+    api,
+    t,
+    failureTitleKey: 'reviews.actionFailedTitle',
+  });
 
   const approve = useCallback(
     (values: ApproveValues) =>
