@@ -1,9 +1,8 @@
-import { useCallback, useState } from 'react';
-import { Modal } from 'antd';
-import type { ParseKeys, TFunction } from 'i18next';
-import { ApiError, assetsApi } from '@/api';
-import { getApiErrorMessage } from '@/utils/apiErrors';
+import { useCallback } from 'react';
+import type { TFunction } from 'i18next';
+import { assetsApi } from '@/api';
 import type { AssetUpdatePayload } from '@/api/assets';
+import { useSubmitAction } from '@/hooks/useSubmitAction';
 
 export interface AssignValues {
   responsible_person_id: string;
@@ -33,40 +32,12 @@ interface UseAssetActionsArgs {
 }
 
 export function useAssetActions({ assetId, version, reload, api, t }: UseAssetActionsArgs) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const run = useCallback(
-    async (call: () => Promise<unknown>, successKey: ParseKeys): Promise<boolean> => {
-      setIsSubmitting(true);
-      try {
-        await call();
-        await reload();
-        api.success({ title: t(successKey) });
-        return true;
-      } catch (e) {
-        if (e instanceof ApiError) {
-          if (e.code === 'conflict') {
-            Modal.warning({
-              title: t('errors.conflictTitle'),
-              content: getApiErrorMessage(e, t),
-              onOk: async () => {
-                await reload();
-              },
-            });
-          } else {
-            api.error({
-              title: t('assetList.manager.actionFailedTitle'),
-              description: getApiErrorMessage(e, t),
-            });
-          }
-        }
-        return false;
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [api, reload, t],
-  );
+  const { isSubmitting, run } = useSubmitAction({
+    reload,
+    api,
+    t,
+    failureTitleKey: 'assetList.manager.actionFailedTitle',
+  });
 
   const updateAsset = useCallback(
     (payload: Omit<AssetUpdatePayload, 'version'>) =>
