@@ -9,7 +9,11 @@ Specifically:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi.testclient import TestClient
+
+from app.models.user import User
 
 
 def test_allowed_origin_is_echoed(client: TestClient) -> None:
@@ -66,6 +70,40 @@ def test_preflight_returns_finite_headers_not_wildcard(client: TestClient) -> No
     headers = {h.strip().lower() for h in allow_headers.split(",")}
     assert "authorization" in headers
     assert "content-type" in headers
+
+
+def test_auth_login_200_echoes_allowed_origin(
+    client: TestClient, make_user: Callable[..., User]
+) -> None:
+    """The actual cross-origin POST (not just the preflight) must carry
+    ``Access-Control-Allow-Origin`` on success. PR #60 fixed the 500 that
+    was preventing CORSMiddleware from attaching this header; pin the fix
+    so a regression to a non-Response return on the auth endpoints can't
+    silently re-break the FE.
+    """
+    make_user(email="cors@example.com", password="Password123")
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "cors@example.com", "password": "Password123"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_auth_login_401_echoes_allowed_origin(client: TestClient) -> None:
+    """Same guarantee on the error path: a wrong-credentials 401 still flows
+    through HTTPException + middleware, and the browser still needs ACAO to
+    surface the response body to JS. Without this, the FE's "invalid login"
+    toast would silently fail to render under CORS.
+    """
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "ghost@example.com", "password": "Whatever123"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert response.status_code == 401
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
 
 def test_preflight_from_disallowed_origin_is_rejected(client: TestClient) -> None:

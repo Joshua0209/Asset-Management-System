@@ -4,6 +4,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -70,6 +71,11 @@ _DUMMY_PASSWORD_HASH = hash_password("placeholder-password-for-timing-equalizati
     "/register",
     status_code=status.HTTP_201_CREATED,
     summary="Register new user (public, holder-only)",
+    # We return JSONResponse explicitly so slowapi's `@limiter.limit` can
+    # inject X-RateLimit-* headers (it requires a Starlette Response, not
+    # a raw Pydantic model). `response_model=` keeps the OpenAPI schema
+    # accurate even though FastAPI's serializer is bypassed at runtime.
+    response_model=DataResponse[UserRead],
     responses=error_responses(
         status.HTTP_409_CONFLICT,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -80,7 +86,7 @@ _DUMMY_PASSWORD_HASH = hash_password("placeholder-password-for-timing-equalizati
 @limiter.limit(_anonymous_rate_limit)
 def register(
     request: Request, payload: RegisterRequest, db: DbSession
-) -> DataResponse[UserRead]:
+) -> JSONResponse:
     # Decision A2: role is always holder on public register.
     # Email is globally unique at the DB layer, so the duplicate check is
     # not filtered by deleted_at — a soft-deleted row still occupies the email.
@@ -124,7 +130,10 @@ def register(
         ) from exc
 
     db.refresh(user)
-    return DataResponse(data=UserRead.model_validate(user))
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=DataResponse(data=UserRead.model_validate(user)).model_dump(mode="json"),
+    )
 
 
 _INVALID_CREDENTIALS = HTTPException(
@@ -136,6 +145,9 @@ _INVALID_CREDENTIALS = HTTPException(
 @router.post(
     "/login",
     summary="Authenticate and receive an access token",
+    # See /register: explicit JSONResponse is required for slowapi header
+    # injection; response_model keeps the OpenAPI schema in sync.
+    response_model=DataResponse[LoginResponse],
     responses=error_responses(
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -145,7 +157,7 @@ _INVALID_CREDENTIALS = HTTPException(
 @limiter.limit(_anonymous_rate_limit)
 def login(
     request: Request, payload: LoginRequest, db: DbSession
-) -> DataResponse[LoginResponse]:
+) -> JSONResponse:
     user = db.scalar(
         select(User).where(User.email == payload.email, User.deleted_at.is_(None))
     )
@@ -159,12 +171,14 @@ def login(
         raise _INVALID_CREDENTIALS
 
     token, expires_at = create_access_token(subject=user.id, role=user.role)
-    return DataResponse(
-        data=LoginResponse(
-            token=token,
-            expires_at=expires_at,
-            user=LoginUser.model_validate(user),
-        )
+    return JSONResponse(
+        content=DataResponse(
+            data=LoginResponse(
+                token=token,
+                expires_at=expires_at,
+                user=LoginUser.model_validate(user),
+            )
+        ).model_dump(mode="json")
     )
 
 
