@@ -39,10 +39,14 @@ FROM python:3.11-slim AS final
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    # gunicorn worker count tuned for t4g.medium (2 vCPU). Override in ECS
-    # task def if the instance class changes — the rule of thumb is
-    # `(2 × $cpu_cores) + 1` but uvicorn workers are async, so we run fewer.
-    GUNICORN_WORKERS=2 \
+    # Single worker is mandatory through Phase 2: slowapi's MemoryStorage is
+    # per-process, so N workers would silently multiply every rate-limit cap
+    # by N (see docs/system-design/08-deployment-operations.md §"API
+    # Hardening: Rate Limiting" and the startup invariant in app/main.py).
+    # Phase 2 scales by ECS task count (`desiredCount`), not gunicorn
+    # workers. The runtime invariant hard-fails if WEB_CONCURRENCY or
+    # GUNICORN_WORKERS gets bumped above 1 while rate limiting is on.
+    WEB_CONCURRENCY=1 \
     GUNICORN_TIMEOUT=30
 
 WORKDIR /app
@@ -66,7 +70,7 @@ EXPOSE 8000
 # gunicorn supervises uvicorn workers; --graceful-timeout matches ALB drain
 # defaults so in-flight requests finish before the container is killed.
 CMD ["sh", "-c", "gunicorn app.main:app \
-    --workers ${GUNICORN_WORKERS} \
+    --workers ${WEB_CONCURRENCY} \
     --worker-class uvicorn.workers.UvicornWorker \
     --bind 0.0.0.0:8000 \
     --timeout ${GUNICORN_TIMEOUT} \

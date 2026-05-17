@@ -46,7 +46,9 @@ if not settings.rate_limit_enabled:
 
 
 def _enforce_single_worker_invariant(
-    settings_obj: "object", web_concurrency_raw: str | None
+    settings_obj: "object",
+    web_concurrency_raw: str | None,
+    gunicorn_workers_raw: str | None = None,
 ) -> None:
     """Refuse to boot when multi-worker would silently relax rate limits.
 
@@ -57,13 +59,20 @@ def _enforce_single_worker_invariant(
     value — credential-stuffing protection on ``/auth/login`` is silently
     defeated. We refuse to start rather than serve traffic with that hole.
 
-    Detection scope (known gap):
-    * ``WEB_CONCURRENCY`` is the gunicorn / ``tiangolo/uvicorn-gunicorn-fastapi``
-      convention. Most Phase 2 ECS task definitions will hit this path.
-    * ``uvicorn --workers N`` CLI flag is NOT readable from inside the app
-      (uvicorn does not export it to the process environment). The runbook in
-      ``08-deployment-operations.md`` carries the verbal "use --workers 1"
-      mandate; this function backstops the env-var shape only.
+    Two env-var conventions are checked because the Dockerfile / task-def
+    layers used both at different times:
+
+    * ``WEB_CONCURRENCY`` — tiangolo / ``uvicorn-gunicorn-fastapi`` convention.
+    * ``GUNICORN_WORKERS`` — the variable name this repo's ``Dockerfile.prod``
+      historically baked into ``--workers ${GUNICORN_WORKERS}``. The new
+      image switches to ``WEB_CONCURRENCY``, but a stale ECS task definition
+      in the wild may still set ``GUNICORN_WORKERS`` — the invariant must
+      catch it either way.
+
+    Known gap: ``uvicorn --workers N`` CLI flag is NOT readable from inside
+    the app (uvicorn does not export it to the process environment). The
+    runbook in ``08-deployment-operations.md`` carries the verbal "use
+    ``--workers 1``" mandate; this function backstops the env-var shape only.
 
     Malformed values (``""``, ``"auto"``, non-numeric) degrade to single-worker
     rather than raising ``ValueError`` — a confusing crash for an operator who
@@ -73,30 +82,49 @@ def _enforce_single_worker_invariant(
         # Rate limiting off → the N-worker concern is moot. The existing
         # WARN above already flags the disabled state loudly.
         return
-    if web_concurrency_raw is None:
+
+    def _parse(raw: str | None) -> int:
+        if raw is None:
+            return 1
+        try:
+            value = int(raw.strip())
+        except (ValueError, AttributeError):
+            # Garbled env value → treat as unset. Operator gets no false
+            # alarm, and the surrounding gunicorn/uvicorn layer will
+            # surface the bad value on its own when it tries to spawn
+            # processes.
+            return 1
+        return value if value > 0 else 1
+
+    web_workers = _parse(web_concurrency_raw)
+    gunicorn_workers = _parse(gunicorn_workers_raw)
+    effective = max(web_workers, gunicorn_workers)
+    if effective <= 1:
         return
-    try:
-        workers = int(web_concurrency_raw.strip())
-    except (ValueError, AttributeError):
-        # Garbled env value → treat as unset. Operator gets no false alarm,
-        # and the surrounding gunicorn/uvicorn layer will surface the bad
-        # value on its own when it tries to spawn processes.
-        return
-    if workers <= 1:
-        return
+
+    offenders = []
+    if web_workers > 1:
+        offenders.append(f"WEB_CONCURRENCY={web_workers}")
+    if gunicorn_workers > 1:
+        offenders.append(f"GUNICORN_WORKERS={gunicorn_workers}")
+    offender_str = " and ".join(offenders)
+
     raise RuntimeError(
-        f"WEB_CONCURRENCY={workers} but rate-limit storage is in-process "
-        "MemoryStorage. Effective per-user/per-IP cap is "
-        f"{workers}x the configured value, which silently defeats "
-        "credential-stuffing protection on /auth/login. Per "
-        "docs/system-design/08-deployment-operations.md, keep --workers 1 "
+        f"{offender_str} but rate-limit storage is in-process MemoryStorage. "
+        f"Effective per-user/per-IP cap is {effective}x the configured value, "
+        "which silently defeats credential-stuffing protection on /auth/login. "
+        "Per docs/system-design/08-deployment-operations.md, keep --workers 1 "
         "until Phase 3 introduces Redis-backed shared storage. Set "
-        "WEB_CONCURRENCY=1 (or unset) to boot. To intentionally bypass "
-        "for load tests, set RATE_LIMIT_ENABLED=false."
+        "WEB_CONCURRENCY=1 and GUNICORN_WORKERS=1 (or unset both) to boot. "
+        "To intentionally bypass for load tests, set RATE_LIMIT_ENABLED=false."
     )
 
 
-_enforce_single_worker_invariant(settings, os.environ.get("WEB_CONCURRENCY"))
+_enforce_single_worker_invariant(
+    settings,
+    os.environ.get("WEB_CONCURRENCY"),
+    os.environ.get("GUNICORN_WORKERS"),
+)
 
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
 # request time and emits the X-RateLimit-* headers.

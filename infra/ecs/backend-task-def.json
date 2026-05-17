@@ -19,8 +19,7 @@
       ],
       "environment": [
         {"name": "REPAIR_IMAGE_BACKEND", "value": "s3"},
-        {"name": "REPAIR_S3_BUCKET", "value": "ams-repair-images-prod"},
-        {"name": "GUNICORN_WORKERS", "value": "2"}
+        {"name": "REPAIR_S3_BUCKET", "value": "ams-repair-images-prod"}
       ],
       "secrets": [
         {"name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:ams/database-url"},
