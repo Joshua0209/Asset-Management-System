@@ -1,9 +1,10 @@
 # ECS task definitions
 
 These JSON files are the source of truth for the production ECS task
-configuration. The `deploy.yml` workflow renders them with the new image
-tag on each push to `main`, then registers the new revision and waits
-for the ECS service to reach steady state.
+configuration. The deploy jobs in `.github/workflows/ci.yml` render them
+with the new image tag on each push to `main` (after the test, SCA, and
+SonarQube gates pass), then register the new revision and wait for the
+ECS service to reach steady state.
 
 ## Placeholders
 
