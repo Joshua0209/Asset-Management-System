@@ -25,6 +25,26 @@ def test_parse_string_list_parses_json_array_strings() -> None:
     assert _parse_string_list(raw) == ["GET", "POST"]
 
 
+def test_parse_string_list_returns_raw_value_for_malformed_json_array() -> None:
+    """Malformed JSON-array strings fall back to the raw value.
+
+    Pydantic's downstream list validator then raises a clear error rather
+    than us silently swallowing a typo in the env file.
+    """
+    raw = '["GET", "POST"'  # missing closing bracket
+    assert _parse_string_list(raw) == raw
+
+
+def test_parse_string_list_parses_empty_json_array() -> None:
+    """`"[]"` should reach pydantic as `[]`, not the literal string."""
+    assert _parse_string_list("[]") == []
+
+
+def test_parse_string_list_parses_single_element_json_array() -> None:
+    """Single-element JSON arrays must still parse to a real list."""
+    assert _parse_string_list('["GET"]') == ["GET"]
+
+
 def test_parse_string_list_splits_comma_separated_strings() -> None:
     assert _parse_string_list("GET,POST,PATCH") == ["GET", "POST", "PATCH"]
 

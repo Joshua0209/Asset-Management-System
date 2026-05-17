@@ -13,7 +13,7 @@ suite-wide ``RATE_LIMIT_ENABLED=false`` set in ``conftest.py``.
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 
 import pytest
 from fastapi import FastAPI, Request
@@ -23,6 +23,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.rate_limit import get_rate_limit_key
 from app.main import register_rate_limit_handler
+from app.models.user import User
 
 
 def _build_app(*, anon_limit: str = "3/minute") -> FastAPI:
@@ -320,6 +321,47 @@ def test_health_endpoint_is_exempt_from_rate_limit(
     for _ in range(20):
         response = enabled_limiter.get("/health")
         assert response.status_code == 200, response.text
+
+
+def test_auth_register_2xx_carries_x_ratelimit_headers(
+    enabled_limiter: TestClient,
+) -> None:
+    """The whole point of the JSONResponse refactor in `/auth/register` is so
+    slowapi can inject `X-RateLimit-*` on the 201. If this regresses, the FE
+    rate-limit UI contract breaks silently — the 500 would be gone but the
+    headers would disappear.
+    """
+    response = enabled_limiter.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "rl-headers@example.com",
+            "password": "Password123",
+            "name": "RL Headers",
+            "department": "IT",
+        },
+    )
+    assert response.status_code == 201, response.text
+    keys = {k.lower() for k in response.headers.keys()}
+    assert "x-ratelimit-limit" in keys
+    assert "x-ratelimit-remaining" in keys
+    assert "x-ratelimit-reset" in keys
+
+
+def test_auth_login_2xx_carries_x_ratelimit_headers(
+    enabled_limiter: TestClient,
+    make_user: Callable[..., User],
+) -> None:
+    """Same contract as register, on the login 200 path."""
+    make_user(email="rl@example.com", password="Password123")
+    response = enabled_limiter.post(
+        "/api/v1/auth/login",
+        json={"email": "rl@example.com", "password": "Password123"},
+    )
+    assert response.status_code == 200, response.text
+    keys = {k.lower() for k in response.headers.keys()}
+    assert "x-ratelimit-limit" in keys
+    assert "x-ratelimit-remaining" in keys
+    assert "x-ratelimit-reset" in keys
 
 
 def test_auth_login_uses_anonymous_tier(enabled_limiter: TestClient) -> None:

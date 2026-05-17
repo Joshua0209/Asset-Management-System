@@ -14,19 +14,20 @@ def _parse_string_list(value: object) -> object:
     write `GET,POST` instead, which silently mis-parsed as a single-element
     list `["GET,POST"]` (and then CORS would advertise a single bogus
     method). This validator normalises the comma-separated form before
-    pydantic's own list parser runs, so both shapes work; pure JSON arrays
-    are parsed via json.loads to ensure they reach pydantic as lists.
+    pydantic's own list parser runs, so both shapes work; JSON-array
+    strings are parsed via `json.loads` so pydantic receives a real list
+    rather than a stringified one. Malformed JSON falls through to
+    pydantic for a contextual `ValidationError` rather than being silently
+    coerced.
     """
     if not isinstance(value, str):
         return value
     stripped = value.strip()
-    # JSON arrays start with `[` — parse them so pydantic receives a list.
     if stripped.startswith("["):
         try:
             return json.loads(stripped)
-        except (json.JSONDecodeError, TypeError):
-            # Fall back to returning raw string if JSON is malformed;
-            # pydantic's list validator will then raise a clear error.
+        except json.JSONDecodeError:
+            # Let pydantic's list validator surface the offending input.
             return value
     if "," not in stripped:
         return value

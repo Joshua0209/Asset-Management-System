@@ -71,6 +71,11 @@ _DUMMY_PASSWORD_HASH = hash_password("placeholder-password-for-timing-equalizati
     "/register",
     status_code=status.HTTP_201_CREATED,
     summary="Register new user (public, holder-only)",
+    # We return JSONResponse explicitly so slowapi's `@limiter.limit` can
+    # inject X-RateLimit-* headers (it requires a Starlette Response, not
+    # a raw Pydantic model). `response_model=` keeps the OpenAPI schema
+    # accurate even though FastAPI's serializer is bypassed at runtime.
+    response_model=DataResponse[UserRead],
     responses=error_responses(
         status.HTTP_409_CONFLICT,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -79,7 +84,7 @@ _DUMMY_PASSWORD_HASH = hash_password("placeholder-password-for-timing-equalizati
     ),
 )
 @limiter.limit(_anonymous_rate_limit)
-async def register(
+def register(
     request: Request, payload: RegisterRequest, db: DbSession
 ) -> JSONResponse:
     # Decision A2: role is always holder on public register.
@@ -140,6 +145,9 @@ _INVALID_CREDENTIALS = HTTPException(
 @router.post(
     "/login",
     summary="Authenticate and receive an access token",
+    # See /register: explicit JSONResponse is required for slowapi header
+    # injection; response_model keeps the OpenAPI schema in sync.
+    response_model=DataResponse[LoginResponse],
     responses=error_responses(
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -147,7 +155,7 @@ _INVALID_CREDENTIALS = HTTPException(
     ),
 )
 @limiter.limit(_anonymous_rate_limit)
-async def login(
+def login(
     request: Request, payload: LoginRequest, db: DbSession
 ) -> JSONResponse:
     user = db.scalar(
