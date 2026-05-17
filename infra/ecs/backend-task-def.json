@@ -19,8 +19,9 @@
       ],
       "environment": [
         {"name": "REPAIR_IMAGE_BACKEND", "value": "s3"},
-        {"name": "REPAIR_S3_BUCKET", "value": "ams-repair-images-prod"},
-        {"name": "FORWARDED_ALLOW_IPS", "value": "ALB_VPC_CIDR"}
+        {"name": "REPAIR_S3_BUCKET", "value": "REPAIR_S3_BUCKET"},
+        {"name": "FORWARDED_ALLOW_IPS", "value": "ALB_VPC_CIDR"},
+        {"name": "WEB_CONCURRENCY", "value": "1"}
       ],
       "secrets": [
         {"name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:ams/database-url"},

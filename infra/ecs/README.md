@@ -10,16 +10,25 @@ for the ECS service to reach steady state.
 The committed files have placeholders that must be substituted before the
 first real deploy:
 
-| Placeholder        | Where to set it                                     |
-|--------------------|-----------------------------------------------------|
-| `ACCOUNT_ID`       | Your AWS account number (12 digits)                 |
-| `REGION`           | e.g. `ap-northeast-1`                               |
-| `PLACEHOLDER_IMAGE`| Replaced at deploy time by `aws-actions/amazon-ecs-render-task-definition` |
+| Placeholder         | Where to set it                                                                          |
+|---------------------|------------------------------------------------------------------------------------------|
+| `ACCOUNT_ID`        | Your AWS account number (12 digits)                                                      |
+| `REGION`            | e.g. `ap-northeast-1`                                                                    |
+| `PLACEHOLDER_IMAGE` | Replaced at deploy time by `aws-actions/amazon-ecs-render-task-definition`               |
+| `REPAIR_S3_BUCKET`  | The bucket name backing repair-image storage (e.g. `ams-repair-images-prod`)             |
+| `ALB_VPC_CIDR`      | VPC CIDR of the ALB subnets (e.g. `10.0.0.0/16`); becomes the `FORWARDED_ALLOW_IPS` trust gate |
 
-The image-tag substitution is automatic. The other two are deliberately
-left as placeholders so you commit a real account ID/region exactly once
-(after `terraform apply`) instead of relying on every CI run to inject
-them.
+The image-tag substitution is automatic. The others are deliberately
+left as placeholders so you commit real values exactly once (after
+`terraform apply`) instead of relying on every CI run to inject them.
+
+`WEB_CONCURRENCY=1` is set explicitly in the task definition even though
+the image default also pins it — operators reading the task-def should
+not have to cross-reference the Dockerfile to see the single-worker
+invariant. Scaling axis through Phase 2 is the ECS service
+`desiredCount`, not gunicorn `--workers`; see
+`docs/system-design/08-deployment-operations.md` §"API Hardening: Rate
+Limiting" for why.
 
 ## Required secrets and variables
 
