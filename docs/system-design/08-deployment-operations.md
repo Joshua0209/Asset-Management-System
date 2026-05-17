@@ -13,9 +13,12 @@
 **Rolling update process (Phase 2-3):**
 1. New container image built and pushed to ECR
 2. Deployment creates new pods/tasks with new image
-3. Health check passes (HTTP 200 on `/health`)
-4. Old pods/tasks drained (in-flight requests complete)
-5. Old pods/tasks terminated
+3. ECS container/liveness probe passes: HTTP 200 on `/health` (process is up; always 200)
+4. ALB target-group/readiness probe passes: HTTP 200 on `/ready` (DB connectivity verified; returns 503 to drain the target during RDS Multi-AZ failover without killing the otherwise-fine container)
+5. Old pods/tasks drained (in-flight requests complete)
+6. Old pods/tasks terminated
+
+See `CLAUDE.md` §"Health endpoints (Week 5+)" for the code-level distinction between the two probes.
 
 **Database migration strategy:**
 - Use backward-compatible migrations only (add columns, never remove or rename in the same release)
