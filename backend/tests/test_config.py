@@ -19,10 +19,10 @@ def test_parse_string_list_passes_through_actual_lists() -> None:
     assert _parse_string_list(["GET", "POST"]) == ["GET", "POST"]
 
 
-def test_parse_string_list_passes_json_array_strings_unchanged() -> None:
-    """JSON-array strings should reach pydantic's default parser untouched."""
+def test_parse_string_list_parses_json_array_strings() -> None:
+    """JSON-array strings should be parsed into real lists."""
     raw = '["GET", "POST"]'
-    assert _parse_string_list(raw) == raw
+    assert _parse_string_list(raw) == ["GET", "POST"]
 
 
 def test_parse_string_list_splits_comma_separated_strings() -> None:
