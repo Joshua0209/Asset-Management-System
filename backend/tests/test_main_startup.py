@@ -18,6 +18,8 @@ Either one above 1 trips the same hard-fail.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 
@@ -176,6 +178,83 @@ def test_invariant_silent_when_rate_limit_disabled_even_with_many_workers() -> N
 
     # No raise even though WEB_CONCURRENCY=8.
     _enforce_single_worker_invariant(settings, web_concurrency_raw="8")
+
+
+def test_warn_when_forwarded_allow_ips_is_loopback_default(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Belt-and-suspenders: WARN if FORWARDED_ALLOW_IPS=127.0.0.1 with rate limits on.
+
+    The Dockerfile.prod default is ``127.0.0.1`` so local prod-image runs
+    behave like uvicorn's own default. In production, the ECS task-def MUST
+    override this to the ALB's VPC CIDR — without that, uvicorn won't trust
+    the ALB's X-Forwarded-For and every anonymous request collapses into one
+    bucket keyed on the ALB's private IP. That defeats rate limiting silently.
+
+    The WARN gives operators a loud breadcrumb in CloudWatch when the
+    override is missing, mirroring the existing RATE_LIMIT_ENABLED=false
+    WARN behaviour.
+    """
+    from app.core.config import Settings
+    from app.main import _warn_if_proxy_trust_misconfigured
+
+    settings = Settings(
+        database_url="sqlite:///:memory:",
+        jwt_secret="x" * 32,  # noqa: S106
+        rate_limit_enabled=True,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _warn_if_proxy_trust_misconfigured(settings, "127.0.0.1")
+
+    # Operator must be able to find this WARN by searching CloudWatch for
+    # the env var name.
+    assert any(
+        "FORWARDED_ALLOW_IPS" in rec.message and rec.levelno == logging.WARNING
+        for rec in caplog.records
+    ), f"Expected FORWARDED_ALLOW_IPS WARN. Got: {[r.message for r in caplog.records]}"
+
+
+def test_no_warn_when_forwarded_allow_ips_overridden(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No WARN when the task-def has overridden FORWARDED_ALLOW_IPS to a CIDR."""
+    from app.core.config import Settings
+    from app.main import _warn_if_proxy_trust_misconfigured
+
+    settings = Settings(
+        database_url="sqlite:///:memory:",
+        jwt_secret="x" * 32,  # noqa: S106
+        rate_limit_enabled=True,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _warn_if_proxy_trust_misconfigured(settings, "10.0.0.0/16")
+
+    assert not any(
+        "FORWARDED_ALLOW_IPS" in rec.message for rec in caplog.records
+    ), "Expected no FORWARDED_ALLOW_IPS WARN when overridden to a real CIDR"
+
+
+def test_no_warn_when_rate_limit_disabled(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No WARN when rate limiting is off — the existing rate-limit WARN covers it."""
+    from app.core.config import Settings
+    from app.main import _warn_if_proxy_trust_misconfigured
+
+    settings = Settings(
+        database_url="sqlite:///:memory:",
+        jwt_secret="x" * 32,  # noqa: S106
+        rate_limit_enabled=False,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _warn_if_proxy_trust_misconfigured(settings, "127.0.0.1")
+
+    assert not any(
+        "FORWARDED_ALLOW_IPS" in rec.message for rec in caplog.records
+    ), "Expected no FORWARDED_ALLOW_IPS WARN when rate limiting is disabled"
 
 
 def test_invariant_tolerates_malformed_values() -> None:

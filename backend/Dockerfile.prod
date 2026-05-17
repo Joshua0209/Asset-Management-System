@@ -47,7 +47,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     # workers. The runtime invariant hard-fails if WEB_CONCURRENCY or
     # GUNICORN_WORKERS gets bumped above 1 while rate limiting is on.
     WEB_CONCURRENCY=1 \
-    GUNICORN_TIMEOUT=30
+    GUNICORN_TIMEOUT=30 \
+    # Trust gate for X-Forwarded-For rewriting. Loopback is a safe default
+    # for local prod-image runs (matches uvicorn's own default behaviour);
+    # ECS task definitions MUST override this to the ALB-subnet VPC CIDR
+    # (e.g. 10.0.0.0/16). See docs/system-design/08-deployment-operations.md
+    # §"Behind the ALB: client-IP resolution" and the startup WARN in
+    # app/main.py that flags this default when rate limiting is enabled.
+    FORWARDED_ALLOW_IPS=127.0.0.1
 
 WORKDIR /app
 
@@ -75,5 +82,6 @@ CMD ["sh", "-c", "gunicorn app.main:app \
     --bind 0.0.0.0:8000 \
     --timeout ${GUNICORN_TIMEOUT} \
     --graceful-timeout 30 \
+    --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS}\" \
     --access-logfile - \
     --error-logfile -"]

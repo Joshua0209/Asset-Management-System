@@ -126,6 +126,44 @@ _enforce_single_worker_invariant(
     os.environ.get("GUNICORN_WORKERS"),
 )
 
+
+def _warn_if_proxy_trust_misconfigured(
+    settings_obj: "object", forwarded_allow_ips_raw: str | None
+) -> None:
+    """WARN when ``FORWARDED_ALLOW_IPS`` is the loopback default in production.
+
+    The prod image's default is ``127.0.0.1`` so local prod-image runs match
+    uvicorn's own default. Behind the ALB, the immediate TCP peer is the
+    load-balancer's private IP — NOT the loopback — so uvicorn's
+    ``ProxyHeadersMiddleware`` refuses to rewrite ``request.client.host`` from
+    ``X-Forwarded-For``. Every anonymous request then collapses into one
+    bucket keyed on the ALB IP, and the limiter silently self-DoSes.
+
+    The fix is to set ``FORWARDED_ALLOW_IPS`` to the ALB-subnet VPC CIDR in
+    the ECS task definition. This WARN gives operators a CloudWatch
+    breadcrumb when the override is missing — mirroring the existing
+    ``RATE_LIMIT_ENABLED=false`` WARN.
+
+    Skipped when rate limiting is off, since the rate-limit-disabled WARN
+    already covers that case loudly.
+    """
+    if not getattr(settings_obj, "rate_limit_enabled", True):
+        return
+    if forwarded_allow_ips_raw is None or forwarded_allow_ips_raw.strip() == "127.0.0.1":
+        logger.warning(
+            "FORWARDED_ALLOW_IPS is unset or 127.0.0.1 while rate limiting is "
+            "enabled. Behind an ALB this collapses every anonymous request "
+            "into the load-balancer's private-IP bucket and silently defeats "
+            "credential-stuffing protection on /auth/login. Set "
+            "FORWARDED_ALLOW_IPS to the ALB-subnet VPC CIDR (e.g. 10.0.0.0/16) "
+            "in the ECS task definition. See "
+            "docs/system-design/08-deployment-operations.md §'Behind the ALB: "
+            "client-IP resolution'."
+        )
+
+
+_warn_if_proxy_trust_misconfigured(settings, os.environ.get("FORWARDED_ALLOW_IPS"))
+
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
 # request time and emits the X-RateLimit-* headers.
 app.state.limiter = limiter
