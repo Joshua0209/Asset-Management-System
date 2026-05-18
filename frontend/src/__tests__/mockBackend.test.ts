@@ -20,7 +20,7 @@ function seedSession(user: SessionUser) {
 
 async function loadBackend() {
   vi.resetModules();
-  return import("../mocks/mockBackend");
+  return import("@/mocks/mockBackend");
 }
 
 describe("mocks/mockBackend", () => {

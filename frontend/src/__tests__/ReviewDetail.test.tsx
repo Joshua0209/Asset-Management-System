@@ -3,19 +3,19 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { vi } from 'vitest';
 
-import ReviewDetail from '../pages/ReviewDetail';
-import i18n from '../i18n';
-import type { RepairRequestRecord } from '../api/repair-requests/types';
+import ReviewDetail from '@/pages/manager/ReviewDetail';
+import i18n from '@/i18n';
+import type { RepairRequestRecord } from '@/api/repair-requests/types';
 import { mockApi } from './test-helpers';
 
-vi.mock('../components/AuthImage', () => ({
+vi.mock('@/components/AuthImage', () => ({
   default: ({ imageId, alt }: { imageId: string; alt?: string }) => (
     <img data-testid={`fault-image-${imageId}`} alt={alt ?? 'Fault'} />
   ),
 }));
 
-vi.mock('../api', async () => {
-  const actual = await vi.importActual<typeof import('../api')>('../api');
+vi.mock('@/api', async () => {
+  const actual = await vi.importActual<typeof import('@/api')>('@/api');
   return {
     ...actual,
     repairRequestsApi: {
@@ -28,7 +28,7 @@ vi.mock('../api', async () => {
   };
 });
 
-const apiModule = await import('../api');
+const apiModule = await import('@/api');
 const mockGetRepairRequestById = vi.mocked(apiModule.repairRequestsApi.getRepairRequestById);
 const mockApproveRepairRequest = vi.mocked(apiModule.repairRequestsApi.approveRepairRequest);
 const mockRejectRepairRequest = vi.mocked(apiModule.repairRequestsApi.rejectRepairRequest);

@@ -2,9 +2,9 @@ import React from 'react';
 import { Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
 import type { TFunction } from 'i18next';
-import type { AssetRecord, AssetStatus } from '../../api/assets';
+import type { AssetRecord, AssetStatus } from '@/api/assets';
 import { STATUS_COLORS } from './constants';
-import { formatDateValue, formatAmountValue } from '../../utils/format';
+import { formatDateValue, formatAmountValue } from '@/utils/format';
 
 export const getAssetColumns = (t: TFunction): TableColumnsType<AssetRecord> => [
   {

@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import SubmitRepairRequest from '../pages/SubmitRepairRequest';
+import SubmitRepairRequest from '@/pages/holder/SubmitRepairRequest';
 import { ConfigProvider } from 'antd';
-import { ApiError, apiClient } from '../api';
+import { ApiError, assetsApi, repairRequestsApi } from '@/api';
+import type { RepairRequestRecord } from '@/api/repair-requests';
 import { buildAssetResponse } from './test-helpers';
 
 // Mock i18next
@@ -14,26 +15,48 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-const mockRequest = vi.spyOn(apiClient, 'request');
+const mockListMyAssets = vi.spyOn(assetsApi, 'listMyAssets');
+const mockSubmitRepairRequest = vi.spyOn(repairRequestsApi, 'submitRepairRequest');
 
 const ASSETS_RESPONSE = buildAssetResponse('AST-2026-00003', 'Latitude 7440', 1);
 const ASSET = ASSETS_RESPONSE.data[0];
-
-type AxiosLikeConfig = { url?: string; method?: string };
+const SUBMIT_RESPONSE: RepairRequestRecord = {
+  id: 'rr-1',
+  asset_id: ASSET.id,
+  requester_id: 'holder-1',
+  reviewer_id: null,
+  status: 'pending_review',
+  fault_description: 'Broken screen',
+  repair_date: null,
+  fault_content: null,
+  repair_plan: null,
+  repair_cost: null,
+  repair_vendor: null,
+  rejection_reason: null,
+  completed_at: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  version: 1,
+  asset: {
+    id: ASSET.id,
+    asset_code: ASSET.asset_code,
+    name: ASSET.name,
+  },
+  requester: {
+    id: 'holder-1',
+    name: 'Holder',
+  },
+  reviewer: null,
+  images: [],
+};
 
 function mockAssetsListThen(postBehavior: 'success' | ApiError) {
-  mockRequest.mockImplementation((config: AxiosLikeConfig) => {
-    if (config.url === '/assets/mine') {
-      return Promise.resolve({ data: ASSETS_RESPONSE }) as never;
-    }
-    if (config.url === '/repair-requests') {
-      if (postBehavior === 'success') {
-        return Promise.resolve({ data: { data: { id: 'test-id' } } }) as never;
-      }
-      return Promise.reject(postBehavior) as never;
-    }
-    return Promise.reject(new Error(`Unexpected request to ${config.url}`)) as never;
-  });
+  mockListMyAssets.mockResolvedValue(ASSETS_RESPONSE);
+  if (postBehavior === 'success') {
+    mockSubmitRepairRequest.mockResolvedValue(SUBMIT_RESPONSE);
+    return;
+  }
+  mockSubmitRepairRequest.mockRejectedValue(postBehavior);
 }
 
 async function selectFirstAsset() {
@@ -71,8 +94,8 @@ describe('SubmitRepairRequest', () => {
     expect(screen.getByText('common.repairRequest.submit')).toBeDefined();
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith(
-        expect.objectContaining({ url: '/assets/mine' }),
+      expect(mockListMyAssets).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'in_use', perPage: 100 }),
       );
     });
   });
@@ -102,19 +125,10 @@ describe('SubmitRepairRequest', () => {
     fireEvent.click(screen.getByText('common.repairRequest.submit'));
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          method: 'POST',
-          url: '/repair-requests',
-          data: expect.any(FormData),
-        }),
-      );
+      expect(mockSubmitRepairRequest).toHaveBeenCalledWith(expect.any(FormData));
     });
 
-    const postCall = mockRequest.mock.calls.find(
-      ([config]) => (config as AxiosLikeConfig).url === '/repair-requests',
-    );
-    const formData = (postCall![0] as { data: FormData }).data;
+    const formData = mockSubmitRepairRequest.mock.calls[0][0];
     expect(formData.get('asset_id')).toBe(ASSET.id);
     expect(formData.get('fault_description')).toBe('Broken screen');
   });
@@ -132,9 +146,7 @@ describe('SubmitRepairRequest', () => {
     fireEvent.click(screen.getByText('common.repairRequest.submit'));
 
     await waitFor(() => {
-      expect(mockRequest).toHaveBeenCalledWith(
-        expect.objectContaining({ url: '/repair-requests' }),
-      );
+      expect(mockSubmitRepairRequest).toHaveBeenCalledWith(expect.any(FormData));
     });
   });
 });

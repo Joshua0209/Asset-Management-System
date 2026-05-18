@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError } from "../api";
-import { getApiErrorMessage } from "../utils/apiErrors";
+import { ApiError } from "@/api";
+import { getApiErrorMessage } from "@/utils/apiErrors";
 
 const t = ((key: string) => key) as Parameters<typeof getApiErrorMessage>[1];
 

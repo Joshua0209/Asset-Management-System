@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { AssetRecord } from '../api/assets';
+import type { AssetRecord } from '@/api/assets';
 
 export const holderUser = {
   id: "holder-1",

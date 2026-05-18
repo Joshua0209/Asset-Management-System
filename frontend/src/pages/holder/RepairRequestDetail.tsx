@@ -17,16 +17,11 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ToolOutlined } from '@ant-design/icons';
 
-import { ApiError, repairRequestsApi } from '../api';
-import type { RepairRequestRecord, RepairRequestStatus } from '../api/repair-requests';
-import AuthImage from '../components/AuthImage';
-
-const STATUS_TAG_COLORS: Record<RepairRequestStatus, string> = {
-  pending_review: 'processing',
-  under_repair: 'warning',
-  completed: 'success',
-  rejected: 'error',
-};
+import { ApiError, repairRequestsApi } from '@/api';
+import type { RepairRequestRecord } from '@/api/repair-requests';
+import AuthImage from '@/components/AuthImage';
+import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
+import { formatDateTime, formatRepairCost } from '@/utils/format';
 
 const RepairRequestDetail: React.FC = () => {
   const { t } = useTranslation();
@@ -34,12 +29,6 @@ const RepairRequestDetail: React.FC = () => {
   const [request, setRequest] = useState<RepairRequestRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const formatDate = (value: string | null): string => {
-    if (!value) return '-';
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
-  };
 
   useEffect(() => {
     if (!id) return;
@@ -87,7 +76,7 @@ const RepairRequestDetail: React.FC = () => {
         content: t('repairRequestList.status.pending_review'),
         color: 'blue',
         icon: <ClockCircleOutlined />,
-        title: formatDate(request.created_at),
+        title: formatDateTime(request.created_at),
       },
     ];
 
@@ -96,7 +85,7 @@ const RepairRequestDetail: React.FC = () => {
         content: t('repairRequestList.status.under_repair'),
         color: 'orange',
         icon: <ToolOutlined />,
-        title: request.updated_at ? formatDate(request.updated_at) : '',
+        title: request.updated_at ? formatDateTime(request.updated_at) : '',
       });
     }
 
@@ -105,7 +94,7 @@ const RepairRequestDetail: React.FC = () => {
         content: t('repairRequestList.status.completed'),
         color: 'green',
         icon: <CheckCircleOutlined />,
-        title: formatDate(request.completed_at),
+        title: formatDateTime(request.completed_at),
       });
     }
 
@@ -114,7 +103,7 @@ const RepairRequestDetail: React.FC = () => {
         content: t('repairRequestList.status.rejected'),
         color: 'red',
         icon: <CloseCircleOutlined />,
-        title: formatDate(request.updated_at),
+        title: formatDateTime(request.updated_at),
       });
     }
 
@@ -133,16 +122,16 @@ const RepairRequestDetail: React.FC = () => {
             <Card title={t('repairRequestDetail.sections.basic')}>
               <Descriptions column={{ xs: 1, sm: 2 }}>
                 <Descriptions.Item label={t('repairRequestDetail.fields.status')}>
-                  <Tag color={STATUS_TAG_COLORS[request.status]}>
+                  <Tag color={REPAIR_REQUEST_STATUS_COLORS[request.status]}>
                     {t(`repairRequestList.status.${request.status}`)}
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label={t('repairRequestDetail.fields.createdAt')}>
-                  {formatDate(request.created_at)}
+                  {formatDateTime(request.created_at)}
                 </Descriptions.Item>
                 {request.completed_at && (
                   <Descriptions.Item label={t('repairRequestDetail.fields.completedAt')}>
-                    {formatDate(request.completed_at)}
+                    {formatDateTime(request.completed_at)}
                   </Descriptions.Item>
                 )}
               </Descriptions>
@@ -200,7 +189,7 @@ const RepairRequestDetail: React.FC = () => {
                     {request.repair_vendor || '-'}
                   </Descriptions.Item>
                   <Descriptions.Item label={t('repairRequestDetail.fields.repairCost')}>
-                    {request.repair_cost ? `TWD ${request.repair_cost}` : '-'}
+                    {formatRepairCost(request.repair_cost)}
                   </Descriptions.Item>
                 </Descriptions>
                 <Divider style={{ margin: '12px 0' }} />

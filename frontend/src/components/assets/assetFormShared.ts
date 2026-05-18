@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { AssetCategory } from '../../api/assets';
+import type { AssetCategory } from '@/api/assets';
 
 export const ASSET_CATEGORY_OPTIONS: AssetCategory[] = [
   'phone',

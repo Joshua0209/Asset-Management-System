@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../api/base-client", () => ({
+vi.mock("@/api/base-client", () => ({
   request: vi.fn(),
 }));
 
-const baseClientModule = await import("../api/base-client");
+const baseClientModule = await import("@/api/base-client");
 const mockRequest = vi.mocked(baseClientModule.request);
 
-type UsersQueriesModule = typeof import("../api/users/queries");
+type UsersQueriesModule = typeof import("@/api/users/queries");
 
 describe("api/users/queries", () => {
   afterEach(() => {
@@ -42,7 +42,7 @@ describe("api/users/queries", () => {
       ],
     });
 
-    const mod: UsersQueriesModule = await import("../api/users/queries");
+    const mod: UsersQueriesModule = await import("@/api/users/queries");
     const response = await mod.listUsers({ page: 1, perPage: 10, role: "holder", q: "ali" });
 
     expect(mockRequest).toHaveBeenCalledWith({
@@ -81,7 +81,7 @@ describe("api/users/queries", () => {
       },
     });
 
-    const mod: UsersQueriesModule = await import("../api/users/queries");
+    const mod: UsersQueriesModule = await import("@/api/users/queries");
     const response = await mod.listUsers();
 
     expect(response.meta.total).toBe(1);

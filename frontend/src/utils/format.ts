@@ -19,3 +19,15 @@ export const formatAmountValue = (value: string | number): string => {
   const parsed = Number.parseFloat(String(value));
   return Number.isNaN(parsed) ? String(value) : moneyFormatter.format(parsed);
 };
+
+export const formatDateTime = (value: string | null | undefined): string => {
+  if (!value) {
+    return '-';
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+};
+
+export const formatRepairCost = (
+  value: string | number | null | undefined,
+): string => (value === null || value === undefined || value === '' ? '-' : `TWD ${value}`);
