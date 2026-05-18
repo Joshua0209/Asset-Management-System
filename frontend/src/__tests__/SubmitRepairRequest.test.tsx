@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import SubmitRepairRequest from '@/pages/holder/SubmitRepairRequest';
 import { ConfigProvider } from 'antd';
 import { ApiError, assetsApi, repairRequestsApi } from '@/api';
+import type { RepairRequestRecord } from '@/api/repair-requests';
 import { buildAssetResponse } from './test-helpers';
 
 // Mock i18next
@@ -19,11 +20,40 @@ const mockSubmitRepairRequest = vi.spyOn(repairRequestsApi, 'submitRepairRequest
 
 const ASSETS_RESPONSE = buildAssetResponse('AST-2026-00003', 'Latitude 7440', 1);
 const ASSET = ASSETS_RESPONSE.data[0];
+const SUBMIT_RESPONSE: RepairRequestRecord = {
+  id: 'rr-1',
+  asset_id: ASSET.id,
+  requester_id: 'holder-1',
+  reviewer_id: null,
+  status: 'pending_review',
+  fault_description: 'Broken screen',
+  repair_date: null,
+  fault_content: null,
+  repair_plan: null,
+  repair_cost: null,
+  repair_vendor: null,
+  rejection_reason: null,
+  completed_at: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  version: 1,
+  asset: {
+    id: ASSET.id,
+    asset_code: ASSET.asset_code,
+    name: ASSET.name,
+  },
+  requester: {
+    id: 'holder-1',
+    name: 'Holder',
+  },
+  reviewer: null,
+  images: [],
+};
 
 function mockAssetsListThen(postBehavior: 'success' | ApiError) {
   mockListMyAssets.mockResolvedValue(ASSETS_RESPONSE);
   if (postBehavior === 'success') {
-    mockSubmitRepairRequest.mockResolvedValue({});
+    mockSubmitRepairRequest.mockResolvedValue(SUBMIT_RESPONSE);
     return;
   }
   mockSubmitRepairRequest.mockRejectedValue(postBehavior);
