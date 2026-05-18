@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -28,6 +28,9 @@ vi.mock("@/api", async () => {
       listMyAssets: vi.fn(),
       createAsset: vi.fn(),
     },
+    usersApi: {
+      listUsers: vi.fn(),
+    },
   };
 });
 
@@ -38,6 +41,7 @@ const mockUseAuth = vi.mocked(authModule.useAuth);
 const mockListAssets = vi.mocked(apiModule.assetsApi.listAssets);
 const mockListMyAssets = vi.mocked(apiModule.assetsApi.listMyAssets);
 const mockCreateAsset = vi.mocked(apiModule.assetsApi.createAsset);
+const mockListUsers = vi.mocked(apiModule.usersApi.listUsers);
 
 const managerUser = {
   id: "manager-1",
@@ -86,18 +90,20 @@ async function fillRequiredCreateFields(
     warrantyExpiry?: string;
   },
 ) {
-  await user.type(screen.getByLabelText("Name"), overrides.name);
-  await user.type(screen.getByLabelText("Model"), overrides.model);
-  await user.click(screen.getByLabelText("Category"));
+  const modal = screen.getByRole("dialog");
+
+  await user.type(within(modal).getByLabelText("Name"), overrides.name);
+  await user.type(within(modal).getByLabelText("Model"), overrides.model);
+  await user.click(within(modal).getByLabelText("Category"));
   await user.click(screen.getAllByRole("option", { name: "computer" })[0]);
-  await user.type(screen.getByLabelText("Supplier"), "Acme");
-  await user.type(screen.getByLabelText("Purchase Date"), "2026-01-10");
-  await user.type(screen.getByLabelText("Purchase Amount"), overrides.purchaseAmount);
+  await user.type(within(modal).getByLabelText("Supplier"), "Acme");
+  await user.type(within(modal).getByLabelText("Purchase Date"), "2026-01-10");
+  await user.type(within(modal).getByLabelText("Purchase Amount"), overrides.purchaseAmount);
   if (overrides.activationDate) {
-    await user.type(screen.getByLabelText("Activation Date"), overrides.activationDate);
+    await user.type(within(modal).getByLabelText("Activation Date"), overrides.activationDate);
   }
   if (overrides.warrantyExpiry) {
-    await user.type(screen.getByLabelText("Warranty Expiry"), overrides.warrantyExpiry);
+    await user.type(within(modal).getByLabelText("Warranty Expiry"), overrides.warrantyExpiry);
   }
   await user.click(screen.getByRole("button", { name: "Save" }));
 }
@@ -152,8 +158,27 @@ describe("AssetList", () => {
     mockListAssets.mockReset();
     mockListMyAssets.mockReset();
     mockCreateAsset.mockReset();
+    mockListUsers.mockReset();
     mockNavigate.mockReset();
     mockCreateAsset.mockResolvedValue({} as never);
+    mockListUsers.mockResolvedValue({
+      data: [
+        {
+          id: "holder-1",
+          name: "Alice Chen",
+          email: "alice@example.com",
+          role: "holder",
+          department: "IT",
+          created_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      meta: {
+        total: 1,
+        page: 1,
+        per_page: 100,
+        total_pages: 1,
+      },
+    });
     await i18n.changeLanguage("en");
   });
 
