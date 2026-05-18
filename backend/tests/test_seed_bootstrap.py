@@ -2,15 +2,50 @@
 
 from __future__ import annotations
 
+import uuid
+from collections import Counter
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from app.core.config import get_settings
 from app.core.security import verify_password
+from app.models.asset import Asset, AssetStatus
+from app.models.asset_action_history import AssetAction, AssetActionHistory
 from app.models.repair_request import RepairRequest
-from app.models.user import UserRole
-from scripts.seed_demo_data import build_bootstrap_manager, build_images, build_users
+from app.models.user import User, UserRole
+from scripts.seed_demo_data import (
+    build_action_histories,
+    build_assets,
+    build_bootstrap_manager,
+    build_images,
+    build_repair_requests,
+    build_users,
+)
+
+
+def _prime_ids(*collections: Iterable[Asset | User | RepairRequest]) -> None:
+    """Assign UUIDs to in-memory ORM objects so cross-table lookups work.
+
+    The model column defaults only fire at flush, but the seed builders run
+    standalone in these tests — without primed IDs, ``repair_request.asset_id``
+    and friends would all be None.
+    """
+    for collection in collections:
+        for obj in collection:
+            if getattr(obj, "id", None) is None:
+                obj.id = str(uuid.uuid4())
+
+
+@dataclass(frozen=True)
+class _Seeded:
+    assets: list[Asset]
+    repair_requests: list[RepairRequest]
+    histories: list[AssetActionHistory]
+    holders: list[User]
+    managers: list[User]
 
 
 class TestBootstrapManager:
@@ -29,6 +64,109 @@ class TestBootstrapManager:
         users = build_users()
         emails = {u.email for u in users}
         assert settings.bootstrap_manager_email in emails
+
+    def test_build_users_dedupes_when_bootstrap_collides_with_demo_email(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Without the collision guard this would raise a unique-constraint
+        # error on flush; with the guard, the demo manager1 entry is skipped
+        # and the bootstrap row keeps the email.
+        monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "manager1@example.com")
+        get_settings.cache_clear()
+        try:
+            users = build_users()
+            emails = [u.email for u in users]
+            assert len(emails) == len(set(emails)), f"duplicate emails: {emails}"
+            assert "manager1@example.com" in emails
+            assert "manager2@example.com" in emails
+            assert "holder1@example.com" in emails
+        finally:
+            get_settings.cache_clear()
+
+
+class TestSeedActionHistories:
+    @pytest.fixture
+    def seeded(self) -> _Seeded:
+        users = build_users()
+        _prime_ids(users)
+        holders = [u for u in users if u.role == UserRole.HOLDER]
+        managers = [u for u in users if u.role == UserRole.MANAGER]
+        assets = build_assets(holders)
+        _prime_ids(assets)
+        repair_requests = build_repair_requests(assets, holders, managers)
+        _prime_ids(repair_requests)
+        histories = build_action_histories(assets, repair_requests, holders, managers)
+        return _Seeded(
+            assets=assets,
+            repair_requests=repair_requests,
+            histories=histories,
+            holders=holders,
+            managers=managers,
+        )
+
+    def test_in_stock_assets_have_no_history(self, seeded: _Seeded) -> None:
+        # FSM T1 is exempt — IN_STOCK assets only carry their created_at.
+        in_stock_ids = {a.id for a in seeded.assets if a.status is AssetStatus.IN_STOCK}
+        assert in_stock_ids, "expected at least one IN_STOCK asset in the seed"
+        for history in seeded.histories:
+            assert history.asset_id not in in_stock_ids
+
+    def test_disposed_assets_have_dispose_history(self, seeded: _Seeded) -> None:
+        disposed_ids = {a.id for a in seeded.assets if a.status is AssetStatus.DISPOSED}
+        assert disposed_ids, "expected at least one DISPOSED asset in the seed"
+        dispose_history = [h for h in seeded.histories if h.action is AssetAction.DISPOSE]
+        assert {h.asset_id for h in dispose_history} == disposed_ids
+        for history in dispose_history:
+            assert history.from_status == AssetStatus.IN_STOCK.value
+            assert history.to_status == AssetStatus.DISPOSED.value
+            assert history.event_metadata == {
+                "disposal_reason": "End-of-life replacement after warranty expiry.",
+            }
+
+    def test_repair_request_lifecycle_matches_status(self, seeded: _Seeded) -> None:
+        # Each repair-request status implies a fixed action sequence per
+        # docs/system-design/11-asset-fsm.md; assert one example of each.
+        expected_per_status = {
+            "pending_review": {"assign", "submit_repair"},
+            "under_repair": {"assign", "submit_repair", "approve_repair"},
+            "completed": {
+                "assign",
+                "submit_repair",
+                "approve_repair",
+                "complete_repair",
+            },
+            "rejected": {"assign", "submit_repair", "reject_repair"},
+        }
+        by_asset: dict[str, list[str]] = {}
+        for history in seeded.histories:
+            by_asset.setdefault(history.asset_id, []).append(history.action.value)
+
+        seen_statuses: set[str] = set()
+        for repair_request in seeded.repair_requests:
+            actions = set(by_asset[repair_request.asset_id])
+            assert actions == expected_per_status[repair_request.status.value], (
+                f"asset {repair_request.asset_id} (rr status="
+                f"{repair_request.status.value}) has actions {actions}"
+            )
+            seen_statuses.add(repair_request.status.value)
+        assert seen_statuses == set(expected_per_status), (
+            f"seed missing coverage for repair statuses: {set(expected_per_status) - seen_statuses}"
+        )
+
+    def test_action_counts_match_fsm_implication(self, seeded: _Seeded) -> None:
+        # Sanity-check totals so a future cycle change doesn't silently
+        # under- or over-seed the audit trail.
+        counts = Counter(h.action.value for h in seeded.histories)
+        assigns = sum(
+            1
+            for a in seeded.assets
+            if a.status is not AssetStatus.IN_STOCK and a.status is not AssetStatus.DISPOSED
+        )
+        assert counts["assign"] == assigns
+        assert counts["submit_repair"] == len(seeded.repair_requests)
+        assert counts["dispose"] == sum(
+            1 for a in seeded.assets if a.status is AssetStatus.DISPOSED
+        )
 
 
 class TestSeedRepairImages:
