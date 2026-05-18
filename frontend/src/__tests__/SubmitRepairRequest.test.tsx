@@ -23,7 +23,7 @@ const ASSET = ASSETS_RESPONSE.data[0];
 function mockAssetsListThen(postBehavior: 'success' | ApiError) {
   mockListMyAssets.mockResolvedValue(ASSETS_RESPONSE);
   if (postBehavior === 'success') {
-    mockSubmitRepairRequest.mockResolvedValue({} as never);
+    mockSubmitRepairRequest.mockResolvedValue({});
     return;
   }
   mockSubmitRepairRequest.mockRejectedValue(postBehavior);
