@@ -6,6 +6,10 @@ import { useNavigate } from 'react-router-dom';
 import type { AssetRecord } from '@/api/assets';
 import { PAGE_SIZE_OPTIONS } from './constants';
 import { getAssetColumns } from './columns';
+import {
+  isAssetSortField,
+  type AssetSortState,
+} from './listControls';
 
 interface AssetTableProps {
   assets: AssetRecord[];
@@ -13,7 +17,9 @@ interface AssetTableProps {
   total: number;
   page: number;
   pageSize: number;
+  sortState: AssetSortState | null;
   onPaginationChange: (page: number, pageSize: number) => void;
+  onSortChange: (sortState: AssetSortState | null) => void;
   /** Optional extra columns to append to the default columns (e.g., manager actions) */
   extraColumns?: TableColumnsType<AssetRecord>;
 }
@@ -24,7 +30,9 @@ const AssetTable: React.FC<AssetTableProps> = ({
   total,
   page,
   pageSize,
+  sortState,
   onPaginationChange,
+  onSortChange,
   extraColumns = [],
 }) => {
   const { t } = useTranslation();
@@ -41,7 +49,7 @@ const AssetTable: React.FC<AssetTableProps> = ({
     ),
   };
 
-  const columns = [...getAssetColumns(t), actionsColumn, ...extraColumns];
+  const columns = [...getAssetColumns(t, sortState), actionsColumn, ...extraColumns];
 
   return (
     <Table<AssetRecord>
@@ -49,6 +57,32 @@ const AssetTable: React.FC<AssetTableProps> = ({
       loading={loading}
       dataSource={assets}
       columns={columns}
+      onChange={(_pagination, _filters, sorter) => {
+        const singleSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+        const nextOrder = singleSorter?.order;
+        const nextField = singleSorter?.columnKey;
+
+        const nextSortState =
+          nextOrder && isAssetSortField(nextField)
+            ? {
+                field: nextField,
+                order: nextOrder,
+              }
+            : null;
+
+        const unchanged =
+          (sortState === null && nextSortState === null) ||
+          (sortState !== null &&
+            nextSortState !== null &&
+            sortState.field === nextSortState.field &&
+            sortState.order === nextSortState.order);
+
+        if (unchanged) {
+          return;
+        }
+
+        onSortChange(nextSortState);
+      }}
       locale={{
         emptyText: t('assetList.empty'),
       }}
