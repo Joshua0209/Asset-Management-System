@@ -15,7 +15,7 @@ function getSortOrder(
   sortState: AssetSortState | null,
   field: AssetSortField,
 ): 'ascend' | 'descend' | null {
-  if (!sortState || sortState.field !== field) {
+  if (sortState?.field !== field) {
     return null;
   }
 
