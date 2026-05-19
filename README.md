@@ -31,7 +31,7 @@ Resource shift this week: 5 devs → **2 dev (W4 search-UI carry-over + two new 
 | **Unify manager + holder page pairs into role-aware pages** | Today the same surface is built twice — `AssetList`/`MyAssetList`, `Reviews`/`RepairRequestList`, `ReviewDetail`/`RepairRequestDetail`. Each pair carries duplicate logic for filters, columns, and table chrome; only the actions differ. Unifying reduces maintenance surface before the W6 demo polish window and makes the role gates explicit in one place | Merge each pair into a single page where actions/columns/dropdowns are toggled by `useCurrentUser().role`. Reference template: `frontend/src/pages/AssetDetail.tsx` already does this. Touches `App.tsx` routes, three page pairs, and the sidebar nav. Coordinate with the conflict-dialog wiring from PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55) — same files |
 | **Apply DESIGN.md theme to the UI** | The UI ships Antd defaults today, but the project's design system (`docs/designs/DESIGN.md` — TSMC-inspired: precision, restraint, hierarchy through typography, bilingual parity) has been authoritative since Week 2 and was never wired in. W6 demo is in 10 working days; the theme is the highest-visibility polish item | Wire `docs/designs/design-tokens.json` (W3C Design Tokens format) through Antd's `ConfigProvider` seed tokens. Audit components against the four pillars: 8px grid + tabular-nums; red as accent never surface, no gradients, no emoji; hierarchy through typography weight not decoration; light-mode first with 1px luminance hairline in dark mode. Reference visual: `docs/designs/design-preview.html` |
 
-**In-flight on `feat/cicd-prod-pipeline` (not yet PR'd):** six commits already code-complete most of the W5 infra checklist — production Dockerfiles (BE gunicorn+UvicornWorker, FE nginx:alpine), `/health` liveness + `/ready` DB-readiness, `S3ImageStorage` behind the existing `ImageStorage` Protocol, full SCA gates (pip-audit + npm audit + OWASP Dependency-Check), and a deploy workflow (`.github/workflows/deploy.yml`) that builds → pushes to ECR → renders ECS task defs → rolling update with `wait-for-service-stability`. Auth via GitHub OIDC. **Architecture pivot:** EC2 ×2 → ECS Fargate. Task defs committed under `infra/ecs/` with placeholders documented in `infra/ecs/README.md`. **Pending operator action:** AWS provisioning of ECR + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role.
+**In-flight on `feat/cicd-prod-pipeline` (not yet PR'd):** six commits already code-complete most of the W5 infra checklist — production Dockerfiles (BE gunicorn+UvicornWorker, FE nginx:alpine), `/health` liveness + `/ready` DB-readiness, `S3ImageStorage` behind the existing `ImageStorage` Protocol, full SCA gates (pip-audit + npm audit + OWASP Dependency-Check), and deploy jobs in `.github/workflows/ci.yml` that build → push to ECR → render ECS task defs → rolling update with `wait-for-service-stability`. Auth via GitHub OIDC. **Architecture pivot:** EC2 ×2 → ECS Fargate. Task defs committed under `infra/ecs/` with placeholders documented in `infra/ecs/README.md`. **Pending operator action:** AWS provisioning of ECR + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role.
 
 #### Infra (2 people)
 
@@ -223,7 +223,9 @@ Hooks in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 
 ## CI pipeline
 
-`.github/workflows/ci.yml` runs five jobs on every push and PR:
+`.github/workflows/ci.yml` runs quality, security, and deploy gates.
+
+On pull requests and pushes to `main`, it runs:
 
 | Job | Tool(s) |
 |-----|---------|
@@ -231,7 +233,18 @@ Hooks in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 | `frontend` | ESLint → tsc → vitest (uploads `lcov.info`) → vite build |
 | `secrets` | gitleaks |
 | `sast` | Semgrep (OWASP top-10 ruleset) |
+| `pip-audit` | Python production dependency audit |
+| `npm-audit` | Node production dependency audit, HIGH+ |
+| `dependency-check` | OWASP Dependency-Check, CVSS ≥ 7 |
 | `sonarqube` | SonarCloud quality gate (consumes coverage artifacts) |
+
+On pushes to `main` and manual dispatch, after those gates pass, it also runs:
+
+| Job | Purpose |
+|-----|---------|
+| `build-and-push` | Build backend/frontend production images and push to ECR |
+| `deploy-backend` | Render the backend ECS task definition and perform a rolling update |
+| `deploy-frontend` | Render the frontend ECS task definition and perform a rolling update |
 
 ### SonarQube / SonarCloud
 

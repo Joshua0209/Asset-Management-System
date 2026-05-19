@@ -4,9 +4,21 @@ on:
     branches: ["**"]
   pull_request:
     branches: ["**"]
+  # Manual rollout path for hot-fixes that need a re-deploy without a new
+  # commit. Gated by the same `if:` on the deploy jobs below.
+  workflow_dispatch:
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR / feature pushes cancel older runs for fast feedback. Pushes to
+  # main do NOT cancel - if two main commits queue, the older one might
+  # be a security patch mid-deploy and we want it to finish before the
+  # newer one starts (matches the intent of the deploy jobs'
+  # `cancel-in-progress: false`).
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+env:
+  # Pinned at workflow level so build-and-push and the downstream ECS
+  # render jobs all reference the same image tag for this run.
+  IMAGE_TAG: sha-${{ github.sha }}
 jobs:
   backend:
     name: Backend (ruff + mypy + pytest)
@@ -31,7 +43,14 @@ jobs:
       - name: Mypy strict
         run: mypy app
       - name: Pytest with coverage
-        run: pytest --cov=app --cov-report=term --cov-report=xml
+        # -n auto + --dist=loadfile mirrors .githooks/pre-push: parallelise
+        # across the runner's vCPUs (4 on ubuntu-latest), with file-scoped
+        # distribution so the autouse db_tables create_all/drop_all stays
+        # predictable. Safe because each xdist worker is its own process
+        # with its own module-scoped in-memory SQLite engine (see
+        # tests/conftest.py) and UUID-keyed upload paths avoid filename
+        # collisions in the shared REPAIR_UPLOAD_DIR.
+        run: pytest -n auto --dist=loadfile --cov=app --cov-report=term --cov-report=xml
       - name: Upload coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -91,6 +110,96 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Semgrep
         run: semgrep scan --config p/owasp-top-ten --error
+  pip-audit:
+    name: SCA - Python (pip-audit)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Install runtime deps
+        # Audit only the prod dependency closure - dev tools (pytest, mypy,
+        # ruff) never ship to production, so their CVEs would be noise here.
+        # The audit action runs in `pip list` mode when `inputs` is omitted,
+        # so install the same extras as Dockerfile.prod into an isolated venv.
+        run: |
+          python -m venv .audit-venv
+          . .audit-venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -e '.[prod]'
+      - name: pip-audit
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
+        with:
+          virtual-environment: backend/.audit-venv
+  npm-audit:
+    name: SCA - Node (npm audit)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: npm audit (production deps, high+)
+        # --omit=dev mirrors what the production image installs.
+        # --audit-level=high blocks HIGH and CRITICAL only; MEDIUM/LOW
+        # advisories would be constant noise without a security trade-off.
+        run: npm audit --omit=dev --audit-level=high
+  dependency-check:
+    name: SCA - OWASP Dependency-Check
+    runs-on: ubuntu-latest
+    # Heavier than pip-audit/npm audit (downloads the NVD database). Keep
+    # PR + main only so it does not block feature branches on every push.
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Cache NVD database
+        # Without this cache, every run re-downloads ~500 MB from the NIST
+        # NVD feed. The data directory is what dependency-check checksums
+        # against; the path is fixed by the action.
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        env:
+          CACHE_KEY_HASH: ${{ hashFiles('backend/pyproject.toml', 'frontend/package-lock.json') }}
+        with:
+          path: ~/.dependency-check
+          key: dep-check-${{ runner.os }}-${{ env.CACHE_KEY_HASH }}
+          restore-keys: |
+            dep-check-${{ runner.os }}-
+      - name: OWASP Dependency-Check
+        # CVSS 7+ = HIGH or CRITICAL severity. Matches the roadmap's
+        # "block on HIGH/CRITICAL CVE" gate (Week 5 SCA spec).
+        uses: dependency-check/Dependency-Check_Action@75ba02d6183445fe0761d26e836bde58b1560600 # v1.1.0
+        with:
+          project: asset-management-system
+          path: "."
+          format: HTML
+          args: >-
+            --failOnCVSS 7
+            --enableRetired
+        env:
+          # Public NVD API key bumps the rate limit from 5 to 50 req/30s.
+          # Optional - the action falls back to the unauthenticated rate
+          # if the secret is unset, only making the run slower.
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+      - name: Upload dependency-check report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-check-report
+          path: reports
+          if-no-files-found: ignore
   sonarqube:
     name: SonarQube quality gate
     runs-on: ubuntu-latest
@@ -115,3 +224,165 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+
+  # ─── Deploy pipeline ──────────────────────────────────────────────────────
+  # Gated behind every quality + security job above. Runs only on push to
+  # main or manual dispatch. Each job carries its own OIDC token grant so
+  # the rest of the workflow has no AWS-assume capability.
+  build-and-push:
+    name: Build and push images to ECR
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, secrets, sast, pip-audit, npm-audit, dependency-check, sonarqube]
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
+    # Per-job concurrency so two queued main pushes deploy serially rather
+    # than racing each other to ECS. cancel-in-progress: false preserves
+    # an in-flight deploy if a newer commit lands (it might be a hot-fix
+    # that depends on the older one being deployed).
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      backend-image: ${{ steps.meta.outputs.backend-image }}
+      frontend-image: ${{ steps.meta.outputs.frontend-image }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        # Federated identity - no AWS_ACCESS_KEY_ID secret. The role's trust
+        # policy restricts assumption to this repo + branch (see
+        # infra/ecs/README.md). Tokens are short-lived (1 hour default).
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@4625ce35226a7557230889aae2f52eb50ec3dcda # v2.0.1
+
+      - name: Set up Docker Buildx
+        # Buildx enables multi-platform builds and a more efficient cache
+        # backend than the legacy builder.
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:latest
+          # Layer caching against a sidecar :cache tag - cuts cold-build
+          # time from ~5 min to ~1 min on dependency-clean rebuilds.
+          cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:cache
+          cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:cache,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: true
+          # Vite inlines build-args, so the API base URL is baked into the
+          # bundle. If FE/BE share an ALB with path routing, /api/v1 keeps
+          # requests same-origin and avoids CORS entirely.
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '/api/v1' }}
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:latest
+          cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:cache
+          cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:cache,mode=max
+
+      - name: Expose image URIs to downstream jobs
+        id: meta
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          BACKEND_REPO: ${{ vars.ECR_REPOSITORY_BACKEND }}
+          FRONTEND_REPO: ${{ vars.ECR_REPOSITORY_FRONTEND }}
+        run: |
+          echo "backend-image=${REGISTRY}/${BACKEND_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "frontend-image=${REGISTRY}/${FRONTEND_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+  deploy-backend:
+    name: Deploy backend (ECS rolling update)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Render backend task definition
+        # Patches the container image into the committed task-def template.
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/backend-task-def.json
+          container-name: backend
+          image: ${{ needs.build-and-push.outputs.backend-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@817071763d92bbe2ae01a5ec32f1d999dd2293a0 # v2.1.0
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_BACKEND }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          # Block until the new task set passes ALB health checks. Without
+          # this the workflow would return success while the new task is
+          # crash-looping and the old image is still serving traffic.
+          wait-for-service-stability: true
+          # 10 min covers cold-start + slow ALB drain. If a deploy stalls
+          # past this, fail loud rather than hang the workflow.
+          wait-for-minutes: 10
+
+  deploy-frontend:
+    name: Deploy frontend (ECS rolling update)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Render frontend task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/frontend-task-def.json
+          container-name: frontend
+          image: ${{ needs.build-and-push.outputs.frontend-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@817071763d92bbe2ae01a5ec32f1d999dd2293a0 # v2.1.0
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_FRONTEND }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10

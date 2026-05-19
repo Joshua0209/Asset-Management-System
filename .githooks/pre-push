@@ -21,7 +21,17 @@ echo "▶ backend: mypy"
 "$VENV/mypy" --config-file "$ROOT/backend/pyproject.toml" "$ROOT/backend/app"
 
 echo "▶ backend: pytest"
-"$VENV/pytest" --tb=short -q "$ROOT/backend"
+if "$VENV/python" -c "import xdist" >/dev/null 2>&1; then
+  # -n auto: parallelise across CPU cores. Worker safety relies on (a) the
+  # module-scoped in-memory SQLite engine in tests/conftest.py — each worker
+  # process gets its own _TEST_ENGINE — and (b) repair-request/image IDs being
+  # UUIDs, so the shared REPAIR_UPLOAD_DIR can't see filename collisions.
+  # --dist=loadfile keeps tests from the same file on the same worker.
+  "$VENV/pytest" -n auto --dist=loadfile --tb=short -q "$ROOT/backend"
+else
+  echo "  pytest-xdist not installed in backend/.venv; running pytest serially."
+  "$VENV/pytest" --tb=short -q "$ROOT/backend"
+fi
 
 echo ""
 echo "▶ frontend: eslint"

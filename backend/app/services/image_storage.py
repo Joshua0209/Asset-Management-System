@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated, Protocol
+from typing import Annotated, Any, Protocol
 
 from fastapi import Depends, HTTPException, status
 
@@ -16,6 +16,18 @@ _SUFFIX_TO_CONTENT_TYPE: dict[str, str] = {
     ".jpeg": "image/jpeg",
     ".png": "image/png",
 }
+
+
+def _s3_error_code(exc: BaseException) -> str | None:
+    """Best-effort extraction of botocore ClientError's error code."""
+    response = getattr(exc, "response", None)
+    if not isinstance(response, dict):
+        return None
+    error = response.get("Error")
+    if not isinstance(error, dict):
+        return None
+    code = error.get("Code")
+    return code if isinstance(code, str) else None
 
 
 class ImageStorageError(RuntimeError):
@@ -127,8 +139,103 @@ class LocalImageStorage:
         return candidate
 
 
+class S3ImageStorage:
+    """S3-backed :class:`ImageStorage` for production deployments.
+
+    Storage keys remain POSIX-style relative paths (``"<rr-id>/<img-id>.png"``)
+    so the same DB rows work whether the bucket is read locally or in AWS.
+    The optional ``key_prefix`` namespaces objects under ``<prefix>/<key>``
+    so a single bucket can host multiple environments.
+    """
+
+    def __init__(self, *, bucket: str, key_prefix: str = "", client: Any = None) -> None:
+        if not bucket:
+            raise ImageStorageError("S3 bucket name is required for S3ImageStorage.")
+        self._bucket = bucket
+        self._key_prefix = key_prefix.strip("/")
+        # Lazy-import so dev/test runs without boto3 installed succeed when
+        # the local backend is selected. Tests inject a fake client via the
+        # `client` parameter to avoid the import + AWS credential discovery.
+        if client is None:
+            import boto3
+
+            client = boto3.client("s3")
+        self._client = client
+
+    def save(
+        self,
+        *,
+        repair_request_id: str,
+        image_id: str,
+        suffix: str,
+        content: bytes,
+    ) -> str:
+        key = f"{repair_request_id}/{image_id}{suffix}"
+        content_type = _SUFFIX_TO_CONTENT_TYPE.get(suffix.lower(), "application/octet-stream")
+        try:
+            self._client.put_object(
+                Bucket=self._bucket,
+                Key=self._object_key(key),
+                Body=content,
+                ContentType=content_type,
+            )
+        except Exception as exc:  # boto3 ClientError, ConnectionError, etc.
+            raise ImageStorageError(f"Failed to upload {key!r} to S3.") from exc
+        return key
+
+    def open(self, storage_key: str) -> tuple[bytes, str]:
+        try:
+            response = self._client.get_object(
+                Bucket=self._bucket,
+                Key=self._object_key(storage_key),
+            )
+        except Exception as exc:
+            # boto3 raises ClientError with "NoSuchKey" code for missing
+            # objects. We cannot import the boto3 type here without making
+            # boto3 a hard dependency, so we duck-type on the .response
+            # attribute that botocore.exceptions.ClientError exposes.
+            if _s3_error_code(exc) == "NoSuchKey":
+                raise ImageNotFoundError(storage_key) from exc
+            raise ImageStorageError(f"Unable to read {storage_key!r} from S3.") from exc
+
+        suffix = Path(storage_key).suffix.lower()
+        content_type = _SUFFIX_TO_CONTENT_TYPE.get(suffix)
+        if content_type is None:
+            raise ImageStorageIntegrityError(
+                f"Unsupported stored image suffix {suffix!r}"
+            )
+        return response["Body"].read(), content_type
+
+    def cleanup(self, storage_keys: list[str]) -> None:
+        for key in storage_keys:
+            try:
+                self._client.delete_object(Bucket=self._bucket, Key=self._object_key(key))
+            except Exception as exc:
+                logger.warning("Failed to remove orphaned S3 upload %s: %s", key, exc)
+
+    def _object_key(self, storage_key: str) -> str:
+        if self._key_prefix:
+            return f"{self._key_prefix}/{storage_key}"
+        return storage_key
+
+
 def get_image_storage() -> ImageStorage:
-    return LocalImageStorage(Path(get_settings().repair_upload_dir))
+    settings = get_settings()
+    backend = settings.repair_image_backend.lower()
+    if backend == "s3":
+        return S3ImageStorage(
+            bucket=settings.repair_s3_bucket,
+            key_prefix=settings.repair_s3_prefix,
+        )
+    if backend != "local":
+        # Fail loud on misconfiguration rather than silently fall back -
+        # silent fallback is the kind of bug that wastes hours during a
+        # production deploy.
+        raise ImageStorageError(
+            f"Unknown REPAIR_IMAGE_BACKEND {settings.repair_image_backend!r}; "
+            "expected 'local' or 's3'."
+        )
+    return LocalImageStorage(Path(settings.repair_upload_dir))
 
 
 ImageStorageDep = Annotated[ImageStorage, Depends(get_image_storage)]

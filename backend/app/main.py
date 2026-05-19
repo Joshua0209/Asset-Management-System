@@ -9,10 +9,13 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
+from app.db.session import engine
 from app.schemas.repair_request import RepairRequestCreate
 
 logger = logging.getLogger(__name__)
@@ -43,7 +46,9 @@ if not settings.rate_limit_enabled:
 
 
 def _enforce_single_worker_invariant(
-    settings_obj: "object", web_concurrency_raw: str | None
+    settings_obj: "object",
+    web_concurrency_raw: str | None,
+    gunicorn_workers_raw: str | None = None,
 ) -> None:
     """Refuse to boot when multi-worker would silently relax rate limits.
 
@@ -54,13 +59,20 @@ def _enforce_single_worker_invariant(
     value — credential-stuffing protection on ``/auth/login`` is silently
     defeated. We refuse to start rather than serve traffic with that hole.
 
-    Detection scope (known gap):
-    * ``WEB_CONCURRENCY`` is the gunicorn / ``tiangolo/uvicorn-gunicorn-fastapi``
-      convention. Most Phase 2 ECS task definitions will hit this path.
-    * ``uvicorn --workers N`` CLI flag is NOT readable from inside the app
-      (uvicorn does not export it to the process environment). The runbook in
-      ``08-deployment-operations.md`` carries the verbal "use --workers 1"
-      mandate; this function backstops the env-var shape only.
+    Two env-var conventions are checked because the Dockerfile / task-def
+    layers used both at different times:
+
+    * ``WEB_CONCURRENCY`` — tiangolo / ``uvicorn-gunicorn-fastapi`` convention.
+    * ``GUNICORN_WORKERS`` — the variable name this repo's ``Dockerfile.prod``
+      historically baked into ``--workers ${GUNICORN_WORKERS}``. The new
+      image switches to ``WEB_CONCURRENCY``, but a stale ECS task definition
+      in the wild may still set ``GUNICORN_WORKERS`` — the invariant must
+      catch it either way.
+
+    Known gap: ``uvicorn --workers N`` CLI flag is NOT readable from inside
+    the app (uvicorn does not export it to the process environment). The
+    runbook in ``08-deployment-operations.md`` carries the verbal "use
+    ``--workers 1``" mandate; this function backstops the env-var shape only.
 
     Malformed values (``""``, ``"auto"``, non-numeric) degrade to single-worker
     rather than raising ``ValueError`` — a confusing crash for an operator who
@@ -70,30 +82,87 @@ def _enforce_single_worker_invariant(
         # Rate limiting off → the N-worker concern is moot. The existing
         # WARN above already flags the disabled state loudly.
         return
-    if web_concurrency_raw is None:
+
+    def _parse(raw: str | None) -> int:
+        if raw is None:
+            return 1
+        try:
+            value = int(raw.strip())
+        except (ValueError, AttributeError):
+            # Garbled env value → treat as unset. Operator gets no false
+            # alarm, and the surrounding gunicorn/uvicorn layer will
+            # surface the bad value on its own when it tries to spawn
+            # processes.
+            return 1
+        return value if value > 0 else 1
+
+    web_workers = _parse(web_concurrency_raw)
+    gunicorn_workers = _parse(gunicorn_workers_raw)
+    effective = max(web_workers, gunicorn_workers)
+    if effective <= 1:
         return
-    try:
-        workers = int(web_concurrency_raw.strip())
-    except (ValueError, AttributeError):
-        # Garbled env value → treat as unset. Operator gets no false alarm,
-        # and the surrounding gunicorn/uvicorn layer will surface the bad
-        # value on its own when it tries to spawn processes.
-        return
-    if workers <= 1:
-        return
+
+    offenders = []
+    if web_workers > 1:
+        offenders.append(f"WEB_CONCURRENCY={web_workers}")
+    if gunicorn_workers > 1:
+        offenders.append(f"GUNICORN_WORKERS={gunicorn_workers}")
+    offender_str = " and ".join(offenders)
+
     raise RuntimeError(
-        f"WEB_CONCURRENCY={workers} but rate-limit storage is in-process "
-        "MemoryStorage. Effective per-user/per-IP cap is "
-        f"{workers}x the configured value, which silently defeats "
-        "credential-stuffing protection on /auth/login. Per "
-        "docs/system-design/08-deployment-operations.md, keep --workers 1 "
+        f"{offender_str} but rate-limit storage is in-process MemoryStorage. "
+        f"Effective per-user/per-IP cap is {effective}x the configured value, "
+        "which silently defeats credential-stuffing protection on /auth/login. "
+        "Per docs/system-design/08-deployment-operations.md, keep --workers 1 "
         "until Phase 3 introduces Redis-backed shared storage. Set "
-        "WEB_CONCURRENCY=1 (or unset) to boot. To intentionally bypass "
-        "for load tests, set RATE_LIMIT_ENABLED=false."
+        "WEB_CONCURRENCY=1 and GUNICORN_WORKERS=1 (or unset both) to boot. "
+        "To intentionally bypass for load tests, set RATE_LIMIT_ENABLED=false."
     )
 
 
-_enforce_single_worker_invariant(settings, os.environ.get("WEB_CONCURRENCY"))
+_enforce_single_worker_invariant(
+    settings,
+    os.environ.get("WEB_CONCURRENCY"),
+    os.environ.get("GUNICORN_WORKERS"),
+)
+
+
+def _warn_if_proxy_trust_misconfigured(
+    settings_obj: "object", forwarded_allow_ips_raw: str | None
+) -> None:
+    """WARN when ``FORWARDED_ALLOW_IPS`` is the loopback default in production.
+
+    The prod image's default is ``127.0.0.1`` so local prod-image runs match
+    uvicorn's own default. Behind the ALB, the immediate TCP peer is the
+    load-balancer's private IP — NOT the loopback — so uvicorn's
+    ``ProxyHeadersMiddleware`` refuses to rewrite ``request.client.host`` from
+    ``X-Forwarded-For``. Every anonymous request then collapses into one
+    bucket keyed on the ALB IP, and the limiter silently self-DoSes.
+
+    The fix is to set ``FORWARDED_ALLOW_IPS`` to the ALB-subnet VPC CIDR in
+    the ECS task definition. This WARN gives operators a CloudWatch
+    breadcrumb when the override is missing — mirroring the existing
+    ``RATE_LIMIT_ENABLED=false`` WARN.
+
+    Skipped when rate limiting is off, since the rate-limit-disabled WARN
+    already covers that case loudly.
+    """
+    if not getattr(settings_obj, "rate_limit_enabled", True):
+        return
+    if forwarded_allow_ips_raw is None or forwarded_allow_ips_raw.strip() == "127.0.0.1":
+        logger.warning(
+            "FORWARDED_ALLOW_IPS is unset or 127.0.0.1 while rate limiting is "
+            "enabled. Behind an ALB this collapses every anonymous request "
+            "into the load-balancer's private-IP bucket and silently defeats "
+            "credential-stuffing protection on /auth/login. Set "
+            "FORWARDED_ALLOW_IPS to the ALB-subnet VPC CIDR (e.g. 10.0.0.0/16) "
+            "in the ECS task definition. See "
+            "docs/system-design/08-deployment-operations.md §'Behind the ALB: "
+            "client-IP resolution'."
+        )
+
+
+_warn_if_proxy_trust_misconfigured(settings, os.environ.get("FORWARDED_ALLOW_IPS"))
 
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
 # request time and emits the X-RateLimit-* headers.
@@ -314,9 +383,33 @@ app.openapi = custom_openapi  # type: ignore[method-assign]
 @app.get("/health", tags=["health"])
 @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi decorators have no type stubs
 def health_check(request: Request) -> dict[str, str]:
-    """Liveness probe.
+    """Liveness probe — process is up. Used by ECS task health and `docker compose`.
 
     Exempt from rate limiting so monitoring (compose healthcheck, ALB, etc.)
     cannot DoS itself when the global default tier shrinks.
     """
     return {"status": "ok"}
+
+
+@app.get("/ready", tags=["health"])
+@limiter.exempt  # type: ignore[untyped-decorator]  # readiness probes must not consume app quota
+def readiness_check() -> JSONResponse:
+    """Readiness probe — process can serve traffic (DB reachable).
+
+    ALB target groups should hit this; returning 503 lets the load balancer
+    drain a target whose DB connection has dropped (e.g. RDS Multi-AZ
+    failover in progress) without killing the container itself.
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        logger.warning("Readiness probe failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "checks": {"database": "down"}},
+        )
+    return JSONResponse(
+        status_code=200,
+        content={"status": "ready", "checks": {"database": "up"}},
+    )

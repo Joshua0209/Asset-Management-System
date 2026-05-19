@@ -13,9 +13,12 @@
 **Rolling update process (Phase 2-3):**
 1. New container image built and pushed to ECR
 2. Deployment creates new pods/tasks with new image
-3. Health check passes (HTTP 200 on `/health`)
-4. Old pods/tasks drained (in-flight requests complete)
-5. Old pods/tasks terminated
+3. ECS container/liveness probe passes: HTTP 200 on `/health` (process is up; always 200)
+4. ALB target-group/readiness probe passes: HTTP 200 on `/ready` (DB connectivity verified; returns 503 to drain the target during RDS Multi-AZ failover without killing the otherwise-fine container)
+5. Old pods/tasks drained (in-flight requests complete)
+6. Old pods/tasks terminated
+
+See `CLAUDE.md` §"Health endpoints (Week 5+)" for the code-level distinction between the two probes.
 
 **Database migration strategy:**
 - Use backward-compatible migrations only (add columns, never remove or rename in the same release)
@@ -75,16 +78,19 @@ The limiter (`backend/app/core/rate_limit.py`) is in-process via slowapi. Per `0
 
 By default Starlette's `request.client.host` is the **immediate TCP peer** — behind an ALB that is the load-balancer's private IP, so every anonymous request would collapse into one bucket and the limiter would silently become a self-DoS (one attacker burns the global anon quota for every other user).
 
-The mitigation is a **single trust gate** at uvicorn's edge. Run uvicorn with proxy-headers enabled, scoped to the ALB CIDR:
+The mitigation is a **single trust gate** at uvicorn's edge, scoped to the ALB CIDR. Production runs gunicorn supervising `uvicorn.workers.UvicornWorker` (see `backend/Dockerfile.prod`), which reads gunicorn's `--forwarded-allow-ips` and applies it inside the uvicorn worker:
 
-```text
-uvicorn app.main:app --host 0.0.0.0 --port 8000 \
-  --workers 1 \
-  --proxy-headers \
-  --forwarded-allow-ips="<ALB-VPC-CIDR>"
+```sh
+gunicorn app.main:app \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --workers ${WEB_CONCURRENCY:-1} \
+  --bind 0.0.0.0:8000 \
+  --forwarded-allow-ips "${FORWARDED_ALLOW_IPS}"
 ```
 
-`--forwarded-allow-ips` is the trust gate: uvicorn's `ProxyHeadersMiddleware` only rewrites `request.client.host` from `X-Forwarded-For` when the immediate TCP peer is in this allowlist. Without it, an attacker hitting the task directly could spoof XFF and inject any IP they like into the bucket key. Use the **VPC CIDR of the ALB subnets** (e.g. `10.0.0.0/16`), not `*` and not the public ALB IP — public IPs rotate, the VPC CIDR is stable.
+`--proxy-headers` is deliberately omitted: it is a uvicorn-CLI-only flag, and uvicorn's proxy-header handling is on by default under `UvicornWorker`. Adding `--proxy-headers` would either no-op or fail depending on the version — both are noisier than just relying on the default.
+
+`--forwarded-allow-ips` is the trust gate: uvicorn's `ProxyHeadersMiddleware` only rewrites `request.client.host` from `X-Forwarded-For` when the immediate TCP peer is in this allowlist. Without it, an attacker hitting the task directly could spoof XFF and inject any IP they like into the bucket key. Use the **VPC CIDR of the ALB subnets** (e.g. `10.0.0.0/16`), not `*` and not the public ALB IP — public IPs rotate, the VPC CIDR is stable. The image default is `127.0.0.1` so local prod-image runs behave like uvicorn's own default; production ECS task definitions MUST override `FORWARDED_ALLOW_IPS` to the ALB-subnet VPC CIDR. The startup WARN in `app/main.py` flags the default when rate limiting is enabled.
 
 `backend/app/core/rate_limit.py` deliberately does **not** add an application-layer XFF reader on top. That would not be defense-in-depth — the two readers share a single precondition (the immediate hop is a trusted proxy), so they are one layer wearing two coats. The asymmetry matters:
 
