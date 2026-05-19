@@ -20,6 +20,10 @@ templates to be used across different environments.
 | `PLACEHOLDER_IMAGE` | Replaced by `aws-actions/amazon-ecs-render-task-definition`                              |
 | `REPAIR_S3_BUCKET`  | `${{ vars.REPAIR_S3_BUCKET }}`                                                           |
 | `ALB_VPC_CIDR`      | `${{ vars.ALB_VPC_CIDR }}` (becomes `FORWARDED_ALLOW_IPS`)                               |
+| `DB_HOST`           | `${{ vars.DB_HOST }}` (RDS Endpoint)                                                     |
+| `DB_NAME`           | `${{ vars.DB_NAME }}` (Database name, e.g. `ams`)                                        |
+| `RDS_SECRET_NAME`   | `${{ vars.RDS_SECRET_NAME }}` (System-managed RDS secret name)                           |
+| `APP_SECRET_NAME`   | `${{ vars.APP_SECRET_NAME }}` (Application secret name, e.g. `ams/prod/app`)             |
 
 The CI/CD pipeline uses `sed` to hydrate these values before rendering the final
 task definition and deploying to ECS.
@@ -57,6 +61,10 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 | `ECS_CLUSTER`         | e.g. `ams-prod`                                  |
 | `ECS_SERVICE_BACKEND` | e.g. `ams-backend`                               |
 | `ECS_SERVICE_FRONTEND`| e.g. `ams-frontend`                              |
+| `DB_HOST`             | RDS instance endpoint                            |
+| `DB_NAME`             | e.g. `ams`                                       |
+| `RDS_SECRET_NAME`     | Name of the managed RDS secret                   |
+| `APP_SECRET_NAME`     | e.g. `ams/prod/app`                              |
 
 ## OIDC trust policy snippet
 
