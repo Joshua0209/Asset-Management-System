@@ -334,6 +334,10 @@ jobs:
           sed -i "s/REGION/${{ vars.AWS_REGION }}/g" infra/ecs/backend-task-def.json
           sed -i "s/REPAIR_S3_BUCKET/${{ vars.REPAIR_S3_BUCKET }}/g" infra/ecs/backend-task-def.json
           sed -i "s/ALB_VPC_CIDR/${{ vars.ALB_VPC_CIDR }}/g" infra/ecs/backend-task-def.json
+          sed -i "s/DB_HOST/${{ vars.DB_HOST }}/g" infra/ecs/backend-task-def.json
+          sed -i "s/DB_NAME/${{ vars.DB_NAME }}/g" infra/ecs/backend-task-def.json
+          sed -i "s/RDS_SECRET_NAME/${{ vars.RDS_SECRET_NAME }}/g" infra/ecs/backend-task-def.json
+          sed -i "s/APP_SECRET_NAME/${{ vars.APP_SECRET_NAME }}/g" infra/ecs/backend-task-def.json
 
       - name: Render backend task definition
         # Patches the container image into the committed task-def template.

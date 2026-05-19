@@ -21,11 +21,15 @@
         {"name": "REPAIR_IMAGE_BACKEND", "value": "s3"},
         {"name": "REPAIR_S3_BUCKET", "value": "REPAIR_S3_BUCKET"},
         {"name": "FORWARDED_ALLOW_IPS", "value": "ALB_VPC_CIDR"},
-        {"name": "WEB_CONCURRENCY", "value": "1"}
+        {"name": "WEB_CONCURRENCY", "value": "1"},
+        {"name": "DB_HOST", "value": "DB_HOST"},
+        {"name": "DB_NAME", "value": "DB_NAME"}
       ],
       "secrets": [
-        {"name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:ams/database-url"},
-        {"name": "JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:ams/jwt-secret"}
+        {"name": "DB_USER", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:RDS_SECRET_NAME:username::"},
+        {"name": "DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:RDS_SECRET_NAME:password::"},
+        {"name": "JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:APP_SECRET_NAME:JWT_SECRET::"},
+        {"name": "BOOTSTRAP_MANAGER_PASSWORD", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:APP_SECRET_NAME:BOOTSTRAP_MANAGER_PASSWORD::"}
       ],
       "healthCheck": {
         "command": ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2).status==200 else 1)\""],

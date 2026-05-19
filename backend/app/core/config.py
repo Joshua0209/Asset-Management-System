@@ -41,7 +41,19 @@ class Settings(BaseSettings):
     app_name: str = "Asset Management System API"
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
-    database_url: str  # required — must be set via DATABASE_URL env var or .env
+    database_url: str | None = None  # Full URL takes precedence
+    db_user: str = "root"
+    db_password: str = ""
+    db_host: str = "localhost"
+    db_port: str = "3306"
+    db_name: str = "ams"
+
+    @property
+    def sqlalchemy_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return f"mysql+pymysql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+
     cors_allowed_origins: _StringList = ["http://localhost:5173"]
 
     jwt_secret: str  # required — must be set via JWT_SECRET env var or .env
