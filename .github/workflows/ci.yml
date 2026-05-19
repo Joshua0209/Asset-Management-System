@@ -12,7 +12,7 @@ concurrency:
   # PR / feature pushes cancel older runs for fast feedback. Pushes to
   # main do NOT cancel - if two main commits queue, the older one might
   # be a security patch mid-deploy and we want it to finish before the
-  # newer one starts (matches the intent of the previous deploy.yml's
+  # newer one starts (matches the intent of the deploy jobs'
   # `cancel-in-progress: false`).
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 env:
@@ -125,16 +125,20 @@ jobs:
       - name: Install runtime deps
         # Audit only the prod dependency closure - dev tools (pytest, mypy,
         # ruff) never ship to production, so their CVEs would be noise here.
+        # The audit action runs in `pip list` mode when `inputs` is omitted,
+        # so install the same extras as Dockerfile.prod into an isolated venv.
         run: |
+          python -m venv .audit-venv
+          . .audit-venv/bin/activate
           python -m pip install --upgrade pip
-          pip install -e .
+          pip install -e '.[prod]'
       - name: pip-audit
         # Strict mode also fails when the audit DB itself is unreachable -
         # a "no findings, but we cannot actually tell" outcome is treated
         # as failure, not silent pass.
         uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
         with:
-          inputs: backend
+          virtual-environment: backend/.audit-venv
           strict: true
   npm-audit:
     name: SCA - Node (npm audit)
