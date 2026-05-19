@@ -7,6 +7,7 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
@@ -16,7 +17,9 @@ from app.models.asset import Asset, AssetStatus
 from app.models.asset_action_history import AssetAction, AssetActionHistory
 from app.models.repair_request import RepairRequest
 from app.models.user import User, UserRole
+from app.schemas.asset import AssetCategory
 from scripts.seed_demo_data import (
+    CATEGORIES,
     build_action_histories,
     build_assets,
     build_bootstrap_manager,
@@ -167,6 +170,26 @@ class TestSeedActionHistories:
         assert counts["dispose"] == sum(
             1 for a in seeded.assets if a.status is AssetStatus.DISPOSED
         )
+
+
+class TestSeedCategories:
+    def test_seed_categories_match_asset_category_literal(self) -> None:
+        # The API ``AssetCategory`` Literal is the contract; the seed must not
+        # drift from it. ``Asset.category`` is ``String(100)`` so a mismatch
+        # would silently insert and then break every write + filter.
+        allowed = set(get_args(AssetCategory))
+        assert set(CATEGORIES) <= allowed, (
+            f"seed categories not in AssetCategory: {set(CATEGORIES) - allowed}"
+        )
+
+    def test_built_assets_only_use_canonical_categories(self) -> None:
+        users = build_users()
+        _prime_ids(users)
+        holders = [u for u in users if u.role == UserRole.HOLDER]
+        assets = build_assets(holders)
+        allowed = set(get_args(AssetCategory))
+        offenders = {a.category for a in assets} - allowed
+        assert not offenders, f"non-canonical categories in seed: {offenders}"
 
 
 class TestSeedRepairImages:

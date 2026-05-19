@@ -25,20 +25,25 @@ logger = logging.getLogger(__name__)
 DEPARTMENTS = ["IT", "HR", "Finance", "Operations"]
 LOCATIONS = ["Taipei HQ", "Hsinchu Office", "Taichung Branch"]
 SUPPLIERS = ["Apple", "Dell", "Lenovo", "ASUS", "Samsung"]
-CATEGORIES = ["Laptop", "Phone", "Tablet", "Monitor", "Accessory"]
+# Category strings MUST match ``AssetCategory`` in ``app/schemas/asset.py``
+# (the API Literal). The DB column is plain ``String(100)`` so non-canonical
+# values would insert without error but then fail every API write and vanish
+# from the UI's category filter. Pinned by
+# ``test_seed_categories_match_asset_category_literal``.
+CATEGORIES = ["computer", "phone", "tablet", "monitor", "other"]
 ASSET_NAMES = {
-    "Laptop": "Business Laptop",
-    "Phone": "Company Phone",
-    "Tablet": "Field Tablet",
-    "Monitor": "Office Monitor",
-    "Accessory": "Docking Station",
+    "computer": "Business Laptop",
+    "phone": "Company Phone",
+    "tablet": "Field Tablet",
+    "monitor": "Office Monitor",
+    "other": "Docking Station",
 }
 MODELS = {
-    "Laptop": ["Dell Latitude 7440", "MacBook Pro 14", "ThinkPad T14"],
-    "Phone": ["iPhone 15", "Galaxy S24", "Pixel 9"],
-    "Tablet": ["iPad Air", "Galaxy Tab S9", "Surface Go 4"],
-    "Monitor": ["Dell U2723QE", "LG 27UP850", "ASUS ProArt 27"],
-    "Accessory": ["Dell WD22TB4", "Anker Hub 565", "Lenovo Dock Gen 2"],
+    "computer": ["Dell Latitude 7440", "MacBook Pro 14", "ThinkPad T14"],
+    "phone": ["iPhone 15", "Galaxy S24", "Pixel 9"],
+    "tablet": ["iPad Air", "Galaxy Tab S9", "Surface Go 4"],
+    "monitor": ["Dell U2723QE", "LG 27UP850", "ASUS ProArt 27"],
+    "other": ["Dell WD22TB4", "Anker Hub 565", "Lenovo Dock Gen 2"],
 }
 FAULT_DESCRIPTIONS = [
     "Screen flickers intermittently during work.",
