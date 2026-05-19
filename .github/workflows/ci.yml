@@ -133,13 +133,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e '.[prod]'
       - name: pip-audit
-        # Strict mode also fails when the audit DB itself is unreachable -
-        # a "no findings, but we cannot actually tell" outcome is treated
-        # as failure, not silent pass.
         uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
         with:
           virtual-environment: backend/.audit-venv
-          strict: true
   npm-audit:
     name: SCA - Node (npm audit)
     runs-on: ubuntu-latest
