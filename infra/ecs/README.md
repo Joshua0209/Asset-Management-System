@@ -8,20 +8,21 @@ ECS service to reach steady state.
 
 ## Placeholders
 
-The committed files have placeholders that must be substituted before the
-first real deploy:
+The committed files contain placeholders that are dynamically substituted during the
+deployment pipeline in `.github/workflows/ci.yml`. This ensures that sensitive
+identifiers like Account IDs are kept out of source control and allows the same
+templates to be used across different environments.
 
-| Placeholder         | Where to set it                                                                          |
+| Placeholder         | Source (GitHub Actions)                                                                  |
 |---------------------|------------------------------------------------------------------------------------------|
-| `ACCOUNT_ID`        | Your AWS account number (12 digits)                                                      |
-| `REGION`            | e.g. `ap-northeast-1`                                                                    |
-| `PLACEHOLDER_IMAGE` | Replaced at deploy time by `aws-actions/amazon-ecs-render-task-definition`               |
-| `REPAIR_S3_BUCKET`  | The bucket name backing repair-image storage (e.g. `ams-repair-images-prod`)             |
-| `ALB_VPC_CIDR`      | VPC CIDR of the ALB subnets (e.g. `10.0.0.0/16`); becomes the `FORWARDED_ALLOW_IPS` trust gate |
+| `ACCOUNT_ID`        | `${{ secrets.AWS_ACCOUNT_ID }}`                                                          |
+| `REGION`            | `${{ vars.AWS_REGION }}`                                                                 |
+| `PLACEHOLDER_IMAGE` | Replaced by `aws-actions/amazon-ecs-render-task-definition`                              |
+| `REPAIR_S3_BUCKET`  | `${{ vars.REPAIR_S3_BUCKET }}`                                                           |
+| `ALB_VPC_CIDR`      | `${{ vars.ALB_VPC_CIDR }}` (becomes `FORWARDED_ALLOW_IPS`)                               |
 
-The image-tag substitution is automatic. The others are deliberately
-left as placeholders so you commit real values exactly once (after
-`terraform apply`) instead of relying on every CI run to inject them.
+The CI/CD pipeline uses `sed` to hydrate these values before rendering the final
+task definition and deploying to ECS.
 
 `WEB_CONCURRENCY=1` is set explicitly in the task definition even though
 the image default also pins it — operators reading the task-def should
@@ -39,6 +40,7 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 
 | Secret               | Purpose                                                  |
 |----------------------|----------------------------------------------------------|
+| `AWS_ACCOUNT_ID`     | Your AWS account number (12 digits)                      |
 | `AWS_DEPLOY_ROLE_ARN`| OIDC role the workflow assumes (no long-lived keys)      |
 | `NVD_API_KEY`        | Optional, raises OWASP Dependency-Check rate limit       |
 | `SONAR_TOKEN`        | Already configured for the existing SonarCloud job       |
@@ -48,6 +50,8 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 | Variable              | Purpose                                          |
 |-----------------------|--------------------------------------------------|
 | `AWS_REGION`          | e.g. `ap-northeast-1`                            |
+| `REPAIR_S3_BUCKET`    | Name of the S3 bucket for repair images          |
+| `ALB_VPC_CIDR`        | VPC CIDR of the ALB subnets (e.g. `10.0.0.0/16`) |
 | `ECR_REPOSITORY_BACKEND`  | e.g. `ams-backend`                           |
 | `ECR_REPOSITORY_FRONTEND` | e.g. `ams-frontend`                          |
 | `ECS_CLUSTER`         | e.g. `ams-prod`                                  |
