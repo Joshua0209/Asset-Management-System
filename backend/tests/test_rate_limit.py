@@ -323,6 +323,15 @@ def test_health_endpoint_is_exempt_from_rate_limit(
         assert response.status_code == 200, response.text
 
 
+def test_ready_endpoint_is_exempt_from_rate_limit(
+    enabled_limiter: TestClient,
+) -> None:
+    """/ready serves ALB readiness probes — must not 429 even after many hits."""
+    for _ in range(20):
+        response = enabled_limiter.get("/ready")
+        assert response.status_code == 200, response.text
+
+
 def test_auth_register_2xx_carries_x_ratelimit_headers(
     enabled_limiter: TestClient,
 ) -> None:
