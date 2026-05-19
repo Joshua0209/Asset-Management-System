@@ -392,6 +392,7 @@ def health_check(request: Request) -> dict[str, str]:
 
 
 @app.get("/ready", tags=["health"])
+@limiter.exempt  # type: ignore[untyped-decorator]  # readiness probes must not consume app quota
 def readiness_check() -> JSONResponse:
     """Readiness probe — process can serve traffic (DB reachable).
 
