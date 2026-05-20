@@ -1,0 +1,30 @@
+# Grafana file-based dashboard provisioning for the AMS observability overlay.
+#
+# Mounts to /etc/grafana/provisioning/dashboards via docker-compose.observability.yml.
+# The dashboards themselves live alongside, mounted at the path below; Grafana
+# reloads any changed file every `updateIntervalSeconds`.
+#
+# `allowUiUpdates: false` is intentional. Provisioning is the single source of
+# truth — UI edits get silently overwritten on the next reload, and a user who
+# doesn't know that wastes time tweaking panels that "snap back". Force a
+# git-tracked workflow instead.
+#
+# `foldersFromFilesStructure: true` makes Grafana put dashboards under a folder
+# matching their parent directory. We mount all dashboards in a single flat
+# folder under `dashboards/` so they all land in the same Grafana folder
+# named after the provider (`AMS Observability`), keeping the dashboard list
+# in obs-up Grafana visually identical to the file listing.
+
+apiVersion: 1
+
+providers:
+  - name: AMS Observability
+    orgId: 1
+    folder: AMS Observability
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true
