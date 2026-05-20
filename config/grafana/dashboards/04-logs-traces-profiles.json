@@ -5,7 +5,7 @@
   "graphTooltip": 0,
   "links": [
     {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Start Here", "tooltip": "Back to start", "type": "link", "url": "/d/ams-obs-start-here/00-start-here"},
-    {"asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": true, "title": "Open Pyroscope", "tooltip": "Open Pyroscope UI", "type": "link", "url": "http://localhost:4040"},
+    {"asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": true, "title": "Explore Profiles", "tooltip": "Open Grafana Explore on the Pyroscope datasource", "type": "link", "url": "/explore?left=%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22labelSelector%22%3A%22%7Bservice_name%3D~%5C%22ams-backend.%2A%5C%22%7D%22%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22queryType%22%3A%22profile%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D"},
     {"asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": true, "title": "Explore Traces", "tooltip": "Open Tempo Explore", "type": "link", "url": "/explore?left=%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22query%22%3A%22%7B+resource.service.name+%3D+%5C%22ams-backend%5C%22+%7D%22%2C%22queryType%22%3A%22traceql%22%2C%22refId%22%3A%22A%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D"}
   ],
   "panels": [

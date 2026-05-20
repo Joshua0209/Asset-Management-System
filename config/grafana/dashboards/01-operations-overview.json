@@ -114,7 +114,7 @@
       "id": 10,
       "options": {
         "mode": "markdown",
-        "content": "## AWS / ECS panels\n\nPhase 6 adds two CloudWatch-backed panels here:\n\n- **ECS Container Insights** — `AWS/ECS/ContainerInsights` `CpuUtilized` + `MemoryUtilized` for `ServiceName=ams-backend|ams-frontend`, `ClusterName=ams-prod`.\n- **ALB metrics** — `AWS/ApplicationELB` `RequestCount`, `TargetResponseTime` (p95), `HTTPCode_Target_5XX_Count`.\n\nThe `cloudwatch` datasource is provisioned by Phase 6's `cloudwatch.yml`. Until the `CLOUDWATCH_ACCESS_KEY` / `CLOUDWATCH_SECRET_KEY` env vars are set (`.env` at repo root), those panels load with `No data` and the rest of the dashboard continues to work."
+        "content": "## AWS / ECS panels\n\nPhase 6 adds two CloudWatch-backed panels here:\n\n- **ECS Container Insights** — `AWS/ECS/ContainerInsights` `CpuUtilized` + `MemoryUtilized` for `ServiceName=ams-backend|ams-frontend`, `ClusterName=ams-prod`.\n- **ALB metrics** — `AWS/ApplicationELB` `RequestCount`, `TargetResponseTime` (p95), `HTTPCode_Target_5XX_Count`.\n\nThe `cloudwatch` datasource is provisioned by Phase 6's `cloudwatch.yml`. Until the credentials referenced in `backend/.env.example` are set in `.env` at the repo root, those panels load with `No data` and the rest of the dashboard continues to work."
       },
       "title": "AWS ECS + ALB (Phase 6 placeholder)",
       "type": "text"
