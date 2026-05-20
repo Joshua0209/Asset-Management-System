@@ -1,0 +1,236 @@
+# Observability overlay (Phase 3, W6 milestone M6).
+#
+# Layered on top of docker-compose.yml so the routine dev stack stays unaffected
+# by default. Bring up with:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#
+# Or via the Makefile convenience target: `make obs-up`.
+#
+# Locked decisions (see docs/plans/observability-implementation-plan.md):
+#   - The single-process backend invariant (gunicorn --workers 1 in prod,
+#     uvicorn without --workers in this dev overlay) is what keeps the
+#     in-memory rate limiter coherent across requests.
+#   - mysqld-exporter creds are hardcoded as exporter/exporter — compose-only,
+#     read-only grant (see db/init/01-exporter-grant.sql).
+#   - cAdvisor labels come from com.docker.compose.service via Alloy relabel
+#     (Phase 4); we don't set cgroup_parent per service here.
+#   - Pyroscope is on locally but off in prod (gunicorn fork interaction).
+
+services:
+  # ── Augment the dev stack ───────────────────────────────────────────────────
+  mysql:
+    volumes:
+      # MySQL 8.4 auto-runs *.sql files under this path on first boot. Creates
+      # the read-only `exporter` user the mysqld-exporter sidecar connects as.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+
+  backend:
+    environment:
+      # Phase 1 toggles. Defaults in app/core/config.py are safe-off; overlay
+      # flips them on so dashboards have data.
+      OTEL_ENABLED: "true"
+      OTEL_ENDPOINT: http://alloy:4317
+      PYROSCOPE_ENABLED: "true"
+      PYROSCOPE_SERVER: http://pyroscope:4040
+      LOG_FORMAT: json
+      # Fixed string in dev — Phase 7 load tests will replace with a per-replica
+      # value (e.g. HOSTNAME) once we run `docker compose --scale backend=N`.
+      # Note: the base file pins container_name: ams-backend, which itself
+      # already blocks scaling. Both get revisited together in Phase 7.
+      REPLICA_ID: ams-backend-1
+    labels:
+      # Declared explicitly so Alloy's discovery.docker relabel finds it
+      # regardless of compose project naming.
+      com.docker.compose.service: backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+      alloy:
+        condition: service_started
+
+  frontend:
+    environment:
+      # Browser → Alloy direct (demo only). Prod images leave these unset and
+      # the browser never tries to reach Alloy.
+      VITE_OTEL_ENABLED: "true"
+      VITE_OTEL_ENDPOINT: http://localhost:4318/v1/traces
+    labels:
+      com.docker.compose.service: frontend
+
+  # ── Observability stack ─────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: ams-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: light
+      # traceqlEditor enables the TraceQL search UI; correlations + traceToProfiles
+      # power the M6 single-pane drilldown (log → trace → flamegraph).
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor correlations traceToProfiles
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+      - pyroscope
+    labels:
+      com.docker.compose.service: grafana
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: ams-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Required so Alloy can push scraped metrics here via remote_write.
+      - --web.enable-remote-write-receiver
+      # Allows `curl -X POST :9090/-/reload` after editing prometheus.yml
+      # without restarting the container.
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    # The prom/prometheus image ships wget (busybox); curl is not installed.
+    # /-/healthy is the standard liveness endpoint; -O - discards the body.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9090/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    labels:
+      com.docker.compose.service: prometheus
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: ams-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./config/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    labels:
+      com.docker.compose.service: loki
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: ams-tempo
+    restart: unless-stopped
+    command: -config.file=/etc/tempo/tempo.yml
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./config/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+    labels:
+      com.docker.compose.service: tempo
+
+  pyroscope:
+    image: grafana/pyroscope:1.9.0
+    container_name: ams-pyroscope
+    restart: unless-stopped
+    user: "0:0"
+    command: -config.file=/etc/pyroscope/pyroscope.yml
+    ports:
+      - "4040:4040"
+    volumes:
+      - ./config/pyroscope/pyroscope.yml:/etc/pyroscope/pyroscope.yml:ro
+      - pyroscope_data:/var/lib/pyroscope
+    labels:
+      com.docker.compose.service: pyroscope
+
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: ams-alloy
+    restart: unless-stopped
+    user: "0:0"
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports:
+      - "12345:12345"   # Alloy UI / health
+      - "4317:4317"     # OTLP gRPC (backend SDK)
+      - "4318:4318"     # OTLP HTTP (browser SDK; Phase 4 adds CORS)
+    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Read Docker's per-container log files for loki.source.docker.
+      - ${DOCKER_ROOT_DIR:-/var/lib/docker}/containers:/var/lib/docker/containers:ro
+      # discovery.docker queries the daemon to enumerate containers + labels.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on:
+      # Prometheus has a healthcheck — wait until /-/healthy is actually 200
+      # so Alloy's remote_write doesn't drop its first batch into the void.
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      pyroscope:
+        condition: service_started
+    labels:
+      com.docker.compose.service: alloy
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: ams-cadvisor
+    restart: unless-stopped
+    privileged: true
+    user: "0:0"
+    command:
+      - --store_container_labels=true
+      - --whitelisted_container_labels=com.docker.compose.service
+      - --housekeeping_interval=10s
+    expose:
+      - "8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - ${DOCKER_ROOT_DIR:-/var/lib/docker}/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    labels:
+      com.docker.compose.service: cadvisor
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: ams-mysqld-exporter
+    restart: unless-stopped
+    # Single source of truth for credentials (v0.15+ convention): host + user
+    # via flags, password via MYSQLD_EXPORTER_PASSWORD. Read-only `exporter`
+    # user is seeded by db/init/01-exporter-grant.sql on first MySQL boot.
+    command:
+      - --mysqld.address=mysql:3306
+      - --mysqld.username=exporter
+    environment:
+      MYSQLD_EXPORTER_PASSWORD: exporter
+    expose:
+      - "9104"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    labels:
+      com.docker.compose.service: mysqld-exporter
+
+volumes:
+  grafana_data:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  pyroscope_data:
+  alloy_data:
