@@ -43,6 +43,10 @@ services:
       # Declared explicitly so Alloy's discovery.docker relabel finds it
       # regardless of compose project naming.
       com.docker.compose.service: backend
+      # Opt in to JSON log parsing in config/alloy/config.alloy's
+      # loki.process pipeline. Phase 1 sets LOG_FORMAT=json above, so the
+      # backend emits structlog JSON lines that stage.json can extract.
+      com.observability.log_format: json
     depends_on:
       mysql:
         condition: service_healthy
@@ -121,6 +125,16 @@ services:
     volumes:
       - ./config/loki/loki.yml:/etc/loki/loki.yml:ro
       - loki_data:/loki
+    # /ready returns 200 once Loki's ingester + querier are accepting traffic.
+    # Alloy depends_on this so its first batch of startup logs doesn't get
+    # dropped while Loki is still warming up. The grafana/loki image ships
+    # wget (busybox); curl is not installed.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3100/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
     labels:
       com.docker.compose.service: loki
 
@@ -173,12 +187,14 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy_data:/var/lib/alloy/data
     depends_on:
-      # Prometheus has a healthcheck — wait until /-/healthy is actually 200
-      # so Alloy's remote_write doesn't drop its first batch into the void.
+      # Wait until each downstream is ready to accept writes so Alloy's
+      # remote_write / OTLP exporters don't drop their first batch into the
+      # void. Tempo and Pyroscope still gate on service_started — they don't
+      # ship a healthcheck endpoint that's worth wiring here.
       prometheus:
         condition: service_healthy
       loki:
-        condition: service_started
+        condition: service_healthy
       tempo:
         condition: service_started
       pyroscope:
