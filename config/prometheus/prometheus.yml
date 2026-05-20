@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alloy does all scraping for backend/cAdvisor/mysqld-exporter and pushes here
+# via remote_write. We keep a self-scrape so Prometheus is still useful on its
+# own when the overlay is brought up without the rest of the stack running.
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

@@ -64,10 +64,13 @@ for port in 4317 4318 12345; do
 done
 pass "alloy ports published"
 
-# MySQL grant file must be mounted into /docker-entrypoint-initdb.d/ so the
-# exporter user is created on first MySQL boot.
-echo "$RENDERED" | grep -q "docker-entrypoint-initdb.d/01-exporter-grant.sql" \
-  || fail "exporter grant SQL not mounted into mysql initdb dir"
+# MySQL grant SQL must be present in db/init/ and the directory must be mounted
+# into /docker-entrypoint-initdb.d/ so the exporter user is created on first
+# MySQL boot. Compose renders the bind mount as a directory target.
+[ -f db/init/01-exporter-grant.sql ] \
+  || fail "db/init/01-exporter-grant.sql missing"
+echo "$RENDERED" | grep -q "target: /docker-entrypoint-initdb.d" \
+  || fail "db/init not bind-mounted into mysql initdb dir"
 pass "mysqld-exporter grant SQL mounted"
 
 echo
