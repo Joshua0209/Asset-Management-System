@@ -8,13 +8,15 @@
 # Locked decisions (docs/plans/observability-implementation-plan.md § Phase 6):
 #   - Long-lived IAM user, NOT OIDC federation (one credential to rotate, no
 #     assume-role refresh shim in Grafana).
-#   - Keys are passed in via the container environment so this file stays in
-#     git. Without them set, Grafana provisions the datasource but the panels
-#     render "No data" — the rest of the dashboard still works.
 #
-# The CLOUDWATCH_ACCESS_KEY / CLOUDWATCH_SECRET_KEY values come from the
-# top-level .env (git-ignored); the compose overlay's grafana service forwards
-# them into the container.
+# Keys are delivered via docker compose secrets, NOT plain env vars: the
+# compose overlay sources CLOUDWATCH_ACCESS_KEY / CLOUDWATCH_SECRET_KEY from
+# the host .env into tmpfs files under /run/secrets/ inside the grafana
+# container. `$__file{...}` is Grafana's file-expansion syntax (≥7.3); the
+# values never appear in `docker inspect grafana`'s Env block. If the secret
+# files don't exist (operator left the env vars empty), Grafana logs a warning
+# and substitutes empty strings — the datasource still provisions, only the
+# two CloudWatch panels render "No data".
 
 apiVersion: 1
 
@@ -28,5 +30,5 @@ datasources:
       authType: keys
       defaultRegion: ap-east-2
     secureJsonData:
-      accessKey: ${CLOUDWATCH_ACCESS_KEY}
-      secretKey: ${CLOUDWATCH_SECRET_KEY}
+      accessKey: $__file{/run/secrets/cloudwatch_access_key}
+      secretKey: $__file{/run/secrets/cloudwatch_secret_key}

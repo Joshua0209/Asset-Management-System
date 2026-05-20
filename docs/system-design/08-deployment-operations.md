@@ -160,7 +160,7 @@ aws iam list-attached-user-policies --user-name ams-grafana-reader
 
 ### Store + distribute the keys
 
-Reference copy lives in AWS Secrets Manager under `ams/prod/grafana-cloudwatch-reader` (JSON `{ "access_key": "...", "secret_key": "..." }`). The keys are also written into the local Grafana host's `.env` (top-level, git-ignored; see `.env.example`):
+The reference copy should be stored in AWS Secrets Manager under `ams/prod/grafana-cloudwatch-reader` (JSON `{ "access_key": "...", "secret_key": "..." }`) once the IAM user is provisioned; nothing else in this stack reads from that ARN yet, so treat it as the audit / DR copy. The active credentials live in the local Grafana host's `.env` (top-level, git-ignored; see `.env.example`):
 
 ```bash
 # .env (top-level, NEVER committed)
@@ -168,7 +168,7 @@ CLOUDWATCH_ACCESS_KEY=AKIA...
 CLOUDWATCH_SECRET_KEY=...
 ```
 
-The compose overlay forwards `${CLOUDWATCH_ACCESS_KEY}` and `${CLOUDWATCH_SECRET_KEY}` into the Grafana container; `config/grafana/provisioning/datasources/cloudwatch.yml` substitutes them into `secureJsonData` at startup. If the variables are unset, the datasource still provisions and the rest of the dashboard works: only the two CloudWatch panels render `No data`.
+Both names MUST be defined (empty is fine); compose's secret block reads them at startup and fails fast if either is missing. The compose overlay materialises each value as a docker secret mounted at `/run/secrets/cloudwatch_access_key` and `/run/secrets/cloudwatch_secret_key` inside the Grafana container; `config/grafana/provisioning/datasources/cloudwatch.yml` reads those paths with Grafana's `$__file{...}` expansion. Routing through docker secrets keeps the values out of `docker inspect grafana`'s `Env` block (someone with docker-socket access can still `docker exec` to read them, but the casual exposure channel is closed). If both vars are left empty, the secret files are not mounted: Grafana logs a warning, provisions the datasource with empty credentials, and the two CloudWatch panels render `No data` while the rest of the dashboard keeps working.
 
 ### Verify the datasource is live
 

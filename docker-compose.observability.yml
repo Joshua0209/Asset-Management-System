@@ -76,13 +76,18 @@ services:
       # traceqlEditor enables the TraceQL search UI; correlations + traceToProfiles
       # power the M6 single-pane drilldown (log → trace → flamegraph).
       GF_FEATURE_TOGGLES_ENABLE: traceqlEditor correlations traceToProfiles
-      # Phase 6: CloudWatch datasource reader keys. Forwarded from the host
-      # .env (git-ignored) to the container so Grafana can substitute them
-      # into config/grafana/provisioning/datasources/cloudwatch.yml at start.
-      # Unset is fine — the datasource provisions, CloudWatch panels render
-      # "No data", everything else keeps working.
-      CLOUDWATCH_ACCESS_KEY: ${CLOUDWATCH_ACCESS_KEY:-}
-      CLOUDWATCH_SECRET_KEY: ${CLOUDWATCH_SECRET_KEY:-}
+    # Phase 6: CloudWatch reader credentials are mounted as tmpfs files under
+    # /run/secrets/, NOT exposed via environment vars. This keeps the values
+    # out of `docker inspect grafana`'s Env block. cloudwatch.yml reads them
+    # with `$__file{...}` substitution. If CLOUDWATCH_* env vars are empty on
+    # the host, the secret files are simply not mounted: Grafana logs a
+    # warning, provisions the datasource with empty creds, and the two
+    # CloudWatch panels render "No data". The vars MUST be defined in .env
+    # (even to empty values) — compose fails fast if they are unset, which is
+    # the intentional contract; .env.example ships them uncommented.
+    secrets:
+      - cloudwatch_access_key
+      - cloudwatch_secret_key
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -257,3 +262,13 @@ volumes:
   tempo_data:
   pyroscope_data:
   alloy_data:
+
+# Phase 6: CloudWatch reader keys flow host env → docker secret → tmpfs file
+# inside the grafana container. Sourcing from `environment:` rather than a
+# `file:` path keeps git-tracked configuration free of secret material; the
+# host operator manages credential rotation by editing the top-level .env.
+secrets:
+  cloudwatch_access_key:
+    environment: CLOUDWATCH_ACCESS_KEY
+  cloudwatch_secret_key:
+    environment: CLOUDWATCH_SECRET_KEY
