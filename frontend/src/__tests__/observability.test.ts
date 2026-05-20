@@ -1,7 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+interface WebProviderArgs {
+  resource: unknown;
+  spanProcessors: unknown[];
+}
+
+interface InstrumentationConfig {
+  "@opentelemetry/instrumentation-xml-http-request"?: { enabled?: boolean };
+  "@opentelemetry/instrumentation-fetch"?: {
+    propagateTraceHeaderCorsUrls?: (string | RegExp)[];
+  };
+}
+
 const providerRegister = vi.fn();
-const WebTracerProviderMock = vi.fn(() => ({ register: providerRegister }));
+const WebTracerProviderMock = vi.fn(
+  (_args: WebProviderArgs) => ({ register: providerRegister }),
+);
 const BatchSpanProcessorMock = vi.fn(function BSP(this: object, exporter: unknown) {
   Object.assign(this, { exporter });
 });
@@ -10,7 +24,9 @@ const OTLPTraceExporterMock = vi.fn(function Exporter(this: object, cfg: unknown
 });
 const resourceFromAttributesMock = vi.fn((attrs: Record<string, unknown>) => ({ attrs }));
 const registerInstrumentationsMock = vi.fn();
-const getWebAutoInstrumentationsMock = vi.fn(() => ["fake-instrumentation"]);
+const getWebAutoInstrumentationsMock = vi.fn(
+  (_config?: InstrumentationConfig): string[] => ["fake-instrumentation"],
+);
 
 vi.mock("@opentelemetry/sdk-trace-web", () => ({
   WebTracerProvider: WebTracerProviderMock,
@@ -95,7 +111,7 @@ describe("initObservability", () => {
       propagateTraceHeaderCorsUrls: [/^http:\/\/localhost:8000/],
     });
     expect(getWebAutoInstrumentationsMock).toHaveBeenCalledTimes(1);
-    const config = getWebAutoInstrumentationsMock.mock.calls[0][0];
+    const config = getWebAutoInstrumentationsMock.mock.calls[0]?.[0];
     expect(config).toBeDefined();
     expect(config?.["@opentelemetry/instrumentation-xml-http-request"]).toEqual({
       enabled: false,
@@ -114,10 +130,9 @@ describe("initObservability", () => {
     const { initObservability } = await importFreshModule();
     initObservability({ enabled: true });
     expect(WebTracerProviderMock).toHaveBeenCalledTimes(1);
-    const providerArgs = WebTracerProviderMock.mock.calls[0][0] as {
-      resource: unknown;
-      spanProcessors: unknown[];
-    };
+    const providerArgs = WebTracerProviderMock.mock.calls[0]?.[0];
+    expect(providerArgs).toBeDefined();
+    if (providerArgs === undefined) return;
     expect(providerArgs.resource).toEqual(
       expect.objectContaining({
         attrs: expect.objectContaining({ "service.name": "ams-frontend" }),
