@@ -21,7 +21,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
         Jun 02     ▶ Presentation
 ```
 
-**Status (2026-05-13):** W1–W4 done. **W5 active (Tue).** W4 closed with backend fully delivered (audit log, composite indexes, optimistic-locking pin tests, rate limiting + CORS) and FE mostly delivered (issue #29 dropdown, manager review detail page, full i18n parity, granular 409 error surfacing). **One FE item carries into W5:** multi-dimensional search/filter UI on `AssetList.tsx` (backend already shipped).
+**Status (2026-05-20):** W1–W5 done. **W6 active (Tue).** W5 shipped the production CI/CD pipeline (PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)), the multi-dim asset filter/sort UI that closed M4 (PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61)), a frontend role-folder reorganization with the two largest pages decomposed (PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59)), the rate-limited auth + CORS hotfix (PR [#60](https://github.com/Joshua0209/Asset-Management-System/pull/60)), and seed-data hardening (PR [#62](https://github.com/Joshua0209/Asset-Management-System/pull/62)). **Two W5 items carry into W6:** the DESIGN.md theme pass and the operator-side AWS provisioning (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) is open and templatized). **W6 monitoring pivots from CloudWatch to a self-hosted Grafana stack** (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor) modelled on the `2025-05-observability-demo` reference lab, with k6 driving load through it.
 
 ---
 
@@ -249,19 +249,19 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 ---
 
-## Week 5 — Infra + Testing + Polish (May 12–16) — **Active (Tue)**
+## Week 5 — Infra + Testing + Polish (May 12–16) — **Done (DESIGN.md theme + AWS provisioning carry to W6)**
 
 **Goal:** App is Dockerized, deployed to AWS, CI/CD pipeline green, test coverage ≥ 80%.
 
-**Status (2026-05-13):** W5 just kicked off after a late W4 close. The resource shift now applies — five engineers redistribute into 2 dev seats (the W4 search-UI carry-over + two new FE tasks decided this week), 2 infra seats (Docker prod + AWS), and 1 QA seat (E2E + manual testing). The W4 carry-over is the only outstanding M4 item; the two new tasks (unify manager/holder pages, apply DESIGN.md theme) are W5 net-new FE scope. PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55) (real conflict-UI dialog) merged on May 13 closes the optimistic-locking outcome cleanly — the W4 entry below has been updated to reflect that.
+**Status (2026-05-20):** Closed at the start of W6. The infra branch landed as PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58) on May 19 (prod multi-stage Dockerfiles, `/ready` probe, `S3ImageStorage`, full SCA gates, ECR + ECS rolling-deploy jobs). The W4 multi-dimensional filter/sort UI shipped as PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61) on May 20, closing the last open M4 outcome. The "unify manager/holder pages" task took a different shape than the original plan: PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59) instead **regrouped pages into `pages/holder/` and `pages/manager/` folders matching the route guards, decomposed the two god-pages (`ReviewDetail` and `AssetDetail`) into folder-modules with a shared `useSubmitAction` hook, and unified the inconsistent status-color constants** — cleaner than collapsing into single role-aware components and avoids regressions on the just-landed conflict-dialog wiring from PR #55. **Two items carry into W6:** the DESIGN.md theme application (token wiring through Antd `ConfigProvider`) and operator-side AWS provisioning. Test coverage and E2E both also slip to W6.
 
-**In-flight infra work on `feat/cicd-prod-pipeline` (not yet PR'd):** 6 commits already code-complete most of the W5 infra checklist — production multi-stage Dockerfiles (BE: gunicorn + UvicornWorker + non-root; FE: nginx:alpine), `/health` (liveness) + `/ready` (DB `SELECT 1`, 503 on failure), `S3ImageStorage` behind the existing `ImageStorage` Protocol (selected via `REPAIR_IMAGE_BACKEND=s3`), full SCA gates (pip-audit + npm audit + OWASP Dependency-Check), and deploy jobs in `.github/workflows/ci.yml` that build → push to ECR → render ECS task defs → rolling update with `wait-for-service-stability`. Auth uses GitHub OIDC (no long-lived AWS keys). **Architecture pivot:** EC2 ×2 → ECS Fargate (cheaper, no manual orchestration). Task defs committed under `infra/ecs/` with placeholders documented in `infra/ecs/README.md`. **Pending operator action** (not code): AWS provisioning of ECR repos + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role, and `ACCOUNT_ID` / `REGION` substitution after `terraform apply`.
+**W4-style hotfixes landed in W5:** PR [#60](https://github.com/Joshua0209/Asset-Management-System/pull/60) (rate-limited auth endpoints returning 500 + CORS blocks on preflight) and PR [#62](https://github.com/Joshua0209/Asset-Management-System/pull/62) (seed-data: DISPOSED transitions, audit-log rows, email collisions, category enum drift).
 
-**Carry-over from W4 (FE):**
+**Carry-over from W4 (FE) — closed:**
 
 | Task | Owner | Target | Notes |
 |------|-------|--------|-------|
-| **Multi-dimensional search/filter UI** on `AssetList.tsx` | Dev seat (FE) | Mon–Tue | Filter bar with text search (`q`) + dropdowns (`status`, `category`, `department`, `location`, `responsible_person_id`). Debounced; URL-state-driven so refresh preserves filters. BE filter API + composite indexes (PR #46) already in place — this is pure FE. Closes the last open M4 outcome |
+| Multi-dimensional search/filter UI on `AssetList.tsx` | Dev seat (FE) | Mon–Tue | ✅ Done (PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61), merged 2026-05-20). Filter bar with text search + dropdowns wired through a shared `listControls` module so both `AssetList` (manager) and `MyAssetList` (holder) share the same filter/sort engine. Closes the last open M4 outcome |
 
 **Resources shift:**
 
@@ -271,93 +271,142 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Infra / DevOps | 2 | Docker prod images, AWS, CI/CD, monitoring |
 | QA / Testing | 1 | E2E tests, manual testing |
 
-### Infra (2 people)
+### Infra (2 people) — ✅ Merged (operator AWS provisioning carries to W6)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Dockerize FE + BE (multi-stage builds) | Mon–Tue | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `backend/Dockerfile.prod` (gunicorn + UvicornWorker, slim final stage, non-root) and `frontend/Dockerfile.prod` (nginx:alpine serving Vite build with SPA fallback + asset cache headers). Dev compose stack (W3 PR #24) stays separate. PR + merge still required |
-| AWS setup: ECS Fargate + ALB + RDS Multi-AZ | Tue–Thu | **Pending operator action.** Architecture pivoted from "EC2 ×2 + manual orchestration" to ECS Fargate (cheaper, less ops surface). Task definitions committed on the branch under `infra/ecs/`; ECR repos + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role still need to be provisioned (Terraform skeleton TBD). See `infra/ecs/README.md` for required GitHub Actions secrets/vars |
-| CI/CD pipeline expansion (deploy) | Wed–Thu | **✅ Code-complete on `feat/cicd-prod-pipeline`.** Deploy jobs in `.github/workflows/ci.yml` trigger on push to `main` and manual dispatch after quality/security gates pass: builds both prod images, pushes to ECR (cached layers via `docker/build-push-action`), then renders task defs and runs ECS rolling update with `wait-for-service-stability`. Auth via GitHub OIDC — no long-lived AWS keys |
-| Zero-downtime rolling deploy | Thu–Fri | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `aws-actions/amazon-ecs-deploy-task-definition` with `wait-for-service-stability: true` blocks until the new task set passes ALB health checks (10-min timeout). Backend `/ready` endpoint returns 503 on DB failure so ALB can drain a bad target during RDS Multi-AZ failover without killing the container |
-| S3 bucket for images | Wed | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `S3ImageStorage` lives next to `LocalImageStorage` behind the existing `ImageStorage` Protocol; selected via `REPAIR_IMAGE_BACKEND=s3`. Storage keys are unchanged so the local→S3 cutover needs no DB rewrite. Bucket creation pending operator action |
-| Security CI gates (full) | Wed–Thu | **✅ Code-complete on `feat/cicd-prod-pipeline`.** SonarQube already shipped W1; the branch adds `pip-audit` (Python SCA, fails on any advisory in prod deps), `npm audit --omit=dev --audit-level=high`, and `dependency-check --failOnCVSS 7`. Optional `NVD_API_KEY` secret bumps NVD rate limit |
-| Health check endpoints (`/health` + `/ready`) | Mon–Tue | **✅ Code-complete on `feat/cicd-prod-pipeline`.** `/health` is liveness (always 200); `/ready` runs `SELECT 1` (503 on DB failure) so ALB target groups can drain bad backends during RDS failover. Compose healthcheck already points at `/ready` |
+| Dockerize FE + BE (multi-stage builds) | Mon–Tue | ✅ Done (PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)). `backend/Dockerfile.prod` (gunicorn + UvicornWorker, slim final stage, non-root) and `frontend/Dockerfile.prod` (nginx:alpine serving Vite build with SPA fallback + asset cache headers). Dev compose stack stays separate |
+| AWS setup: ECS Fargate + ALB + RDS Multi-AZ | Tue–Thu | ⏳ **Carries to W6.** Architecture pivoted from "EC2 ×2 + manual orchestration" to ECS Fargate. Task definitions committed under `infra/ecs/` with placeholders (`ACCOUNT_ID`, `REGION`, `DB_HOST`, etc.). PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) is open against `fix/ecs-task-def-placeholders` with the operator-side hydration: dedicated `ams/prod/app` secret for `JWT_SECRET`, IAM roles (`ams-ecs-task-execution`, `ams-backend-task`, `ams-frontend-task`), and `iam:PassRole` on the GitHub Actions role. Author reports RDS (`ams-database`) + S3 (`ams-repair-images-prod`) + ECR live in `ap-east-2`, and `ams-backend` / `ams-frontend` services launched in the `ams-prod` cluster. Merging it closes this row |
+| CI/CD pipeline expansion (deploy) | Wed–Thu | ✅ Done (PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)). Deploy jobs in `.github/workflows/ci.yml` trigger on push to `main` and manual dispatch after quality/security gates pass: builds both prod images, pushes to ECR, renders task defs, runs ECS rolling update with `wait-for-service-stability`. Auth via GitHub OIDC |
+| Zero-downtime rolling deploy | Thu–Fri | ✅ Done (PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)). `aws-actions/amazon-ecs-deploy-task-definition` with `wait-for-service-stability: true` blocks until the new task set passes ALB health checks (10-min timeout). `/ready` returns 503 on DB failure so ALB can drain a bad target during RDS Multi-AZ failover |
+| S3 bucket for images | Wed | ✅ Done (PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)). `S3ImageStorage` lives next to `LocalImageStorage` behind the existing `ImageStorage` Protocol; selected via `REPAIR_IMAGE_BACKEND=s3`. Storage keys are unchanged so the local→S3 cutover needs no DB rewrite. Bucket itself live per PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) report |
+| Security CI gates (full) | Wed–Thu | ✅ Done (PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)). SonarQube already shipped W1; the branch added `pip-audit` (Python SCA), `npm audit --omit=dev --audit-level=high`, and `dependency-check --failOnCVSS 7`. Optional `NVD_API_KEY` secret bumps NVD rate limit |
+| Health check endpoints (`/health` + `/ready`) | Mon–Tue | ✅ Done (PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)). `/health` is liveness (always 200); `/ready` runs `SELECT 1` (503 on DB failure). Compose healthcheck already points at `/ready` |
 
-### Testing (1 person + all devs contribute)
-
-| Task | Target | Notes |
-|------|--------|-------|
-| Unit tests: business logic, validation, auth | Mon–Thu | pytest. Focus on: status transitions, optimistic locking, RBAC |
-| Integration tests: all API endpoints | Wed–Fri | httpx + pytest. Cover all CRUD + workflow + error cases |
-| E2E tests: 6 critical flows | Thu–Fri | Playwright. Login, submit repair, approve, complete, search, register asset |
-
-### Dev (2 people — W4 carry-over, new FE scope, bug fixes)
+### Testing (1 person + all devs contribute) — ⚠ Partial (E2E carries)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| **W4 carry-over: multi-dim search/filter UI on `AssetList.tsx`** | Mon–Tue | The only outstanding M4 item. BE filter API + composite indexes (PR [#46](https://github.com/Joshua0209/Asset-Management-System/pull/46)) already shipped — pure FE work. Filter bar with text search (`q`) + dropdowns (`status`, `category`, `department`, `location`, `responsible_person_id`), debounced, URL-state-driven so refresh preserves filters |
-| **New: unify manager + holder page pairs into role-aware pages** | Tue–Thu | Today each surface has two pages: `AssetList`/`MyAssetList`, `Reviews`/`RepairRequestList`, `ReviewDetail`/`RepairRequestDetail`. Merge each pair into a single page where actions/columns are toggled by `useCurrentUser().role`. Reference template: `AssetDetail.tsx` already does this. Touches `App.tsx` routes, three page pairs, and the sidebar nav. Test plan: render snapshot + role-gate assertion per page. Coordinate with FE-3 to avoid breaking PR #55's conflict-dialog wiring |
-| **New: apply DESIGN.md theme to UI** | Wed–Fri | Wire `docs/designs/design-tokens.json` (W3C Design Tokens) through Antd's `ConfigProvider` seed tokens; audit each component against the four pillars from `DESIGN.md` (precision: 8px grid + tabular-nums; restraint: red as accent never surface, no gradients, no emoji in UI; hierarchy through typography not decoration; bilingual parity). Light-mode first; dark mode keeps the 1px luminance hairline pattern. Reference: `docs/designs/design-preview.html` for the target visual feel |
-| Bug fixes from integration testing | Rolling | Prioritize workflow-breaking bugs |
-| Edge cases: empty states, validation errors | Mon–Wed | |
-| Performance: add DB indexes if queries slow | Thu–Fri | Per `07-database-design.md § Index Strategy` |
+| Unit tests: business logic, validation, auth | Mon–Thu | ⚠ Backend test suite grew through W5 (25 test files, including new `test_image_storage_s3.py`, `test_composite_indexes_migration.py`, `test_rate_limit.py`, `test_alembic_migration_chain.py`). Coverage measurement run is the W6 follow-up |
+| Integration tests: all API endpoints | Wed–Fri | ⚠ Covered piecewise by the per-endpoint backend suites; no dedicated end-to-end pass yet |
+| E2E tests: 6 critical flows | Thu–Fri | ❌ **Carries to W6.** Playwright suite not yet authored. Six flows: login, submit repair, approve, complete, search, register asset |
+
+### Dev (2 people — W4 carry-over, new FE scope, bug fixes) — ⚠ Partial (DESIGN.md theme carries)
+
+| Task | Target | Notes |
+|------|--------|-------|
+| W4 carry-over: multi-dim search/filter UI on `AssetList.tsx` | Mon–Tue | ✅ Done (PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61), merged 2026-05-20). Shared `listControls` module powers both `AssetList` (manager) and `MyAssetList` (holder) |
+| Unify manager + holder page pairs into role-aware pages | Tue–Thu | ✅ Done in a different shape (PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59), merged 2026-05-18). Instead of collapsing pairs into single components, the team **regrouped pages by route guard** into `pages/holder/` and `pages/manager/` folders, **decomposed the 594-line `ReviewDetail` and 564-line `AssetDetail`** into folder-modules (`index.tsx` + per-modal components + a `useXxxActions` hook on top of a shared `useSubmitAction`), **unified the inconsistent `REPAIR_REQUEST_STATUS_COLORS` constant** (holder pages had blue/yellow, manager pages had yellow/blue for the same statuses), extracted `formatDateTime` / `formatRepairCost` helpers, and adopted a `@/` path alias across 200 imports in 58 files. Functionally equivalent and keeps the conflict-dialog wiring from PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55) intact |
+| Apply DESIGN.md theme to UI | Wed–Fri | ❌ **Carries to W6.** Token wiring through Antd `ConfigProvider` + four-pillar audit not started |
+| Bug fixes from integration testing | Rolling | ✅ Done. PR [#60](https://github.com/Joshua0209/Asset-Management-System/pull/60) (rate-limited auth endpoints 500 + CORS preflight) and PR [#62](https://github.com/Joshua0209/Asset-Management-System/pull/62) (seed-data: DISPOSED transitions, audit-log rows, email collisions, category enum drift) caught real bugs during the integration smoke pass. Small open follow-up: PR [#65](https://github.com/Joshua0209/Asset-Management-System/pull/65) unifies "Fault Content" → "Fault Description" labels and makes date locale follow i18n language |
+| Edge cases: empty states, validation errors | Mon–Wed | ✅ Folded into the PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59) refactor and the bug-fix PRs above |
+| Performance: add DB indexes if queries slow | Thu–Fri | Not needed — composite indexes from W4 PR [#46](https://github.com/Joshua0209/Asset-Management-System/pull/46) cover the multi-dim filter surface |
 
 ### Milestone: `M5 — Deployed & Tested`
-- [ ] W4 FE carry-over closed: multi-dim search/filter UI on Asset List
-- [ ] Manager/holder page pairs unified into role-aware pages (Assets, Repairs list, Repairs detail)
-- [ ] DESIGN.md theme applied: tokens wired through `ConfigProvider`, four-pillar audit clean
-- [ ] `feat/cicd-prod-pipeline` reviewed, PR'd, merged
-- [ ] AWS resources provisioned (ECR + ECS + RDS + S3 + OIDC IAM role)
-- [ ] App running on AWS (accessible via public URL)
-- [ ] CI/CD: push to main auto-deploys
-- [ ] Zero-downtime deploy demonstrated (deploy during load test)
-- [ ] Test coverage ≥ 80% (unit + integration)
-- [ ] E2E: 6 flows passing
-- [ ] All security CI gates passing (SAST + SCA + secret scan)
+- [x] W4 FE carry-over closed: multi-dim search/filter UI on Asset List (PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61))
+- [x] Manager/holder page pairs unified (PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59) regrouped by role + decomposed god-pages + unified shared constants and helpers; functionally equivalent to the original plan)
+- [ ] DESIGN.md theme applied: tokens wired through `ConfigProvider`, four-pillar audit clean — **carries to W6**
+- [x] `feat/cicd-prod-pipeline` reviewed, PR'd, merged (PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58))
+- [ ] AWS resources provisioned (ECR + ECS + RDS + S3 + OIDC IAM role) — PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) reports the resources live; merging the placeholder hydration completes this
+- [ ] App running on AWS (accessible via public URL) — depends on PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merge
+- [ ] CI/CD: push to main auto-deploys — code path ready, gated on PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63)
+- [ ] Zero-downtime deploy demonstrated (deploy during load test) — pairs with the W6 load test
+- [ ] Test coverage ≥ 80% (unit + integration) — backend suite grew significantly; measurement run + gap filling in W6
+- [ ] E2E: 6 flows passing — **carries to W6**
+- [x] All security CI gates passing (SAST + SCA + secret scan)
 
 ---
 
-## Week 6 — Harden + Demo Prep (May 19–23)
+## Week 6 — Observability + Demo Prep (May 19–23) — **Active (Tue)**
 
-**Goal:** System is demo-ready. Presentation materials started.
+**Goal:** System is demo-ready, instrumented end-to-end, and producing real telemetry under load. Presentation materials drafted.
+
+**Status (2026-05-20):** W6 started Mon May 19. The original W6 monitoring plan called for CloudWatch, but the team is pivoting to a **self-hosted Grafana observability stack** (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor) so the demo can showcase real metric/log/trace/profile correlation in one tool. Reference lab: `2025-05-observability-demo/` (sibling local project: three-layer app instrumented with the same stack, complete with k6 traffic generators and fault-injection scripts). The stack runs locally via `docker compose` so it is reproducible on the demo laptop without an AWS bill. **Three things carry from W5** and are folded into W6 scope: the DESIGN.md theme pass, the operator-side AWS provisioning (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63)), and the E2E Playwright suite. Test-coverage measurement also lands here.
+
+**Why a Grafana stack instead of CloudWatch:**
+
+- Single tool for metrics + logs + traces + profiles, with click-through correlation (Loki log line → Tempo trace via derived `trace_id` field; trace span → Pyroscope flamegraph for the same window).
+- Reproducible local demo: the same `docker compose up` brings up the full stack on any reviewer's machine without AWS access.
+- Lines up with the W6 demo audience (course evaluation) better than a screenshot of CloudWatch graphs hidden behind an AWS console login.
+- CloudWatch is still produced for free by the ECS task logs and stays in the architecture diagram, but it is not the demo surface.
+
+**Observability stack (modelled on `2025-05-observability-demo/docker-compose.yml`):**
+
+| Layer        | Tool                       | What it does in AMS                                                                                 |
+|--------------|----------------------------|------------------------------------------------------------------------------------------------------|
+| Metrics      | **Prometheus** (`:9090`)    | Scrapes a new `/metrics` endpoint on FastAPI (`prometheus-fastapi-instrumentator`) + cAdvisor container metrics |
+| Logs         | **Loki** (`:3100`)          | Centralized log store. Structured JSON logs from backend, CLF-style from nginx (frontend prod image) |
+| Traces       | **Tempo** (`:3200`)         | OpenTelemetry OTLP traces from backend (FastAPI + SQLAlchemy auto-instrumentation) and the browser  |
+| Profiling    | **Pyroscope** (`:4040`)     | Continuous Python profiling via `pyroscope-io` SDK in the backend                                    |
+| Collector    | **Grafana Alloy** (`:12345`)| Single agent: reads Docker JSON log files, scrapes Prom targets, receives OTLP on `:4317` / `:4318`, forwards to Prom/Loki/Tempo/Pyroscope. Replaces Promtail |
+| Container    | **cAdvisor**                | Container CPU + memory utilization vs. cgroup limits (uses `cgroup_parent` per service)              |
+| Dashboards   | **Grafana** (`:3000`)       | RED, USE, Golden Signals, plus AMS-flow dashboards. Pre-provisioned via `config/grafana/provisioning/` and dashboards JSON                                  |
+| Load gen     | **k6** (`grafana/k6`)       | Constant-arrival-rate traffic across the 6 critical flows; results shipped to Prom via remote-write  |
 
 **Resources shift:**
 
 | Role | People | Focus |
 |------|--------|-------|
-| Dev (final fixes) | 1 | Last bug fixes, demo-critical polish |
-| Infra / Monitoring | 2 | Monitoring, alerting, load testing |
-| Presentation | 2 | Slides draft, demo script, report writing |
+| Dev (DESIGN.md theme + last fixes) | 1 | DESIGN.md token wiring, four-pillar audit, demo-critical polish |
+| Infra / Observability | 2 | Instrument backend, stand up the Grafana stack locally, provision dashboards, complete AWS provisioning (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63)) |
+| QA / E2E | 1 (was Presentation) | Author the 6 Playwright flows; pair with infra on the load test |
+| Presentation | 1 | Slides draft, demo script, report writing |
 
-### Infra / Monitoring (2 people)
-
-| Task | Target | Notes |
-|------|--------|-------|
-| CloudWatch metrics + alarms | Mon–Wed | CPU, error rate, latency, health check. Per design.md §5.8 |
-| Load test with k6 or Locust | Wed–Thu | Sustain peak QPS for 10 min. Capture metrics for presentation |
-| Stress test: find breaking point | Thu | Document max QPS before P95 > 3s |
-| Health check endpoints (`/health` + `/ready`) | Mon–Tue | Liveness `/health` shipped W1 (`a0dfd95`); readiness `/ready` (DB `SELECT 1`, 503 on failure) **✅ code-complete on `feat/cicd-prod-pipeline`** and pulled into W5 scope. **Remaining W6 work:** configure ALB target-group health checks against `/ready` once the ECS cluster is provisioned |
-
-### Presentation (2 people)
+### Infra / Observability (2 people)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Architecture slides (system diagram, ER diagram, sequence diagrams) | Mon–Fri | Per rubric: 25% on architecture design |
-| Demo script: rehearse the 6 critical flows | Wed–Fri | Prepare fallback plan if live demo fails (screenshots/video) |
-| Testing strategy slides (pyramid, coverage report, load test results) | Thu–Fri | Per rubric: 25% on testing |
+| **Backend Prometheus metrics** | Mon–Tue | Add `prometheus-fastapi-instrumentator` to `backend/pyproject.toml`; mount on `/metrics` (excluded from auth + rate limit). Default histograms (latency by path/method/status) plus custom counters for FSM transitions and 409 conflicts |
+| **Backend OpenTelemetry traces** | Mon–Wed | `opentelemetry-instrumentation-fastapi` + `opentelemetry-instrumentation-sqlalchemy` auto-instrument incoming requests and outgoing DB queries; export OTLP to `alloy:4317`. Trace ID propagated into structured logs as a `trace_id` field so Loki → Tempo correlation works |
+| **Backend structured JSON logs** | Mon–Tue | Replace the FastAPI default access log with a `structlog` (or stdlib `logging` with JSON formatter) emitter that produces `{"level","service","replica","method","path","status","duration_ms","trace_id"}`. Container `logging` driver already writes to JSON files — Alloy will pick them up |
+| **Backend continuous profiling** | Wed | `pyroscope-io` Python SDK, app name `ams-backend.<replica>`. Lazy-imported so dev runs without it |
+| **Frontend browser OTLP** | Tue–Wed | `@opentelemetry/sdk-trace-web` + `@opentelemetry/auto-instrumentations-web`, OTLP-HTTP to Alloy on `:4318`. Adds page-load + fetch spans so the asset-list → repair-detail click path shows up in Tempo |
+| **`docker-compose.observability.yml`** | Tue–Wed | Bring up Grafana + Prom + Loki + Tempo + Pyroscope + Alloy + cAdvisor as an overlay compose file (`docker compose -f docker-compose.yml -f docker-compose.observability.yml up`). Volumes, ports, healthchecks, and provisioning paths follow `2025-05-observability-demo/docker-compose.yml` |
+| **Alloy config** | Wed | `config/alloy/config.alloy` — Docker JSON log discovery with low-cardinality labels (`service`, `replica`, `log_format`), Prom scrape jobs (backend `/metrics`, cAdvisor), OTLP receiver, exporters for each backend |
+| **Grafana dashboards** | Wed–Thu | Provision JSON dashboards: `00 Start Here`, `01 Operations Overview` (RED + Golden Signals), `02 Service Drilldown` (per-replica metrics + linked logs), `03 Repair Journey` (FSM transitions + duration + errors by flow), `04 Logs, Traces, Profiles` (correlation example) |
+| **Load test with k6** | Thu | Constant-arrival-rate scenario across login + asset register + holder repair submit + manager review + complete + asset search. Sustain peak QPS for 10 min; capture Grafana screenshots for the slides |
+| **Stress test: find breaking point** | Thu | Ramp until P95 > 3s or error rate > 1%; record breakpoint for the testing slide. Toggle `RATE_LIMIT_ENABLED=false` to isolate app behavior from the 100/min ceiling |
+| **AWS provisioning carry-over** | Mon–Tue | Merge PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) (operator hydration of task-def placeholders + `ams/prod/app` secret + IAM roles). Confirm push-to-main triggers ECS rolling update; ALB target group health checks pointed at `/ready` |
+
+### Testing / QA (1 person)
+
+| Task | Target | Notes |
+|------|--------|-------|
+| **Playwright E2E: 6 critical flows** | Mon–Wed | Login, holder submits repair (with image), manager approves with repair plan, manager completes repair, manager registers asset, multi-dim asset search. Runs against the docker compose dev stack |
+| **Test-coverage measurement + gap fill** | Tue–Thu | `pytest --cov=app --cov-report=term --cov-report=xml` + `npm run test:coverage` against current suite; identify modules under 80% and add targeted tests. SonarQube already consumes the artifacts |
+| **Pair with infra on load test** | Thu | Run E2E against the running stack while k6 generates background traffic; confirm flows still pass under sustained load |
+
+### Dev (1 person, DESIGN.md theme carry-over)
+
+| Task | Target | Notes |
+|------|--------|-------|
+| **DESIGN.md theme application** | Mon–Wed | Wire `docs/designs/design-tokens.json` (W3C Design Tokens format) through Antd's `ConfigProvider` seed tokens. Four-pillar audit: precision (8px grid + tabular-nums), restraint (red as accent never surface, no gradients, no emoji), hierarchy through typography weight not decoration, bilingual parity (zh-TW + en). Light-mode first; dark mode keeps the 1px luminance hairline pattern. Reference: `docs/designs/design-preview.html` |
+| **Demo data: realistic seed** | Thu | Make `scripts/seed_demo_data.py` produce believable company names, asset codes, and repair histories that span all FSM states for the live demo |
+| **Final UX polish for demo flow** | Thu–Fri | Make the 6 demo flows buttery smooth: focus order, keyboard shortcuts, default sort orders, animation timing |
+| **Small frontend consistency PR** | Mon | Merge PR [#65](https://github.com/Joshua0209/Asset-Management-System/pull/65): "Fault Content" → "Fault Description" in manager modals, Reviews list shows Request ID as the first column to mirror the holder list, `formatDateTime` respects `i18n.resolvedLanguage` so dates render `下午 8:00` in zh-TW and `8:00 PM` in en |
+
+### Presentation (1 person, started early)
+
+| Task | Target | Notes |
+|------|--------|-------|
+| Architecture slides (system diagram, ER diagram, sequence diagrams) | Mon–Fri | Per rubric: 25% on architecture design. Include the observability stack diagram |
+| Demo script: rehearse the 6 critical flows | Wed–Fri | Prepare fallback plan if live demo fails (screenshots / Loom video). Script should weave a Grafana drilldown into the flow ("here is the trace this click just generated") |
+| Testing strategy slides (pyramid, coverage report, k6 results) | Thu–Fri | Per rubric: 25% on testing |
 | Report draft (if format known) | Fri | Start with what you know; refine later |
 
-### Dev (1 person)
+### Milestone: `M6 — Observed & Demo Ready`
 
-| Task | Target | Notes |
-|------|--------|-------|
-| Demo data: realistic seed for presentation | Mon–Wed | Real-looking company names, asset names, repair histories |
-| Final UX polish for demo flow | Wed–Fri | Make the 6 demo flows buttery smooth |
-
-### Milestone: `M6 — Demo Ready`
-- [ ] Live demo runs without errors for all 6 flows
-- [ ] Monitoring dashboard shows real metrics
-- [ ] Load test report with charts
+- [ ] DESIGN.md theme applied (carry from W5)
+- [ ] AWS resources provisioned + app reachable on public URL (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged)
+- [ ] Backend instrumented: `/metrics` endpoint, OTLP traces, structured JSON logs, Pyroscope profiles
+- [ ] Frontend instrumented: browser OTLP for the asset-list → repair-detail click path
+- [ ] Grafana stack runs via `docker compose -f docker-compose.yml -f docker-compose.observability.yml up`
+- [ ] At least four dashboards provisioned (Operations Overview, Service Drilldown, Repair Journey, Logs/Traces/Profiles correlation example)
+- [ ] One end-to-end correlation demo works live: click a slow request in a dashboard, jump to the Loki log line, jump to the Tempo trace, jump to a Pyroscope flamegraph for the same window
+- [ ] k6 load test report: sustained peak QPS for 10 min, P95 below threshold, with Grafana screenshots for the slides
+- [ ] Stress test breakpoint documented (QPS at which P95 crosses 3s or error rate crosses 1%)
+- [ ] Playwright: 6 flows passing locally + in CI
+- [ ] Test coverage ≥ 80% (unit + integration), measured by `pytest --cov` + `npm run test:coverage` and confirmed by SonarQube quality gate
 - [ ] Slides first draft complete
 
 ---
@@ -395,11 +444,11 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
          W1      W2      W3      W4      W5      W6      Buffer
         Apr14   Apr21   Apr28   May05   May12   May19   May26
         ─────   ─────   ─────   ─────   ─────   ─────   ──────
-BE-1    [setup ] [auth ] [APIs ] [search] [infra] [monit] [fixes]
-BE-2    [CI    ] [CRUD ] [APIs ] [audit ] [infra] [load ] [pres ]
-FE-1    [setup ] [asset] [mgr  ] [i18n  ] [test ] [pres ] [pres ]
-FE-2    [setup ] [repair][hold ] [filter] [bugs ] [pres ] [pres ]
-FE-3    [i18n  ] [guard] [ops  ] [polish] [QA/e2e][demo] [pres ]
+BE-1    [setup ] [auth ] [APIs ] [search] [infra] [obs  ] [fixes]
+BE-2    [CI    ] [CRUD ] [APIs ] [audit ] [infra] [aws  ] [pres ]
+FE-1    [setup ] [asset] [mgr  ] [i18n  ] [filter][theme ] [pres ]
+FE-2    [setup ] [repair][hold ] [filter] [reorg ] [demo ] [pres ]
+FE-3    [i18n  ] [guard] [ops  ] [polish] [bugs ] [QA/e2e][pres ]
 
 Legend:
   setup  = project setup, scaffold
@@ -415,17 +464,20 @@ Legend:
   guard  = auth guard, role-based routing
   search = multi-dimensional search API
   filter = search/filter UI
+  reorg  = role-folder reorganization + god-page decomposition (PR #59)
   audit  = audit log + API hardening
   i18n   = internationalization
   polish = UX polish, conflict UI
-  infra  = Docker, AWS, CI/CD
+  infra  = Docker prod, ECS deploy pipeline, CI/CD (PR #58)
+  aws    = AWS provisioning (RDS, S3, IAM, OIDC) + PR #63 merge
+  obs    = backend instrumentation (Prom + OTLP + Pyroscope + structured logs) + Grafana stack
+  theme  = DESIGN.md token wiring through Antd ConfigProvider + four-pillar audit
   test   = unit + integration tests
-  QA/e2e = E2E tests + manual QA
-  bugs   = bug fixes
-  monit  = monitoring, alerting
+  QA/e2e = E2E tests + manual QA + coverage measurement
+  bugs   = bug fixes (PR #60 rate-limit/CORS, PR #62 seed)
   load   = load/stress testing
   pres   = slides, report, demo prep
-  demo   = demo data + UX polish
+  demo   = demo data + UX polish for the 6 critical flows
   fixes  = last-minute fixes
 ```
 
@@ -446,12 +498,18 @@ Legend:
 | Security CI gates too strict / slow | Low | Medium | Start with minimal gates in W1 (lint + gitleaks), expand progressively in W5 |
 | ~~**PR #27 (image display) holds Wednesday**~~ | ~~Active~~ Resolved | Low | Merged 2026-05-06 (W4 Wed) — first day of W4 as planned. M3 image-display outcome closed |
 | ~~**Issue #29 (asset-code dropdown UX) blocks the holder happy path**~~ | ~~Active~~ Resolved | Medium | Closed by PR [#52](https://github.com/Joshua0209/Asset-Management-System/pull/52) merged 2026-05-13. Holders now pick assets from a dropdown sourced from `GET /assets/mine` |
-| **W4 closed late (May 13 instead of May 9)** — eats into W5 capacity | Active | Medium | PR #39 (rate limiting) and PR #52 (issue #29) both merged on the first morning of W5. Effective W5 length is ~4 working days, not 5. **Mitigation:** the only W4 feature carry-over (search/filter UI) lands Mon–Tue of W5, before AWS work starts in earnest |
-| **Multi-dim search/filter UI is the only thing standing between M4 and "complete"** | Active | Low | Pure FE work; BE is fully ready. One dev seat picks it up Mon–Tue of W5 |
-| **AWS setup compresses if W5 dev seat is over-allocated** | Active | High | 2 dev seats absorb both bug fixes + the search-UI carry-over. If integration testing surfaces lots of edge cases, the search bar could slip to mid-week and trigger a cascade. **Mitigation:** ship search UI Mon–Tue (small, well-scoped); push edge-case fixes to Wed–Fri. If still slipping by Wed EOD, swap one infra seat onto bug fixes for half a day |
-| ~~**Production multi-stage Dockerfiles are net-new W5 work**~~ | ~~Active~~ Resolved | ~~Medium~~ | Code-complete on `feat/cicd-prod-pipeline` (commits 48d471f BE Dockerfile + frontend/Dockerfile.prod + nginx.conf). PR + merge remains |
-| **W5 has 3 FE tasks competing for 2 dev seats** (search UI + page unification + DESIGN.md theme) | Active | High | The two new FE tasks (page unification, theme application) were added on May 13 alongside the still-unstarted search UI carry-over. With 2 dev seats and ~4 working days left, the realistic FE budget is ~8 person-days against ~6–7 person-days of work — tight but feasible if no major bugs surface. **Mitigation:** sequence search UI Mon–Tue (smallest, highest urgency — closes M4), page unification Tue–Thu (3 page pairs, mechanical refactor against the `AssetDetail.tsx` template), theme application Wed–Fri overlapping with unification (the unification PR creates the natural seam to wire tokens consistently). If a third FE seat opens up via reduced QA scope or finished infra, prioritize the theme pass — it's the highest-visibility item for the Jun 2 demo |
-| **Page unification could collide with PR #55's conflict-dialog wiring** | Active | Medium | PR #55 just landed conflict handling into `AssetDetail.tsx`, `ReviewDetail.tsx`, `SubmitRepairRequest.tsx`. The unification refactor touches the same files. **Mitigation:** rebase unification work on top of PR #55; run the PR #55 test suite as the regression baseline before opening the unification PR |
+| ~~**W4 closed late (May 13 instead of May 9)** — eats into W5 capacity~~ | ~~Active~~ Resolved | ~~Medium~~ | W5 still closed on schedule (May 19–20 for the major merges) — the late W4 close did not cascade. Search/filter UI shipped Tue May 20 (PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61)) |
+| ~~**Multi-dim search/filter UI is the only thing standing between M4 and "complete"**~~ | ~~Active~~ Resolved | ~~Low~~ | Closed by PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61). M4 complete |
+| ~~**AWS setup compresses if W5 dev seat is over-allocated**~~ | ~~Active~~ Partially resolved | ~~High~~ | The compose-stack code shipped via PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58); the operator hydration is in flight in PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63). One W6 day is reserved for the merge + smoke test |
+| ~~**Production multi-stage Dockerfiles are net-new W5 work**~~ | ~~Active~~ Resolved | ~~Medium~~ | Merged via PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58) on 2026-05-19 |
+| ~~**W5 has 3 FE tasks competing for 2 dev seats**~~ | ~~Active~~ Partially resolved | ~~High~~ | Search UI shipped (PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61)). Page unification reshaped to "regroup + decompose" and shipped via PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59). DESIGN.md theme carries to W6 |
+| ~~**Page unification could collide with PR #55's conflict-dialog wiring**~~ | ~~Active~~ Resolved | ~~Medium~~ | PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59) took the "regroup by role folder + decompose god-pages" approach instead of collapsing into single role-aware components, so the PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55) conflict-dialog wiring stayed intact. Tests green throughout |
+| **DESIGN.md theme carry into W6** | Active | Medium | Token wiring not started in W5. With one dev seat in W6 (vs. three for observability) and a Jun 2 demo deadline, the theme is at risk of slipping further. **Mitigation:** treat the theme as a demo-polish item, not a re-skin. Wire `ConfigProvider` seed tokens first (a few-hour change), then audit the visible-on-demo surfaces only (Login, Asset List, Asset Detail, Submit Repair, Reviews, Review Detail). Hidden surfaces (admin user list, register) can use defaults |
+| **AWS provisioning may not converge by demo** | Active | High | PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) reports resources live in `ap-east-2`, but the live URL is not yet known to the rest of the team and `iam:PassRole` issues could resurface. **Mitigation:** demo is reproducible on `docker compose up` if AWS is not stable — the observability stack is local-first by design. If AWS slips, the slides cover deployment via the architecture diagram and the live demo runs on localhost |
+| **Backend instrumentation could break rate-limit middleware ordering** | Active | Medium | `prometheus-fastapi-instrumentator` + OpenTelemetry FastAPI middleware register in middleware chain. `slowapi` (rate limiting) is sensitive to ordering — wrong order can either bypass the limit or double-count requests in metrics. **Mitigation:** add a one-test regression in `test_rate_limit.py` that asserts the rate-limit counter increments exactly once per request when `/metrics` is also scraped. Refer to slowapi + Starlette middleware order rules before wiring |
+| **Grafana stack image size on the demo laptop** | Active | Low | Full observability stack adds ~2 GB of images (Grafana + Prom + Loki + Tempo + Pyroscope + Alloy + cAdvisor). **Mitigation:** put it in `docker-compose.observability.yml` as an overlay so it does not run during routine dev. Pre-pull images on the demo machine before the rehearsal |
+| **OTLP from the browser needs a reverse proxy in prod** | Active | Low | Direct browser → Alloy `:4318` works in local compose but in prod the browser cannot reach an internal Alloy endpoint. **Mitigation:** for the W6 demo, the Grafana stack is local-only; in prod, this is a future-phase decision. Note in the architecture slide that prod observability would terminate at ALB → Alloy and not be reachable from the browser without an additional gateway |
+| **Test coverage measurement might reveal large gaps** | Active | Medium | The backend test suite grew through W5 but no end-to-end coverage measurement has been run. If it lands at, say, 65%, the QA seat has to choose between writing tests and writing Playwright flows in the same week. **Mitigation:** run `pytest --cov` Mon morning to get the actual number before sequencing the QA week. Tests touching the new instrumentation paths can be deferred to the buffer week if needed |
 
 ---
 
@@ -495,8 +553,8 @@ Per `09-testing-strategy.md`, security gates are added progressively:
 | Lint | Week 1 ✅ | ESLint (FE) + ruff (BE) | Zero errors |
 | Type check | Week 1 ✅ | `tsc --noEmit` (FE) + `mypy --strict` (BE) | Zero errors |
 | Quality Gate | Week 1 ✅ (pulled from Week 5) | SonarCloud | Quality Gate must pass |
-| SCA | Week 5 | npm audit + pip-audit | Block on HIGH/CRITICAL CVE |
-| Deep SCA | Week 5 | OWASP Dependency-Check | Block on CVSS ≥ 7 |
+| SCA | Week 5 ✅ | npm audit + pip-audit | Block on HIGH/CRITICAL CVE (shipped via PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)) |
+| Deep SCA | Week 5 ✅ | OWASP Dependency-Check | Block on CVSS ≥ 7 (shipped via PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)) |
 
 ---
 
