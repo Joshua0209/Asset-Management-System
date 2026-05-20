@@ -62,7 +62,7 @@
   "time": {"from": "now-15m", "to": "now"},
   "timezone": "browser",
   "title": "04 Logs Traces Profiles",
-  "uid": "ams-obs-correlation",
+  "uid": "ams-obs-logs-traces-profiles",
   "version": 1,
   "weekStart": ""
 }
