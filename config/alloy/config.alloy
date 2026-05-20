@@ -8,13 +8,23 @@
 //   3. otelcol.receiver.otlp       → backend SDK + browser SDK
 //   4. otelcol.processor.batch     → otelcol.exporter.otlp.tempo
 //   5. discovery.docker + relabel  → low-cardinality service / replica labels
-//   6. loki.source.docker          → loki.process JSON → loki.write
+//   6. loki.source.docker          → loki.process (gated JSON) → loki.write
 //
-// Service / replica naming convention (single source of truth):
-//   service  = com.docker.compose.service label on each container
-//   replica  = container_name (e.g. ams-backend, ams-mysql), matches the
-//              REPLICA_ID env passed to the backend in the Phase 3 overlay
-//   log_format = optional com.observability.log_format label, defaults unset
+// Label conventions (single source of truth across metrics + logs):
+//   service     = com.docker.compose.service (e.g. backend, mysqld-exporter).
+//                 prometheus.scrape jobs set the same value statically so a
+//                 dashboard join on `service` lines up metrics and logs.
+//   replica     = container_name with the daemon's leading slash stripped
+//                 (e.g. ams-backend, ams-mysqld-exporter).
+//   log_format  = com.observability.log_format label, opt-in to JSON parsing.
+//                 Set explicitly to "json" on containers that emit structured
+//                 logs; unset is treated as plain text and bypasses stage.json.
+//   environment = static label "local" added by loki.process.
+//
+// NOTE: `replica` here is independent of the backend's REPLICA_ID env var.
+// REPLICA_ID becomes the OTel `service.instance.id` resource attribute on
+// traces, and is allowed to differ from container_name (compose sets it to
+// "ams-backend-1" as a forward-looking value for Phase 7 horizontal scaling).
 //
 // All scrape jobs forward into the single `prometheus.remote_write.local`
 // receiver. Prometheus runs with --web.enable-remote-write-receiver
@@ -46,9 +56,7 @@ prometheus.scrape "ams_backend" {
   forward_to      = [prometheus.remote_write.local.receiver]
 }
 
-// cAdvisor exposes per-container CPU / memory / network. Compose declares
-// `expose: 8080` only — no host port mapping — so the only way to read it is
-// via the docker network from inside Alloy.
+// cAdvisor exposes per-container CPU / memory / network on its in-network port.
 prometheus.scrape "cadvisor" {
   targets = [
     {"__address__" = "cadvisor:8080", "service" = "cadvisor", "replica" = "ams-cadvisor"},
@@ -58,10 +66,14 @@ prometheus.scrape "cadvisor" {
 }
 
 // mysqld-exporter sidecar (Phase 3) scrapes MySQL via the read-only `exporter`
-// user (db/init/01-exporter-grant.sql).
+// user (db/init/01-exporter-grant.sql). The service/replica labels follow the
+// compose-service convention (see cadvisor) so the exporter's own logs in Loki
+// line up with these metrics. Dashboards that want "MySQL server" metrics
+// query {service="mysqld-exporter"}; the ams-mysql container itself surfaces
+// only in the log stream under {service="mysql"}.
 prometheus.scrape "mysqld_exporter" {
   targets = [
-    {"__address__" = "mysqld-exporter:9104", "service" = "mysql", "replica" = "ams-mysql"},
+    {"__address__" = "mysqld-exporter:9104", "service" = "mysqld-exporter", "replica" = "ams-mysqld-exporter"},
   ]
   scrape_interval = "15s"
   forward_to      = [prometheus.remote_write.local.receiver]
@@ -79,7 +91,9 @@ otelcol.receiver.otlp "apps" {
     // user's browser, not the container network. It hits Alloy via the host
     // port mapping (4318). Without CORS allowed_origins the preflight blocks
     // every OTLP POST. localhost:5173 = Vite dev server, localhost:8080 =
-    // nginx production overlay.
+    // nginx production overlay. Any non-localhost origin (remote-dev VM,
+    // SSH tunnel, CI) must be added here or the browser silently drops every
+    // trace export with a console-only CORS error.
     cors {
       allowed_origins = ["http://localhost:5173", "http://localhost:8080"]
     }
@@ -115,14 +129,24 @@ discovery.docker "containers" {
 }
 
 // Map Compose service + container name onto low-cardinality `service` and
-// `replica` labels. Both are indexed by Loki so the dashboard variables in
-// Phase 5 (02-service-drilldown) can filter on them.
+// `replica` labels. Both are indexed by Loki so dashboard variables can
+// filter on them.
 //
 // `targets = []` is intentional: this block exists only to define `rules`,
 // which loki.source.docker applies per-log-line via `relabel_rules` below.
 // This matches the official Alloy docs pattern for Docker log discovery.
 discovery.relabel "containers" {
   targets = []
+
+  // Drop logs from containers that aren't part of this Compose stack
+  // (standalone `docker run` containers, other Compose projects on the same
+  // host). Without this, unrelated containers would push log lines with
+  // empty `service` labels and pollute the Loki service index.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    regex         = ""
+    action        = "drop"
+  }
 
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
@@ -136,9 +160,10 @@ discovery.relabel "containers" {
     target_label  = "replica"
   }
 
-  // Optional opt-in: containers can declare com.observability.log_format
-  // (e.g. "plain") to override the default. If unset we leave the label
-  // empty and the Phase 5 dashboard dropdown treats that as JSON.
+  // Opt-in: containers declare com.observability.log_format="json" to enable
+  // JSON parsing in loki.process below. Unset (no label) defaults to plain
+  // text and bypasses stage.json — preventing empty trace_id/level/path
+  // structured metadata from being written for every infra container.
   rule {
     source_labels = ["__meta_docker_container_label_com_observability_log_format"]
     target_label  = "log_format"
@@ -153,26 +178,36 @@ loki.source.docker "containers" {
 }
 
 loki.process "containers" {
-  // Parse the JSON line into the pipeline's extracted-data map. The fields
-  // remain non-indexed; they're surfaced as structured metadata below so a
-  // dashboard / derived-field rule can pull trace_id without expanding the
-  // Loki label cardinality.
-  stage.json {
-    expressions = {
-      trace_id = "trace_id",
-      level    = "level",
-      path     = "path",
-    }
-  }
+  // Gate JSON parsing on the log_format=json label. Containers that don't
+  // emit structured logs (cAdvisor, MySQL, Prometheus, Loki, Tempo, Grafana,
+  // Alloy itself) skip stage.json entirely — without this guard they'd
+  // silently produce empty trace_id/level/path structured metadata for every
+  // log line, polluting Loki's metadata index and breaking level-based
+  // dashboard filters that expect those fields populated only when present.
+  stage.match {
+    selector = "{log_format=\"json\"}"
 
-  // Loki 3.0+ + Alloy 1.x supports structured metadata. Loki's
-  // limits_config.allow_structured_metadata is on (see config/loki/loki.yml),
-  // so these become queryable metadata fields, NOT labels.
-  stage.structured_metadata {
-    values = {
-      trace_id = "trace_id",
-      level    = "level",
-      path     = "path",
+    // Parse the JSON line into the pipeline's extracted-data map. The fields
+    // remain non-indexed; stage.structured_metadata surfaces them so a
+    // dashboard / derived-field rule can pull trace_id without expanding the
+    // Loki label cardinality.
+    stage.json {
+      expressions = {
+        trace_id = "trace_id",
+        level    = "level",
+        path     = "path",
+      }
+    }
+
+    // Loki 3.0+ + Alloy 1.x supports structured metadata. Loki's
+    // limits_config.allow_structured_metadata is on (see config/loki/loki.yml),
+    // so these become queryable metadata fields, NOT labels.
+    stage.structured_metadata {
+      values = {
+        trace_id = "trace_id",
+        level    = "level",
+        path     = "path",
+      }
     }
   }
 

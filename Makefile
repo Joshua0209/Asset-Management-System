@@ -1,4 +1,4 @@
-.PHONY: help obs-up obs-down obs-restart obs-logs obs-ps obs-pull obs-clean obs-test
+.PHONY: help obs-up obs-down obs-restart obs-logs obs-ps obs-pull obs-clean obs-test obs-alloy-fmt
 
 # DOCKER_ROOT_DIR precedence (compose substitutes ${DOCKER_ROOT_DIR:-...} from
 # this value when make invokes compose):
@@ -48,3 +48,9 @@ obs-clean: ## Stop overlayed stack AND wipe its data volumes
 
 obs-test: ## Parse-time regression test for the overlay (offline, no images)
 	./scripts/test_obs_compose.sh
+
+obs-alloy-fmt: ## Validate config/alloy/config.alloy with `alloy fmt` (pulls v1.5.1)
+	docker run --rm \
+	  -v $(PWD)/config/alloy/config.alloy:/etc/alloy/config.alloy:ro \
+	  grafana/alloy:v1.5.1 fmt /etc/alloy/config.alloy > /dev/null
+	@echo "OK: config/alloy/config.alloy parses cleanly under grafana/alloy:v1.5.1"
