@@ -70,15 +70,25 @@ const Reviews: React.FC = () => {
 
   const columns: TableColumnsType<RepairRequestRecord> = [
     {
-      title: t('reviews.columns.assetCode'),
-      key: 'asset_code',
-      render: (_: unknown, record) => record.asset.asset_code,
-      width: 160,
+      title: t('reviews.columns.id'),
+      dataIndex: 'id',
+      key: 'id',
+      render: (id: string) => (
+        <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{id.slice(0, 8)}...</span>
+      ),
+      width: 120,
     },
     {
       title: t('reviews.columns.assetName'),
       key: 'asset_name',
-      render: (_: unknown, record) => record.asset.name,
+      render: (_: unknown, record) => (
+        <Space orientation="vertical" size={0}>
+          <Typography.Text strong>{record.asset.name}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+            {record.asset.asset_code}
+          </Typography.Text>
+        </Space>
+      ),
       width: 220,
     },
     {

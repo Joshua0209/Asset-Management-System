@@ -208,7 +208,7 @@ describe('ReviewDetail', () => {
 
     await clickButton(user, 'Update Details');
     await typeLabel(user, 'Repair Date', '2026-04-21');
-    await typeLabel(user, 'Fault Content', 'Connector issue');
+    await typeLabel(user, 'Fault Description','Connector issue');
     await typeLabel(user, 'Repair Plan', 'Reseat connector');
     await typeLabel(user, 'Repair Cost', '1500');
     await typeLabel(user, 'Repair Vendor', 'Vendor B');
@@ -227,7 +227,7 @@ describe('ReviewDetail', () => {
 
     await clickButton(user, 'Complete');
     await typeLabel(user, 'Repair Date', '2026-04-28');
-    await typeLabel(user, 'Fault Content', 'Resolved');
+    await typeLabel(user, 'Fault Description','Resolved');
     await typeLabel(user, 'Repair Plan', 'Replaced part');
     await typeLabel(user, 'Repair Cost', '1800');
     await typeLabel(user, 'Repair Vendor', 'Vendor C');

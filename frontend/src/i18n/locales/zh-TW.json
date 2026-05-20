@@ -224,7 +224,7 @@
     "detailsSuccess": "維修細節已更新",
     "completeSuccess": "維修申請已完成",
     "columns": {
-      "assetCode": "資產編號",
+      "id": "申請編號",
       "assetName": "資產名稱",
       "requester": "申請人",
       "status": "狀態",
@@ -251,7 +251,7 @@
     },
     "form": {
       "repairDate": "維修日期",
-      "faultContent": "故障內容",
+      "faultContent": "故障描述",
       "repairPlan": "維修方案",
       "repairCost": "維修費用",
       "repairVendor": "維修廠商",

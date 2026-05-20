@@ -224,7 +224,7 @@
     "detailsSuccess": "Repair details updated",
     "completeSuccess": "Repair request completed",
     "columns": {
-      "assetCode": "Asset Code",
+      "id": "Request ID",
       "assetName": "Asset Name",
       "requester": "Requester",
       "status": "Status",
@@ -251,7 +251,7 @@
     },
     "form": {
       "repairDate": "Repair Date",
-      "faultContent": "Fault Content",
+      "faultContent": "Fault Description",
       "repairPlan": "Repair Plan",
       "repairCost": "Repair Cost",
       "repairVendor": "Repair Vendor",
