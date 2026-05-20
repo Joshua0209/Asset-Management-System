@@ -2199,7 +2199,9 @@ class TestRegisterAssetIntegrityErrors:
             db_session,
             "flush",
             side_effect=IntegrityError(
-                "INSERT INTO assets ...", {}, Exception("CHECK constraint failed on purchase_amount")
+                "INSERT INTO assets ...",
+                {},
+                Exception("CHECK constraint failed on purchase_amount"),
             ),
         ):
             response = client.post(
