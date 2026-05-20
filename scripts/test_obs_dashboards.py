@@ -66,10 +66,17 @@ def collect_datasource_uids_from_yaml(text: str) -> set[str]:
     the validator stays stdlib-only (CI / local without PyYAML can still run
     it). The schema for datasources.yml is shallow enough that this is fine
     — Grafana itself reads it as a flat key list per entry.
+
+    Grafana's own provisioning docs show uids both unquoted (`uid: prometheus`)
+    and quoted (`uid: "prometheus"`); the character class also allows periods
+    because Grafana-generated uids can include them. Without these, a
+    contributor pasting a doc snippet verbatim would silently produce an
+    empty `provisioned_uids` set and every dashboard would fail the
+    datasource cross-reference with a misleading message.
     """
     uids: set[str] = set()
     for line in text.splitlines():
-        m = re.match(r"^\s*uid:\s*([A-Za-z0-9_\-]+)\s*$", line)
+        m = re.match(r"""^\s*uid:\s*["']?([A-Za-z0-9_.\-]+)["']?\s*$""", line)
         if m:
             uids.add(m.group(1))
     return uids
@@ -106,6 +113,8 @@ def check_dashboard(path: Path, provisioned_uids: set[str], all_uids: dict[str, 
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         fail(f"{path.name} is not valid JSON: {e}")
+    except OSError as e:
+        fail(f"{path.name} could not be read: {e}")
 
     # Required top-level fields for file-based provisioning.
     for required in ("uid", "title", "panels", "schemaVersion"):
@@ -115,10 +124,17 @@ def check_dashboard(path: Path, provisioned_uids: set[str], all_uids: dict[str, 
     if not isinstance(data["panels"], list) or not data["panels"]:
         fail(f"{path.name} has no panels")
 
+    # Blank or non-string uids slip past the "required field" check above
+    # because the key is present, but Grafana rejects them at load time with
+    # an opaque error message. Reject them here so the failure mode surfaces
+    # offline.
+    uid = data["uid"]
+    if not isinstance(uid, str) or not uid:
+        fail(f"{path.name} has a blank or non-string top-level uid — Grafana will reject it")
+
     # Cross-dashboard UID uniqueness: Grafana provisioning silently drops the
     # later loader on UID collision, which would make one dashboard invisible
     # without erroring at startup.
-    uid = data["uid"]
     if uid in all_uids:
         fail(f"{path.name} UID '{uid}' collides with {all_uids[uid].name}")
     all_uids[uid] = path
@@ -148,7 +164,10 @@ def check_dashboard(path: Path, provisioned_uids: set[str], all_uids: dict[str, 
 def check_dashboards_provisioning() -> None:
     if not DASHBOARDS_PROVISIONING.is_file():
         fail(f"{DASHBOARDS_PROVISIONING.relative_to(REPO_ROOT)} not found")
-    text = DASHBOARDS_PROVISIONING.read_text(encoding="utf-8")
+    try:
+        text = DASHBOARDS_PROVISIONING.read_text(encoding="utf-8")
+    except OSError as e:
+        fail(f"{DASHBOARDS_PROVISIONING.name} could not be read: {e}")
     # The provider must point at the path Grafana mounts the dashboards on
     # — anything else makes file-based loading silently no-op.
     if "/var/lib/grafana/dashboards" not in text:
@@ -165,9 +184,11 @@ def main() -> int:
     if not DATASOURCES_FILE.is_file():
         fail(f"{DATASOURCES_FILE.relative_to(REPO_ROOT)} is missing")
 
-    provisioned_uids = collect_datasource_uids_from_yaml(
-        DATASOURCES_FILE.read_text(encoding="utf-8")
-    )
+    try:
+        datasources_text = DATASOURCES_FILE.read_text(encoding="utf-8")
+    except OSError as e:
+        fail(f"{DATASOURCES_FILE.name} could not be read: {e}")
+    provisioned_uids = collect_datasource_uids_from_yaml(datasources_text)
     if not provisioned_uids:
         fail(f"{DATASOURCES_FILE.name} declares no datasources (no `uid:` lines found)")
     passing(f"{DATASOURCES_FILE.name} declares uids: {sorted(provisioned_uids)}")
@@ -185,6 +206,18 @@ def main() -> int:
             "missing dashboards: "
             + ", ".join(missing)
             + f" (looked under {DASHBOARDS_DIR.relative_to(REPO_ROOT)})"
+        )
+
+    # Stale or accidentally-committed dashboards would otherwise be provisioned
+    # by Grafana without ever being checked here. Catch the divergence between
+    # what's on disk and what this script knows about.
+    present = {p.name for p in DASHBOARDS_DIR.glob("*.json")}
+    extras = sorted(present - set(EXPECTED_DASHBOARDS))
+    if extras:
+        fail(
+            "unexpected dashboard files in "
+            f"{DASHBOARDS_DIR.relative_to(REPO_ROOT)}: {extras} "
+            "(add to EXPECTED_DASHBOARDS or delete)"
         )
 
     all_uids: dict[str, Path] = {}
