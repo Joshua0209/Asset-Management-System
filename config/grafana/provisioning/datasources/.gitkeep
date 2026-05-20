@@ -1,0 +1,2 @@
+# Phase 5 wires Prometheus + Loki + Tempo + Pyroscope datasources here.
+# Phase 6 adds the CloudWatch datasource.

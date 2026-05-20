@@ -1,0 +1,17 @@
+// Phase 3 placeholder. Phase 4 fills in scrape jobs, OTLP receivers, Docker log
+// discovery, and the relabel rules that map com.docker.compose.service to
+// `service`. Keeping this minimal so `alloy fmt` parses cleanly and the
+// container boots without errors during Phase 3 stack-up smoke tests.
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// Forward to Prometheus's remote-write receiver. Phase 4 wires real scrape
+// targets to this exporter.
+prometheus.remote_write "local" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
