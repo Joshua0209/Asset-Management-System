@@ -14,7 +14,7 @@
       "id": 1,
       "options": {
         "mode": "markdown",
-        "content": "**Domain-specific view of the AMS repair workflow.** The metrics here come from two custom counters in `app/core/observability.py`: `ams_fsm_transitions_total{from,to,asset_kind}` (every successful state change) and `ams_optimistic_conflicts_total{endpoint,code}` (every 409 raised when two writers raced or a transition was illegal). Latency panels pivot on the FastAPI `handler` label so a route template (e.g. `/api/v1/repair-requests/{repair_request_id}/approve`) shows up once regardless of which id is in the URL."
+        "content": "**Domain-specific view of the AMS repair workflow.** The metrics here come from two custom counters in `app/core/observability.py`: `ams_fsm_transitions_total{from,to,asset_kind}` (every successful state change) and `ams_optimistic_conflicts_total{endpoint,code}` (every 409 raised when two writers raced or a transition was illegal). Latency panels pivot on the FastAPI `handler` label so a route template (e.g. `/api/v1/repair-requests/{repair_request_id}/approve`) shows up once regardless of which id is in the URL.\n\nRate windows are deliberately asymmetric: stat panels use `[5m]` for a smoothed headline, timeseries panels use `[1m]` so a regression is visible within a refresh cycle. Don't normalise them — pick the window that matches the question."
       },
       "title": "Repair Journey",
       "type": "text"
