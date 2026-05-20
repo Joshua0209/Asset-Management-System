@@ -92,7 +92,14 @@ gunicorn app.main:app \
 
 `--proxy-headers` is deliberately omitted: it is a uvicorn-CLI-only flag, and uvicorn's proxy-header handling is on by default under `UvicornWorker`. Adding `--proxy-headers` would either no-op or fail depending on the version — both are noisier than just relying on the default.
 
-`--forwarded-allow-ips` is the trust gate: uvicorn's `ProxyHeadersMiddleware` only rewrites `request.client.host` from `X-Forwarded-For` when the immediate TCP peer is in this allowlist. Without it, an attacker hitting the task directly could spoof XFF and inject any IP they like into the bucket key. Use the **VPC CIDR of the ALB subnets** (e.g. `10.0.0.0/16`), not `*` and not the public ALB IP — public IPs rotate, the VPC CIDR is stable. The image default is `127.0.0.1` so local prod-image runs behave like uvicorn's own default; production ECS task definitions MUST override `FORWARDED_ALLOW_IPS` to the ALB-subnet VPC CIDR. The startup WARN in `app/main.py` flags the default when rate limiting is enabled.
+`--forwarded-allow-ips` is the trust gate: uvicorn's `ProxyHeadersMiddleware` only rewrites `request.client.host` from `X-Forwarded-For` when the immediate TCP peer is in this allowlist. Without it, an attacker hitting the task directly could spoof XFF and inject any IP they like into the bucket key.
+
+In production, we set `FORWARDED_ALLOW_IPS` to `*`. While less restrictive than a specific VPC CIDR, it is safe because:
+1. The ECS tasks are in **private subnets** with no public IP.
+2. The only entry point for external traffic is the **Application Load Balancer**.
+3. Direct access from other VPC resources is prevented by **Security Group** rules that only allow ingress from the ALB.
+
+This avoids operational issues with CIDR notation parsing while maintaining the "fail-closed" posture described below. The image default is `127.0.0.1` so local prod-image runs behave like uvicorn's own default; production ECS task definitions MUST override `FORWARDED_ALLOW_IPS` to `*`. The startup WARN in `app/main.py` flags the default when rate limiting is enabled.
 
 `backend/app/core/rate_limit.py` deliberately does **not** add an application-layer XFF reader on top. That would not be defense-in-depth — the two readers share a single precondition (the immediate hop is a trusted proxy), so they are one layer wearing two coats. The asymmetry matters:
 

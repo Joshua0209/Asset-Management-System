@@ -175,8 +175,8 @@ def _warn_if_proxy_trust_misconfigured(
             "enabled. Behind an ALB this collapses every anonymous request "
             "into the load-balancer's private-IP bucket and silently defeats "
             "credential-stuffing protection on /auth/login. Set "
-            "FORWARDED_ALLOW_IPS to the ALB-subnet VPC CIDR (e.g. 10.0.0.0/16) "
-            "in the ECS task definition. See "
+            "FORWARDED_ALLOW_IPS to '*' in the ECS task definition (safe when "
+            "tasks are in private subnets behind an ALB). See "
             "docs/system-design/08-deployment-operations.md §'Behind the ALB: "
             "client-IP resolution'."
         )

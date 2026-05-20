@@ -36,15 +36,14 @@ job's `required-vars:` list (and to its `env:` block, mapping to the matching
 GitHub secret or variable).
 
 1. **Use `__NAME__` sentinels**, not bare `NAME`. Bare tokens collide with
-   real values in the JSON: `{"name": "DB_HOST", "value": "DB_HOST"}` would
+   real values in the JSON: `{"name": "REPAIR_S3_BUCKET", "value": "REPAIR_S3_BUCKET"}` would
    rewrite the env-var **name** as well as the value, and the container would
-   not see `DB_HOST` at all. The double-underscore wrapper makes the placeholder
+   not see `REPAIR_S3_BUCKET` at all. The double-underscore wrapper makes the placeholder
    unambiguous. The action substitutes `__NAME__` from the env var named `NAME`,
    so the names must match exactly.
 2. **Use `|` as the `sed` delimiter**, not `/`. Several injected values
-   legitimately contain `/`: CIDRs (`10.0.0.0/16`), secret paths
-   (`ams/prod/app`). `/` as delimiter breaks `sed` parsing. The action uses
-   `|` for this reason; do not change it.
+   legitimately contain `/`: secret paths (`ams/prod/app`). `/` as delimiter
+   breaks `sed` parsing. The action uses `|` for this reason; do not change it.
 3. **Reference values via `env:`**, not inline `${{ ... }}` expressions. Avoids
    GitHub Actions expression-injection patterns and keeps the script auditable.
    The action reads via `${!name}` indirect expansion, so the caller's `env:`
@@ -65,10 +64,10 @@ The suffix is visible in the AWS console (Secret details → ARN) or via
 `aws secretsmanager describe-secret --secret-id ams/prod/app --query
 'ARN'`. Example correct value: `ams/prod/app-Xy12Ab`.
 
-`DB_PORT` is intentionally not parameterised — it is pinned to MySQL's default
-`3306` in `backend/app/core/config.py`. If a future RDS instance uses a non-
-default port, add `DB_PORT` to the task-def `environment` block (no secret
-indirection needed) and to the placeholder list above.
+`DB_PORT` is intentionally not parameterised. When using `DATABASE_URL` (the
+production default), the port is included in the secret string. If a future
+need arises for individual components, ensure `DB_PORT` is pinned to MySQL's
+default `3306` in `backend/app/core/config.py` or overridden in the task-def.
 
 `WEB_CONCURRENCY=1` is set explicitly in the task definition even though
 the image default also pins it — operators reading the task-def should
