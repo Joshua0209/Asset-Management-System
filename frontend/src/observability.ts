@@ -60,7 +60,7 @@ function readEnvString(key: "VITE_OTEL_ENDPOINT"): string | undefined {
 
 function safeImportMetaEnv(): Record<string, string | undefined> {
   try {
-    return import.meta.env as unknown as Record<string, string | undefined>;
+    return import.meta.env;
   } catch {
     return {};
   }
