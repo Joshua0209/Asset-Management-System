@@ -24,6 +24,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    env_file:
+      - ./backend/.env
     environment:
       # Talks to mysql via the service hostname inside the compose network.
       DATABASE_URL: mysql+pymysql://root:password@mysql:3306/asset_management

@@ -19,6 +19,12 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-do-not-use-in-production")
 os.environ.setdefault("JWT_ACCESS_TOKEN_EXPIRES_MINUTES", "720")
 os.environ.setdefault("REPAIR_UPLOAD_DIR", "/tmp/ams-test-repair-uploads")
+# Bootstrap credentials are now required (no defaults in Settings) so a
+# Secrets Manager injection failure in production fails loud instead of
+# seeding `admin@example.com` / `ChangeMe123`. The test suite supplies
+# its own dummies via the same env-var path production uses.
+os.environ.setdefault("BOOTSTRAP_MANAGER_EMAIL", "bootstrap@test.example")
+os.environ.setdefault("BOOTSTRAP_MANAGER_PASSWORD", "TestPassword123")  # noqa: S105
 
 # Rate limiting — disabled by default so the existing test suite is not
 # timing-sensitive. Tests that *want* limits flip

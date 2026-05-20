@@ -110,12 +110,17 @@ Two ways to run the stack locally. Pick one — they target the same ports (5173
 Builds and runs MySQL + backend + frontend with hot-reload via bind mounts. The backend container runs `alembic upgrade head` on each start, then serves with `uvicorn --reload`. The frontend runs `vite --host` so HMR reaches the browser.
 
 ```bash
+cp backend/.env.example backend/.env  # first time: create local backend secrets
 docker compose up --build       # first time: builds backend + frontend images
 docker compose up -d             # subsequent runs
 docker compose logs -f backend   # tail backend logs
 docker compose down              # stop (data persists in named volumes)
 docker compose down -v           # stop and wipe MySQL + uploads
 ```
+
+The backend service reads `backend/.env` through `env_file`; keep that file
+local and untracked. Compose still overrides `DATABASE_URL` to use the `mysql`
+service hostname inside the Docker network.
 
 **Seeding demo data (one-shot, destructive):** the seed script wipes all four tables before re-seeding, so it is not part of the boot command. Run it explicitly when you want a fresh demo dataset:
 
@@ -275,8 +280,8 @@ Key variables:
 | `JWT_SECRET` | Yes | 32+ byte random secret — generate with `python -c 'import secrets; print(secrets.token_urlsafe(48))'` |
 | `JWT_ALGORITHM` | No | Default `HS256` |
 | `JWT_ACCESS_TOKEN_EXPIRES_MINUTES` | No | Default `720` (12 h) |
-| `BOOTSTRAP_MANAGER_EMAIL` | No | Email for the seeded first manager (default `admin@example.com`) |
-| `BOOTSTRAP_MANAGER_PASSWORD` | No | Password for the seeded first manager — **change before exposing outside the team** |
+| `BOOTSTRAP_MANAGER_EMAIL` | Yes | Email for the seeded first manager |
+| `BOOTSTRAP_MANAGER_PASSWORD` | Yes | Password for the seeded first manager — **change before exposing outside the team** |
 | `BOOTSTRAP_MANAGER_NAME` | No | Display name for the seeded manager |
 | `BOOTSTRAP_MANAGER_DEPARTMENT` | No | Department for the seeded manager |
 | `CORS_ALLOWED_ORIGINS` | No | JSON array of allowed origins (default `["http://localhost:5173"]`) |
