@@ -18,6 +18,17 @@ pass() { echo "PASS: $*"; }
 [ -f "$BASE" ]    || fail "$BASE not found"
 [ -f "$OVERLAY" ] || fail "$OVERLAY not found (Phase 3 overlay missing)"
 
+# Compose validates `env_file:` paths exist even when we only want the merged
+# config rendered. backend/.env is git-ignored (see .gitignore: `.env`), so on
+# CI and fresh clones it's missing. Drop an empty stub for the duration of this
+# test — the actual env values don't matter for a parse-time check (the
+# overlay's `environment:` block overrides anything that would come from the
+# file). The trap cleans up only the stub we created, never a real local file.
+if [ ! -f backend/.env ]; then
+  : > backend/.env
+  trap 'rm -f backend/.env' EXIT
+fi
+
 # `docker compose config` resolves variables and merges overlay onto base. If it
 # exits non-zero, the YAML is malformed or the merge is invalid.
 RENDERED=$(docker compose -f "$BASE" -f "$OVERLAY" config 2>&1) \
