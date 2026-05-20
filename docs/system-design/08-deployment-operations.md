@@ -74,6 +74,8 @@ The limiter (`backend/app/core/rate_limit.py`) is in-process via slowapi. Per `0
 
 **ECS task command:** keep `--workers 1` until rate limits are backed by Redis. Auto-scaling at the *task* level (not the worker level) is the supported scaling axis.
 
+The W6 observability work (`docs/roadmap.md` §"Week 6") reinforces this from a second angle: `prometheus_client`'s default in-process registry is per-worker, so multi-worker tasks would return inconsistent `/metrics` snapshots depending on which worker handled the scrape. With `--workers 1` per task, `/metrics` is consistent and Prometheus aggregates across tasks via the `instance` label (`sum() by (service)`). If `WEB_CONCURRENCY` is ever bumped above 1, `prometheus-fastapi-instrumentator` must be configured with `PROMETHEUS_MULTIPROC_DIR` and a `multiproc_mode`. Do not silently raise the worker count without that wiring.
+
 ### Behind the ALB: client-IP resolution (CRITICAL)
 
 By default Starlette's `request.client.host` is the **immediate TCP peer** — behind an ALB that is the load-balancer's private IP, so every anonymous request would collapse into one bucket and the limiter would silently become a self-DoS (one attacker burns the global anon quota for every other user).

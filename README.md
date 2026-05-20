@@ -6,77 +6,88 @@ Course project for a cloud computing / software engineering class. The repositor
 - `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
 
-## Status (as of Week 5 — Active, 2026-05-13)
+## Status (as of Week 6 — Active, 2026-05-20)
 
-**Weeks 1–4 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud), Auth API, Asset CRUD, the full repair-request workflow (submit → review → approve/reject → in-repair → complete), asset FSM transitions (assign / unassign / dispose), image upload + retrieval, manager + holder pages, audit log + `GET /assets/:id/history`, composite search indexes, optimistic-locking pin tests, rate limiting + CORS tightening, and full i18n parity (212 keys × 2 locales) all shipped. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
+**Weeks 1–5 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud + pip-audit + npm audit + OWASP Dependency-Check), Auth API, Asset CRUD, the full repair-request workflow, asset FSM transitions, image upload + retrieval (now backed by `S3ImageStorage` in prod), manager + holder pages reorganized by role with the two largest pages decomposed into folder-modules, audit log + `GET /assets/:id/history`, composite search indexes + multi-dimensional asset filter/sort UI, optimistic-locking pin tests + conflict-resolution dialog, rate limiting + CORS tightening, full i18n parity (212 keys × 2 locales), production multi-stage Dockerfiles, `/health` + `/ready` probes, and the OIDC-based ECR → ECS Fargate rolling-deploy pipeline. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
 
-**Currently working on Week 5 — Infra + Testing + Polish (May 12–16).** Goal: production multi-stage Dockerfiles, AWS deployment (EC2 ×2 + ALB + RDS Multi-AZ), CI/CD push-to-deploy, ≥ 80% test coverage with E2E for 6 critical flows, plus the one remaining W4 FE carry-over — multi-dimensional search/filter UI on the asset list.
+**Currently working on Week 6 — Observability + Demo Prep (May 19–23).** Goal: instrument backend + frontend with the **Grafana observability stack** (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor), stand it up locally via a compose overlay, provision dashboards, run k6 load + stress tests, finish the DESIGN.md theme pass, ship the Playwright E2E suite for the 6 critical flows, and run the first `workflow_dispatch` smoke test against the AWS environment now that the operator-side provisioning merged today via PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63).
 
-### Week 4 carry-over into Week 5
+### Week 5 — Infra + Testing + Polish (May 12–16) — Closed
 
-W4 closed late on Tuesday May 13. Audit log, composite indexes, optimistic-locking pin tests, full i18n parity, granular 409 surfacing, and — newly merged this morning — the purpose-built conflict-resolution dialog with data refresh (PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55)) all shipped. See [docs/roadmap.md](docs/roadmap.md) Week 4 section for the full ledger. **One FE item carries:**
+Major merges:
 
-| Task | Owner | Target | Notes |
-|------|-------|--------|-------|
-| **Multi-dimensional search/filter UI** on `AssetList.tsx` | Dev seat (FE) | Mon–Tue | Filter bar with text search (`q`) + dropdowns (`status`, `category`, `department`, `location`, `responsible_person_id`). Debounced, URL-state-driven. BE filter API + composite indexes already shipped — this is pure FE. Closes the last open M4 outcome |
+- **PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)** — prod CI/CD pipeline (ECS Fargate, multi-stage Dockerfiles, `S3ImageStorage`, `/ready` probe, OIDC deploy, full SCA gates).
+- **PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59)** — frontend reorganized by role into `pages/holder/` + `pages/manager/`, the 594-line `ReviewDetail` and 564-line `AssetDetail` decomposed into folder-modules sharing a `useSubmitAction` hook, inconsistent `REPAIR_REQUEST_STATUS_COLORS` unified, `@/` path alias adopted across 200 imports.
+- **PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61)** — multi-dimensional asset list filter + sort UI on a shared `listControls` module (closes the last open M4 outcome).
+- **PR [#60](https://github.com/Joshua0209/Asset-Management-System/pull/60)** — rate-limited auth endpoints no longer 500 on the third failed login, CORS preflight unblocked.
+- **PR [#62](https://github.com/Joshua0209/Asset-Management-System/pull/62)** — seed-data hardening: DISPOSED transitions, audit-log rows, email collisions, category enum drift.
 
-### Week 5 — Infra + Testing + Polish (May 12–16) — Active
+**Carries into W6:** DESIGN.md theme application (token wiring through Antd `ConfigProvider`), the Playwright E2E suite, and a coverage measurement run. **Operator-side AWS provisioning landed on W6 Tue (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged 2026-05-20)** with hardened `__NAME__` task-def placeholder substitution, fail-fast `require_var` guard against unset/empty GitHub `vars.*`, escape-safe sed (`\`, `|`, `&` neutralised), Secrets Manager refs pinned to `AWSCURRENT`, ECR image-scan gate at CVSS ≥ 7, identity-policy snippet, and deployment circuit breaker docs. The first `workflow_dispatch` smoke test is the only remaining piece. The smaller frontend consistency PR [#65](https://github.com/Joshua0209/Asset-Management-System/pull/65) also merged today: "Fault Content" → "Fault Description", `formatDateTime` follows the i18n locale, shared rendering helpers across `RepairRequestList` + `Reviews`.
 
-Resource shift this week: 5 devs → **2 dev (W4 search-UI carry-over + two new FE tasks added May 13)** + **2 infra/DevOps (Docker prod, AWS, CI/CD deploy)** + **1 QA (E2E + manual)**.
+### Week 6 — Observability + Demo Prep (May 19–23) — Active
 
-**Two new FE tasks decided this week (not in the original W5 plan):**
+Resource shift this week: 5 devs → **1 dev (DESIGN.md theme + demo polish)** + **2 infra (backend instrumentation + Grafana stack + AWS provisioning)** + **1 QA (Playwright E2E + coverage)** + **1 presentation (slides + script)**.
 
-| Task | Why now | Notes |
-|------|---------|-------|
-| **Unify manager + holder page pairs into role-aware pages** | Today the same surface is built twice — `AssetList`/`MyAssetList`, `Reviews`/`RepairRequestList`, `ReviewDetail`/`RepairRequestDetail`. Each pair carries duplicate logic for filters, columns, and table chrome; only the actions differ. Unifying reduces maintenance surface before the W6 demo polish window and makes the role gates explicit in one place | Merge each pair into a single page where actions/columns/dropdowns are toggled by `useCurrentUser().role`. Reference template: `frontend/src/pages/AssetDetail.tsx` already does this. Touches `App.tsx` routes, three page pairs, and the sidebar nav. Coordinate with the conflict-dialog wiring from PR [#55](https://github.com/Joshua0209/Asset-Management-System/pull/55) — same files |
-| **Apply DESIGN.md theme to the UI** | The UI ships Antd defaults today, but the project's design system (`docs/designs/DESIGN.md` — TSMC-inspired: precision, restraint, hierarchy through typography, bilingual parity) has been authoritative since Week 2 and was never wired in. W6 demo is in 10 working days; the theme is the highest-visibility polish item | Wire `docs/designs/design-tokens.json` (W3C Design Tokens format) through Antd's `ConfigProvider` seed tokens. Audit components against the four pillars: 8px grid + tabular-nums; red as accent never surface, no gradients, no emoji; hierarchy through typography weight not decoration; light-mode first with 1px luminance hairline in dark mode. Reference visual: `docs/designs/design-preview.html` |
+**Why a Grafana stack instead of CloudWatch:** the original W6 plan called for CloudWatch metrics + alarms. The team is pivoting to a self-hosted Grafana stack (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor) modelled on the `2025-05-observability-demo/` reference lab, so the live demo can showcase real metric/log/trace/profile correlation in a single tool without an AWS console login. CloudWatch is still produced by the ECS task logs for free and stays in the architecture diagram, but it is not the demo surface.
 
-**In-flight on `feat/cicd-prod-pipeline` (not yet PR'd):** six commits already code-complete most of the W5 infra checklist — production Dockerfiles (BE gunicorn+UvicornWorker, FE nginx:alpine), `/health` liveness + `/ready` DB-readiness, `S3ImageStorage` behind the existing `ImageStorage` Protocol, full SCA gates (pip-audit + npm audit + OWASP Dependency-Check), and deploy jobs in `.github/workflows/ci.yml` that build → push to ECR → render ECS task defs → rolling update with `wait-for-service-stability`. Auth via GitHub OIDC. **Architecture pivot:** EC2 ×2 → ECS Fargate. Task defs committed under `infra/ecs/` with placeholders documented in `infra/ecs/README.md`. **Pending operator action:** AWS provisioning of ECR + ECS cluster/service + RDS Multi-AZ + S3 bucket + OIDC IAM role.
+#### Observability stack (compose overlay)
 
-#### Infra (2 people)
+| Layer        | Tool                  | What it does in AMS                                                                                  |
+|--------------|------------------------|-------------------------------------------------------------------------------------------------------|
+| Metrics      | **Prometheus**         | Scrapes `/metrics` on FastAPI (`prometheus-fastapi-instrumentator`) + cAdvisor container metrics      |
+| Logs         | **Loki**               | Centralized log store; structured JSON logs from backend + CLF from the prod-image nginx              |
+| Traces       | **Tempo**              | OTLP traces from backend (FastAPI + SQLAlchemy auto-instrumentation) and the browser SDK              |
+| Profiling    | **Pyroscope**          | Continuous Python profiling via `pyroscope-io` SDK in the backend                                     |
+| Collector    | **Grafana Alloy**      | Single agent: reads Docker JSON logs, scrapes Prom targets, receives OTLP, forwards to each backend   |
+| Container    | **cAdvisor**           | CPU + memory utilization vs. cgroup limits                                                            |
+| Dashboards   | **Grafana**            | RED, USE, Golden Signals, plus an AMS-flow dashboard ("Repair Journey")                               |
+| Load gen     | **k6**                 | Constant-arrival-rate traffic across the 6 critical flows; results in Prom via remote-write           |
 
-| Task | Target | Notes |
-|------|--------|-------|
-| Production multi-stage Dockerfiles (FE + BE) | Mon–Tue | ✅ Code-complete on `feat/cicd-prod-pipeline`. PR + merge still required |
-| AWS setup: ECS Fargate + ALB + RDS Multi-AZ | Tue–Thu | Pending operator action. ECS task definitions committed; see `infra/ecs/README.md` for required GitHub Actions secrets/vars |
-| CI/CD pipeline expansion (deploy to ECR + ECS) | Wed–Thu | ✅ Code-complete on `feat/cicd-prod-pipeline`. OIDC-based deploy, no long-lived AWS keys |
-| Zero-downtime rolling deploy | Thu–Fri | ✅ Code-complete on `feat/cicd-prod-pipeline`. `wait-for-service-stability` + `/ready` drains bad targets during RDS failover |
-| S3 bucket for images | Wed | ✅ Code-complete on `feat/cicd-prod-pipeline`. `S3ImageStorage` selected via `REPAIR_IMAGE_BACKEND=s3`; storage keys unchanged so cutover needs no DB rewrite |
-| Security CI gates (full SCA) | Wed–Thu | ✅ Code-complete on `feat/cicd-prod-pipeline`. `pip-audit` + `npm audit --omit=dev --audit-level=high` + `dependency-check --failOnCVSS 7` |
-| Health check endpoints (`/health` + `/ready`) | Mon–Tue | ✅ Code-complete on `feat/cicd-prod-pipeline`. Compose healthcheck already points at `/ready` |
-
-#### Testing (1 QA + all devs contribute)
+#### Infra / Observability (2 people)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Unit tests: business logic, validation, auth | Mon–Thu | pytest — focus on status transitions, optimistic locking, RBAC |
-| Integration tests: all API endpoints | Wed–Fri | httpx + pytest covering all CRUD + workflow + error cases |
-| E2E: 6 critical flows | Thu–Fri | Playwright — login, submit repair, approve, complete, search, register asset |
+| Backend Prometheus metrics (`/metrics`) | Mon–Tue | `prometheus-fastapi-instrumentator` plus custom counters for FSM transitions + 409 conflicts. Excluded from auth + rate limit |
+| Backend OpenTelemetry traces | Mon–Wed | Auto-instrument FastAPI + SQLAlchemy. OTLP export to `alloy:4317`. `trace_id` propagated into structured logs |
+| Backend structured JSON logs | Mon–Tue | Replace default access log with `{"level","service","replica","method","path","status","duration_ms","trace_id"}` |
+| Backend continuous profiling | Wed | `pyroscope-io` SDK, app name `ams-backend.<replica>`, lazy-imported |
+| Frontend browser OTLP | Tue–Wed | `@opentelemetry/sdk-trace-web` + auto-instrumentations-web, OTLP-HTTP to Alloy on `:4318` |
+| `docker-compose.observability.yml` overlay | Tue–Wed | Brings up Grafana + Prom + Loki + Tempo + Pyroscope + Alloy + cAdvisor; mirrors `2025-05-observability-demo/docker-compose.yml` structure |
+| Alloy config + Grafana dashboards | Wed–Thu | Provisioned dashboards: Operations Overview, Service Drilldown, Repair Journey, Logs/Traces/Profiles correlation |
+| k6 load + stress test | Thu | Sustain peak QPS for 10 min; find breakpoint where P95 > 3s or error rate > 1%. Screenshots for slides |
+| AWS provisioning smoke test | Mon–Tue | ✅ PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged 2026-05-20 (hardened placeholders, secret pinning, ECR scan gate, identity policy). **Open:** `workflow_dispatch` to confirm both task defs render correctly against real GitHub secrets/variables; confirm push-to-main triggers an ECS rolling deploy that reaches steady state with ALB target group health checks green on `/ready` |
 
-#### Dev (2 people — W4 carry-over, new FE scope, bug fixes)
+#### QA / Testing (1 person)
 
 | Task | Target | Notes |
 |------|--------|-------|
-| Multi-dim search/filter UI on `AssetList.tsx` | Mon–Tue | W4 FE carry-over described above |
-| Unify manager + holder page pairs into role-aware pages | Tue–Thu | New W5 scope. Three page pairs, mechanical refactor against `AssetDetail.tsx` template |
-| Apply DESIGN.md theme via `ConfigProvider` + four-pillar audit | Wed–Fri | New W5 scope. Wire `design-tokens.json` and audit components for restraint/precision/hierarchy/bilingual parity |
-| Bug fixes from integration testing | Rolling | Prioritize workflow-breaking bugs |
-| Edge cases: empty states, validation errors | Mon–Wed | |
-| Performance: add DB indexes if queries slow | Thu–Fri | Per `07-database-design.md § Index Strategy` |
+| Playwright E2E: 6 critical flows | Mon–Wed | Login, holder submits repair, manager approves with repair plan, manager completes repair, manager registers asset, multi-dim asset search |
+| Coverage measurement + gap fill | Tue–Thu | `pytest --cov` + `npm run test:coverage` against the current suite; target ≥ 80%; SonarQube quality gate must pass |
+| Run E2E under load | Thu | Pair with infra: run Playwright against the stack while k6 generates background traffic |
 
-#### Week 5 milestone — `M5 — Deployed & Tested`
+#### Dev (1 person — DESIGN.md theme + polish)
 
-- [ ] W4 FE carry-over closed: search/filter UI on Asset List
-- [ ] Manager/holder page pairs unified into role-aware pages
-- [ ] DESIGN.md theme applied (tokens through `ConfigProvider`, four-pillar audit clean)
-- [ ] `feat/cicd-prod-pipeline` reviewed, PR'd, merged
-- [ ] AWS resources provisioned (ECR + ECS + RDS + S3 + OIDC IAM role)
-- [ ] App running on AWS (accessible via public URL)
-- [ ] CI/CD: push to main auto-deploys
-- [ ] Zero-downtime deploy demonstrated
-- [ ] Test coverage ≥ 80% (unit + integration)
-- [ ] E2E: 6 flows passing
-- [ ] All security CI gates passing (SAST + SCA + secret scan)
+| Task | Target | Notes |
+|------|--------|-------|
+| DESIGN.md theme via `ConfigProvider` + four-pillar audit | Mon–Wed | W5 carry-over. Wire `docs/designs/design-tokens.json` through Antd; audit visible-on-demo surfaces for precision (8px grid + tabular-nums), restraint (red as accent only, no gradients/emoji), hierarchy through typography, bilingual parity |
+| Demo data: realistic seed | Thu | Believable company/asset names + repair histories spanning all FSM states |
+| Final UX polish for demo flow | Thu–Fri | Focus order, default sort orders, animation timing on the 6 demo flows |
+| Small consistency PR [#65](https://github.com/Joshua0209/Asset-Management-System/pull/65) | Mon | ✅ Merged 2026-05-20. "Fault Content" → "Fault Description"; Reviews list shows Request ID; `formatDateTime` follows i18n locale; shared rendering helpers between `RepairRequestList` + `Reviews` |
+
+#### Week 6 milestone — `M6 — Observed & Demo Ready`
+
+- [ ] DESIGN.md theme applied (W5 carry)
+- [x] AWS provisioning code merged (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged 2026-05-20)
+- [ ] App reachable on public URL — pending `workflow_dispatch` smoke test + first successful rolling deploy
+- [ ] Backend instrumented: `/metrics`, OTLP traces, structured JSON logs, Pyroscope profiles
+- [ ] Frontend instrumented: browser OTLP
+- [ ] Grafana stack runs via `docker compose -f docker-compose.yml -f docker-compose.observability.yml up`
+- [ ] At least four dashboards provisioned (Operations Overview, Service Drilldown, Repair Journey, Logs/Traces/Profiles correlation)
+- [ ] One end-to-end correlation demo: dashboard click → Loki log line → Tempo trace → Pyroscope flamegraph for the same window
+- [ ] k6 load test report (sustained QPS for 10 min) + stress test breakpoint (P95 > 3s)
+- [ ] Playwright: 6 flows passing locally + in CI
+- [ ] Test coverage ≥ 80% (unit + integration), measured + SonarQube green
+- [ ] Slides first draft complete
 
 > Full weekly plan, risks, resource allocation, and rubric mapping live in [docs/roadmap.md](docs/roadmap.md).
 
