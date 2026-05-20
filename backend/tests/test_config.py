@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.engine import make_url
 
 from app.core.config import Settings, _parse_string_list
 
@@ -184,6 +185,33 @@ def test_settings_accepts_complete_component_db_config(
     assert settings.sqlalchemy_database_url == (
         "mysql+pymysql://ams_app:hunter2@rds.example.com:3306/ams"
     )
+
+
+def test_component_db_config_escapes_url_significant_secret_characters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Secrets Manager passwords may contain URL delimiters such as ``@``.
+
+    Component-mode config must hand SQLAlchemy a valid URL where the password
+    round-trips unchanged. Manual f-string URL construction mis-parses
+    ``p@ss/word`` as URL structure instead of credentials.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        jwt_secret=_JWT_SECRET,
+        db_host="rds.example.com",
+        db_name="ams",
+        db_user="ams_app",
+        db_password="p@ss/word",  # noqa: S106
+    )
+
+    parsed = make_url(settings.sqlalchemy_database_url)
+
+    assert parsed.host == "rds.example.com"
+    assert parsed.username == "ams_app"
+    assert parsed.password == "p@ss/word"
+    assert parsed.database == "ams"
 
 
 _DB_COMPONENT_FIELDS: tuple[tuple[str, str], ...] = (
