@@ -332,8 +332,13 @@ jobs:
         # Sentinel tokens (__NAME__) avoid collision with env-var names like
         # DB_HOST that legitimately appear in the JSON. The `|` sed delimiter
         # tolerates `/` inside values (CIDRs like 10.0.0.0/16, secret paths
-        # like ams/prod/app). When adding a placeholder, follow the same
-        # __TOKEN__ + `|` delimiter convention.
+        # like ams/prod/app). `escape_sed` neutralises the remaining sed-
+        # metacharacters (`\`, `&`, `|`) so a value containing them does not
+        # corrupt the JSON silently. `require_var` rejects unset / empty
+        # GitHub variables up-front - otherwise the sentinel is consumed and
+        # the `grep '__[A-Z_]+__'` guard would pass on a broken task-def.
+        # When adding a placeholder, follow the same __TOKEN__ + `|`
+        # delimiter convention and add it to `require_var`.
         env:
           ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           REGION: ${{ vars.AWS_REGION }}
@@ -345,15 +350,34 @@ jobs:
           APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
           BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
         run: |
-          sed -i "s|__ACCOUNT_ID__|${ACCOUNT_ID}|g" infra/ecs/backend-task-def.json
-          sed -i "s|__REGION__|${REGION}|g" infra/ecs/backend-task-def.json
-          sed -i "s|__REPAIR_S3_BUCKET__|${REPAIR_S3_BUCKET}|g" infra/ecs/backend-task-def.json
-          sed -i "s|__ALB_VPC_CIDR__|${ALB_VPC_CIDR}|g" infra/ecs/backend-task-def.json
-          sed -i "s|__DB_HOST__|${DB_HOST}|g" infra/ecs/backend-task-def.json
-          sed -i "s|__DB_NAME__|${DB_NAME}|g" infra/ecs/backend-task-def.json
-          sed -i "s|__RDS_SECRET_NAME__|${RDS_SECRET_NAME}|g" infra/ecs/backend-task-def.json
-          sed -i "s|__APP_SECRET_NAME__|${APP_SECRET_NAME}|g" infra/ecs/backend-task-def.json
-          sed -i "s|__BOOTSTRAP_MANAGER_EMAIL__|${BOOTSTRAP_MANAGER_EMAIL}|g" infra/ecs/backend-task-def.json
+          set -euo pipefail
+          require_var() {
+            local name=$1
+            local val=${!name-}
+            if [ -z "$val" ]; then
+              echo "::error::$name is unset or empty - configure it under Settings -> Secrets and variables -> Actions"
+              exit 1
+            fi
+          }
+          escape_sed() {
+            # Escape sed-metacharacters in the REPLACEMENT half of `s|A|B|g`:
+            # backslash, the `|` delimiter, and `&` (which would expand to the
+            # matched pattern). Order matters - escape `\` first.
+            printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/|/\\|/g' -e 's/&/\\&/g'
+          }
+          for v in ACCOUNT_ID REGION REPAIR_S3_BUCKET ALB_VPC_CIDR DB_HOST DB_NAME \
+                   RDS_SECRET_NAME APP_SECRET_NAME BOOTSTRAP_MANAGER_EMAIL; do
+            require_var "$v"
+          done
+          sed -i "s|__ACCOUNT_ID__|$(escape_sed "$ACCOUNT_ID")|g" infra/ecs/backend-task-def.json
+          sed -i "s|__REGION__|$(escape_sed "$REGION")|g" infra/ecs/backend-task-def.json
+          sed -i "s|__REPAIR_S3_BUCKET__|$(escape_sed "$REPAIR_S3_BUCKET")|g" infra/ecs/backend-task-def.json
+          sed -i "s|__ALB_VPC_CIDR__|$(escape_sed "$ALB_VPC_CIDR")|g" infra/ecs/backend-task-def.json
+          sed -i "s|__DB_HOST__|$(escape_sed "$DB_HOST")|g" infra/ecs/backend-task-def.json
+          sed -i "s|__DB_NAME__|$(escape_sed "$DB_NAME")|g" infra/ecs/backend-task-def.json
+          sed -i "s|__RDS_SECRET_NAME__|$(escape_sed "$RDS_SECRET_NAME")|g" infra/ecs/backend-task-def.json
+          sed -i "s|__APP_SECRET_NAME__|$(escape_sed "$APP_SECRET_NAME")|g" infra/ecs/backend-task-def.json
+          sed -i "s|__BOOTSTRAP_MANAGER_EMAIL__|$(escape_sed "$BOOTSTRAP_MANAGER_EMAIL")|g" infra/ecs/backend-task-def.json
           if grep -E '__[A-Z_]+__' infra/ecs/backend-task-def.json; then
             echo "::error::Unsubstituted placeholder left in backend-task-def.json"
             exit 1
@@ -406,8 +430,23 @@ jobs:
           ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           REGION: ${{ vars.AWS_REGION }}
         run: |
-          sed -i "s|__ACCOUNT_ID__|${ACCOUNT_ID}|g" infra/ecs/frontend-task-def.json
-          sed -i "s|__REGION__|${REGION}|g" infra/ecs/frontend-task-def.json
+          set -euo pipefail
+          require_var() {
+            local name=$1
+            local val=${!name-}
+            if [ -z "$val" ]; then
+              echo "::error::$name is unset or empty - configure it under Settings -> Secrets and variables -> Actions"
+              exit 1
+            fi
+          }
+          escape_sed() {
+            printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/|/\\|/g' -e 's/&/\\&/g'
+          }
+          for v in ACCOUNT_ID REGION; do
+            require_var "$v"
+          done
+          sed -i "s|__ACCOUNT_ID__|$(escape_sed "$ACCOUNT_ID")|g" infra/ecs/frontend-task-def.json
+          sed -i "s|__REGION__|$(escape_sed "$REGION")|g" infra/ecs/frontend-task-def.json
           if grep -E '__[A-Z_]+__' infra/ecs/frontend-task-def.json; then
             echo "::error::Unsubstituted placeholder left in frontend-task-def.json"
             exit 1
