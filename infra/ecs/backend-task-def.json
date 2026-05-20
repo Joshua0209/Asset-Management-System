@@ -2,6 +2,10 @@
   "family": "ams-backend",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
   "cpu": "512",
   "memory": "1024",
   "executionRoleArn": "arn:aws:iam::__ACCOUNT_ID__:role/ams-ecs-task-execution",
@@ -33,7 +37,7 @@
         {"name": "BOOTSTRAP_MANAGER_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:BOOTSTRAP_MANAGER_PASSWORD::"}
       ],
       "healthCheck": {
-        "command": ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2).status==200 else 1)\""],
+        "command": ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2).status==200 else 1)\" || exit 1"],
         "interval": 15,
         "timeout": 5,
         "retries": 3,
@@ -44,7 +48,8 @@
         "options": {
           "awslogs-group": "/ecs/ams-backend",
           "awslogs-region": "__REGION__",
-          "awslogs-stream-prefix": "backend"
+          "awslogs-stream-prefix": "backend",
+          "awslogs-create-group": "true"
         }
       },
       "stopTimeout": 30

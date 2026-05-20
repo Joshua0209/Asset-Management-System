@@ -118,7 +118,52 @@ assuming production credentials.
 
 ## Health check note
 
-The container-level health check above runs *inside* the task. It is
-distinct from the ALB target group health check, which hits `/ready`
-on the backend (DB connectivity probe) and `/` on the frontend. Both
-must pass for the ALB to route traffic.
+The container-level health check is distinct from the ALB target group
+health check; both must pass for the ALB to route traffic.
+
+- **Backend container check**: `GET /ready` (DB connectivity probe).
+  Aligned with the ALB target group so an RDS Multi-AZ failover drains
+  the unhealthy task instead of letting ECS report it healthy while the
+  ALB marks it unhealthy.
+- **Frontend container check**: `wget -S --spider ... | grep '200 OK'`.
+  Drops the previous `-q` flag so non-200 responses, DNS errors, and
+  connection refusals surface in container stderr (visible via
+  `aws ecs describe-tasks` and CloudWatch).
+
+`startPeriod` covers cold-start: 30s for the backend (gunicorn + DB
+ping), 10s for the frontend (nginx).
+
+## CloudWatch log group bootstrap
+
+The `logConfiguration.options` block sets `"awslogs-create-group":
+"true"` so the first task launch auto-creates the log group instead of
+failing with `ResourceNotFoundException`. This requires the execution
+role to have `logs:CreateLogGroup` in addition to the standard
+`AmazonECSTaskExecutionRolePolicy` (which only grants `CreateLogStream`
++ `PutLogEvents`). Attach an inline policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "logs:CreateLogGroup",
+    "Resource": [
+      "arn:aws:logs:REGION:ACCOUNT_ID:log-group:/ecs/ams-backend",
+      "arn:aws:logs:REGION:ACCOUNT_ID:log-group:/ecs/ams-frontend"
+    ]
+  }]
+}
+```
+
+Alternative: pre-create the two log groups out-of-band (Terraform / CDK
+/ console) and remove the `awslogs-create-group` option. Then the
+standard managed policy is sufficient.
+
+## Architecture pinning
+
+Both task definitions set `runtimePlatform` to `LINUX/X86_64`
+explicitly. Without it Fargate defaults to the same values, but a
+`docker buildx` from Apple Silicon without `--platform linux/amd64`
+silently produces an ARM64 image that fails task launch with `exec
+format error`. The explicit block fails the build earlier.
