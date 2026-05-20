@@ -71,6 +71,16 @@ function createDeferred<T>() {
 
 const DEFAULT_PER_PAGE = PAGE_SIZE_OPTIONS[0];
 
+async function renderAndWaitForInitialLoad(fetchFn: ReturnType<typeof vi.fn<FetchFn>>) {
+  const rendered = renderHook(() => useAssetList({ fetchFn }));
+
+  await waitFor(() => {
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  return rendered;
+}
+
 describe('useAssetList', () => {
   it('does not fetch data when disabled', () => {
     const fetchFn = vi.fn<FetchFn>();
@@ -125,11 +135,7 @@ describe('useAssetList', () => {
       meta: { total: 1, total_pages: 1 },
     });
 
-    const { result } = renderHook(() => useAssetList({ fetchFn }));
-
-    await waitFor(() => {
-      expect(fetchFn).toHaveBeenCalledTimes(1);
-    });
+    const { result } = await renderAndWaitForInitialLoad(fetchFn);
 
     act(() => {
       result.current.onFilterChange('category', 'computer');
@@ -260,11 +266,7 @@ describe('useAssetList', () => {
       meta: { total: 1, total_pages: 1 },
     });
 
-    const { result } = renderHook(() => useAssetList({ fetchFn }));
-
-    await waitFor(() => {
-      expect(fetchFn).toHaveBeenCalledTimes(1);
-    });
+    const { result } = await renderAndWaitForInitialLoad(fetchFn);
 
     act(() => {
       result.current.onFilterChange('q', 'Laptop');
