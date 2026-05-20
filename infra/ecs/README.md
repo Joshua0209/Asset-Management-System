@@ -22,8 +22,8 @@ work across environments.
 | `__ALB_VPC_CIDR__`       | `${{ vars.ALB_VPC_CIDR }}` (becomes `FORWARDED_ALLOW_IPS`)                               |
 | `__DB_HOST__`            | `${{ vars.DB_HOST }}` (RDS endpoint)                                                     |
 | `__DB_NAME__`            | `${{ vars.DB_NAME }}` (database name, e.g. `ams`)                                        |
-| `__RDS_SECRET_NAME__`    | `${{ vars.RDS_SECRET_NAME }}` (system-managed RDS secret name)                           |
-| `__APP_SECRET_NAME__`    | `${{ vars.APP_SECRET_NAME }}` (application secret name, e.g. `ams/prod/app`)             |
+| `__RDS_SECRET_NAME__`    | `${{ vars.RDS_SECRET_NAME }}` (system-managed RDS secret name, must include 6-char ARN suffix — see below) |
+| `__APP_SECRET_NAME__`    | `${{ vars.APP_SECRET_NAME }}` (application secret name, must include 6-char ARN suffix — see below) |
 | `__BOOTSTRAP_MANAGER_EMAIL__` | `${{ vars.BOOTSTRAP_MANAGER_EMAIL }}` (email of the seeded first manager)           |
 
 ### Placeholder convention (read before adding new ones)
@@ -41,6 +41,18 @@ work across environments.
 4. The deploy step ends with a `grep '__[A-Z_]+__'` guard that fails the build
    if any placeholder slipped through. Always update both the JSON and the
    workflow together; the guard will catch one-sided changes.
+
+### Secret-name vars must include the AWS-side suffix (CRITICAL)
+
+AWS Secrets Manager appends a 6-character random suffix to every secret
+ARN (e.g. `ams/prod/app-AbCdEf`). The task definition references the
+full ARN, so `vars.RDS_SECRET_NAME` and `vars.APP_SECRET_NAME` MUST be
+set to the name **with** the suffix. Looking up a secret by bare name
+(`ams/prod/app`) yields a `ResourceNotFoundException` at task launch.
+
+The suffix is visible in the AWS console (Secret details → ARN) or via
+`aws secretsmanager describe-secret --secret-id ams/prod/app --query
+'ARN'`. Example correct value: `ams/prod/app-Xy12Ab`.
 
 `DB_PORT` is intentionally not parameterised — it is pinned to MySQL's default
 `3306` in `backend/app/core/config.py`. If a future RDS instance uses a non-
@@ -82,9 +94,18 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 | `ECS_SERVICE_FRONTEND`| e.g. `ams-frontend`                              |
 | `DB_HOST`             | RDS instance endpoint                            |
 | `DB_NAME`             | e.g. `ams`                                       |
-| `RDS_SECRET_NAME`     | Name of the managed RDS secret                   |
-| `APP_SECRET_NAME`     | e.g. `ams/prod/app`                              |
+| `RDS_SECRET_NAME`     | Name of the managed RDS secret, **including the 6-char ARN suffix** (e.g. `rds!db-AbCdEf`) |
+| `APP_SECRET_NAME`     | Name of the application secret, **including the 6-char ARN suffix** (e.g. `ams/prod/app-Xy12Ab`) |
 | `BOOTSTRAP_MANAGER_EMAIL` | Email of the seeded first manager (e.g. `admin@ams.example.com`) |
+| `VITE_API_BASE_URL`   | Optional. Build-time API base for the frontend bundle. Defaults to `/api/v1` (same-origin via ALB path routing) — override only if FE and BE are on separate domains |
+
+**GitHub vs AWS secrets.** Items in *Repository secrets* and *Repository
+variables* tables live in GitHub Actions settings. `RDS_SECRET_NAME` /
+`APP_SECRET_NAME` only carry the *names* of secrets that live in **AWS
+Secrets Manager** — the credentials themselves never enter GitHub. The
+task-def's `secrets:` block resolves those names to live values at task
+launch using the execution role's `secretsmanager:GetSecretValue`
+permission.
 
 ## OIDC trust policy snippet
 
