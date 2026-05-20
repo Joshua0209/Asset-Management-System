@@ -18,11 +18,10 @@ These verify the contract from
 
 from __future__ import annotations
 
-import io
-import json
-import logging
+import itertools
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import date
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -32,6 +31,16 @@ from app.core.config import Settings
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
+
+_REPAIR_ID_COUNTER = itertools.count(80001)
+
+
+def _unique_repair_id() -> str:
+    """Local counter so each test row satisfies the UNIQUE constraint on
+    ``RepairRequest.repair_id`` without colliding with other suites that
+    share the module-level counter in ``test_repair_requests``.
+    """
+    return f"REP-OBS-{next(_REPAIR_ID_COUNTER):05d}"
 
 
 # ---------------------------------------------------------------------------
@@ -45,9 +54,12 @@ def test_metrics_endpoint_returns_200_with_default_process_metric(
     resp = client.get("/metrics")
     assert resp.status_code == 200, resp.text
     body = resp.text
-    # `prometheus-fastapi-instrumentator` enables process collectors by
-    # default; the line below is the canonical smoke signal.
-    assert "process_resident_memory_bytes" in body, body[:500]
+    # `prometheus-client` registers Python platform collectors on every
+    # OS (the `process_*` family only loads on Linux because it reads
+    # `/proc`); `python_gc_objects_collected_total` is the cross-platform
+    # smoke signal that the default registry is being scraped.
+    assert "python_gc_objects_collected_total" in body, body[:500]
+    assert resp.headers["content-type"].startswith("text/plain")
 
 
 def test_metrics_endpoint_is_exempt_from_rate_limit(
@@ -83,18 +95,23 @@ MakeHolder = Callable[..., User]
 def _make_asset(
     db_session: Session,
     *,
-    code: str = "AMS-0001",
-    name: str = "Test Asset",
+    code: str = "AST-OBS-00001",
+    name: str = "Observability Asset",
     status: AssetStatus = AssetStatus.IN_USE,
     holder: User | None = None,
 ) -> Asset:
     asset = Asset(
         asset_code=code,
         name=name,
-        category="laptop",
+        model="Dell Latitude 7440",
+        category="computer",
+        supplier="Dell",
+        purchase_date=date(2025, 1, 1),
+        purchase_amount=Decimal("1500.00"),
+        location="Taipei HQ",
+        department="IT",
         status=status,
-        current_holder_id=holder.id if holder is not None else None,
-        version=1,
+        responsible_person_id=holder.id if holder is not None else None,
     )
     db_session.add(asset)
     db_session.commit()
@@ -145,10 +162,10 @@ def test_optimistic_conflict_counter_increments_on_409(
     # `code=duplicate_request`.
     existing = RepairRequest(
         asset_id=asset.id,
+        repair_id=_unique_repair_id(),
         requester_id=holder.id,
         status=RepairRequestStatus.PENDING_REVIEW,
-        description="prior open request",
-        version=1,
+        fault_description="prior open request",
     )
     db_session.add(existing)
     db_session.commit()
@@ -164,7 +181,11 @@ def test_optimistic_conflict_counter_increments_on_409(
     response = client.post(
         "/api/v1/repair-requests",
         headers=auth_headers(holder),
-        json={"asset_id": asset.id, "description": "second request"},
+        json={
+            "asset_id": asset.id,
+            "fault_description": "second request",
+            "version": asset.version,
+        },
     )
     assert response.status_code == 409, response.text
     assert response.json()["error"]["code"] == "duplicate_request"
@@ -199,10 +220,10 @@ def test_fsm_transition_counter_increments_on_review_approval(
     )
     req = RepairRequest(
         asset_id=asset.id,
+        repair_id=_unique_repair_id(),
         requester_id=holder.id,
         status=RepairRequestStatus.PENDING_REVIEW,
-        description="needs repair",
-        version=1,
+        fault_description="needs repair",
     )
     db_session.add(req)
     db_session.commit()
@@ -215,10 +236,10 @@ def test_fsm_transition_counter_increments_on_review_approval(
         {"from": "PENDING_REVIEW", "to": "UNDER_REPAIR"},
     )
 
-    response = client.patch(
-        f"/api/v1/repair-requests/{req.id}/review",
+    response = client.post(
+        f"/api/v1/repair-requests/{req.id}/approve",
         headers=auth_headers(manager),
-        json={"action": "approve", "version": req.version},
+        json={"version": req.version},
     )
     assert response.status_code == 200, response.text
 
@@ -320,14 +341,3 @@ def test_settings_observability_fields_defaults(monkeypatch: pytest.MonkeyPatch)
     assert settings.log_format == "json"
 
 
-# ---------------------------------------------------------------------------
-# Unused imports tripwire — keep tests stable in face of refactors
-# ---------------------------------------------------------------------------
-
-
-def test_imports_smoke() -> None:
-    """Smoke-test that nothing imported above is dead code."""
-    assert json is not None
-    assert io is not None
-    assert logging is not None
-    assert datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=1)

@@ -1,10 +1,22 @@
 import json
+import os
+import socket
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import BeforeValidator, field_validator, model_validator
+from pydantic import BeforeValidator, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
+
+
+def _default_replica_id() -> str:
+    """Stable per-process replica label.
+
+    Prefer ``HOSTNAME`` (set by Docker / ECS) so a single Grafana drop-down
+    can list every replica without operator setup. Fall back to the local
+    hostname, then a literal ``ams-backend-0`` so the field never blanks.
+    """
+    return os.environ.get("HOSTNAME") or socket.gethostname() or "ams-backend-0"
 
 
 def _parse_string_list(value: object) -> object:
@@ -127,6 +139,22 @@ class Settings(BaseSettings):
     cors_allowed_methods: _StringList = ["GET", "POST", "PATCH", "OPTIONS"]
     cors_allowed_headers: _StringList = ["Authorization", "Content-Type"]
 
+    # Observability (W6 Phase 1) — all opt-in so a stale ECS task without
+    # the new env vars keeps booting. The compose overlay flips these on
+    # for the local demo stack; production toggles them on the task
+    # definition once Alloy/Pyroscope endpoints exist.
+    otel_enabled: bool = False
+    otel_endpoint: str = "http://alloy:4317"
+    pyroscope_enabled: bool = False
+    pyroscope_server: str = "http://pyroscope:4040"
+    # Hostname-derived per-process label. `default_factory` rather than a
+    # module-import-time read so a unit test that swaps HOSTNAME via
+    # `monkeypatch.setenv` and then constructs `Settings()` sees the swap.
+    replica_id: str = Field(default_factory=_default_replica_id)
+    # `text` for readable test logs; `json` for production. Validated to a
+    # narrow set so a typo'd env var fails loud at boot.
+    log_format: str = "json"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @model_validator(mode="after")
@@ -159,6 +187,22 @@ class Settings(BaseSettings):
                 f"of DB_HOST/DB_NAME/DB_USER/DB_PASSWORD (missing: {', '.join(missing)})."
             )
         return self
+
+    @field_validator("log_format")
+    @classmethod
+    def _validate_log_format(cls, value: str) -> str:
+        """Refuse boot on a typo'd LOG_FORMAT.
+
+        Two values supported: ``json`` (the default; structured prod logs)
+        and ``text`` (pytest / interactive debug). Anything else points at
+        operator confusion — fail loud rather than silently degrade.
+        """
+        allowed = {"json", "text"}
+        if value not in allowed:
+            raise ValueError(
+                f"LOG_FORMAT={value!r} is not one of {sorted(allowed)}."
+            )
+        return value
 
     @field_validator("cors_allowed_origins")
     @classmethod
