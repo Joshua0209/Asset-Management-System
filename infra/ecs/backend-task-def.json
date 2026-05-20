@@ -31,10 +31,10 @@
         {"name": "BOOTSTRAP_MANAGER_EMAIL", "value": "__BOOTSTRAP_MANAGER_EMAIL__"}
       ],
       "secrets": [
-        {"name": "DB_USER", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__RDS_SECRET_NAME__:username::"},
-        {"name": "DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__RDS_SECRET_NAME__:password::"},
-        {"name": "JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:JWT_SECRET::"},
-        {"name": "BOOTSTRAP_MANAGER_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:BOOTSTRAP_MANAGER_PASSWORD::"}
+        {"name": "DB_USER", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__RDS_SECRET_NAME__:username:AWSCURRENT:"},
+        {"name": "DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__RDS_SECRET_NAME__:password:AWSCURRENT:"},
+        {"name": "JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:JWT_SECRET:AWSCURRENT:"},
+        {"name": "BOOTSTRAP_MANAGER_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:BOOTSTRAP_MANAGER_PASSWORD:AWSCURRENT:"}
       ],
       "healthCheck": {
         "command": ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2).status==200 else 1)\" || exit 1"],

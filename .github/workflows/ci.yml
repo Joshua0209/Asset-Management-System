@@ -274,9 +274,12 @@ jobs:
           context: ./backend
           file: ./backend/Dockerfile.prod
           push: true
-          tags: |
-            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:${{ env.IMAGE_TAG }}
-            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:latest
+          # Single immutable :sha-<commit> tag. The previous `:latest` push
+          # was a footgun: any ECR lifecycle rule that prunes by tag would
+          # reassign and could delete a still-running revision. The task
+          # definition pins the deployed image by SHA already, so `:latest`
+          # added no operational value.
+          tags: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:${{ env.IMAGE_TAG }}
           # Layer caching against a sidecar :cache tag - cuts cold-build
           # time from ~5 min to ~1 min on dependency-clean rebuilds.
           cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:cache
@@ -293,9 +296,8 @@ jobs:
           # requests same-origin and avoids CORS entirely.
           build-args: |
             VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '/api/v1' }}
-          tags: |
-            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:${{ env.IMAGE_TAG }}
-            ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:latest
+          # Immutable :sha-<commit> tag only - see backend build comment.
+          tags: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:${{ env.IMAGE_TAG }}
           cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:cache
           cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:cache,mode=max
 
