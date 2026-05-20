@@ -13,9 +13,7 @@ interface InstrumentationConfig {
 }
 
 const providerRegister = vi.fn();
-const WebTracerProviderMock = vi.fn(
-  (_args: WebProviderArgs) => ({ register: providerRegister }),
-);
+const WebTracerProviderMock = vi.fn(() => ({ register: providerRegister }));
 const BatchSpanProcessorMock = vi.fn(function BSP(this: object, exporter: unknown) {
   Object.assign(this, { exporter });
 });
@@ -24,9 +22,21 @@ const OTLPTraceExporterMock = vi.fn(function Exporter(this: object, cfg: unknown
 });
 const resourceFromAttributesMock = vi.fn((attrs: Record<string, unknown>) => ({ attrs }));
 const registerInstrumentationsMock = vi.fn();
-const getWebAutoInstrumentationsMock = vi.fn(
-  (_config?: InstrumentationConfig): string[] => ["fake-instrumentation"],
-);
+const getWebAutoInstrumentationsMock = vi.fn((): string[] => ["fake-instrumentation"]);
+
+function lastProviderArgs(): WebProviderArgs | undefined {
+  const calls = WebTracerProviderMock.mock.calls as unknown as WebProviderArgs[][];
+  const last = calls[calls.length - 1];
+  return last ? last[0] : undefined;
+}
+
+function lastInstrumentationConfig(): InstrumentationConfig | undefined {
+  const calls = getWebAutoInstrumentationsMock.mock.calls as unknown as Array<
+    [InstrumentationConfig | undefined]
+  >;
+  const last = calls[calls.length - 1];
+  return last ? last[0] : undefined;
+}
 
 vi.mock("@opentelemetry/sdk-trace-web", () => ({
   WebTracerProvider: WebTracerProviderMock,
@@ -111,7 +121,7 @@ describe("initObservability", () => {
       propagateTraceHeaderCorsUrls: [/^http:\/\/localhost:8000/],
     });
     expect(getWebAutoInstrumentationsMock).toHaveBeenCalledTimes(1);
-    const config = getWebAutoInstrumentationsMock.mock.calls[0]?.[0];
+    const config = lastInstrumentationConfig();
     expect(config).toBeDefined();
     expect(config?.["@opentelemetry/instrumentation-xml-http-request"]).toEqual({
       enabled: false,
@@ -130,7 +140,7 @@ describe("initObservability", () => {
     const { initObservability } = await importFreshModule();
     initObservability({ enabled: true });
     expect(WebTracerProviderMock).toHaveBeenCalledTimes(1);
-    const providerArgs = WebTracerProviderMock.mock.calls[0]?.[0];
+    const providerArgs = lastProviderArgs();
     expect(providerArgs).toBeDefined();
     if (providerArgs === undefined) return;
     expect(providerArgs.resource).toEqual(
