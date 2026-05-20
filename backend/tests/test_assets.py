@@ -17,7 +17,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
-from app.schemas.asset import AssetCreate
+from app.schemas.asset import AssetCreate, AssetUpdate
 
 _PURCHASE_DATE = date(2026, 1, 1)
 _ASSIGNMENT_DATE_ISO = "2026-04-15"
@@ -669,6 +669,60 @@ class TestAssetCreateSchema:
                 purchase_date=_PURCHASE_DATE,
                 purchase_amount=Decimal("1500.00"),
                 warranty_expiry=date(2025, 12, 31),
+            )
+
+
+class TestAssetUpdateSchema:
+    """Cover the cross-field validator on ``AssetUpdate`` (PATCH payload).
+
+    ``TestAssetCreateSchema`` covers the same rules on ``AssetCreate``; these
+    exist because the PATCH validator runs against a different field shape
+    (every field is ``Optional`` with a default of ``None``) and only enforces
+    the rule when the caller actually set the field. The non-null guard at
+    line 82, the future-purchase-date guard at line 84, and the warranty
+    ordering guard at line 90 are otherwise unreachable from existing tests.
+    """
+
+    def test_explicit_null_for_non_nullable_field_raises(self) -> None:
+        # Caller cannot wipe a required field by sending ``null`` in PATCH.
+        with pytest.raises(ValidationError, match="name cannot be null"):
+            AssetUpdate.model_validate({"name": None, "version": 1})
+
+    def test_explicit_null_for_purchase_amount_raises(self) -> None:
+        with pytest.raises(ValidationError, match="purchase_amount cannot be null"):
+            AssetUpdate.model_validate({"purchase_amount": None, "version": 1})
+
+    def test_future_purchase_date_raises(self) -> None:
+        with pytest.raises(ValidationError, match="purchase_date must not be in the future"):
+            AssetUpdate.model_validate(
+                {"purchase_date": "9999-01-01", "version": 1}
+            )
+
+    def test_warranty_expiry_equal_to_purchase_date_raises(self) -> None:
+        # Validator says "must be after", so equal also fails.
+        with pytest.raises(
+            ValidationError, match="warranty_expiry must be after purchase_date"
+        ):
+            AssetUpdate.model_validate(
+                {
+                    "purchase_date": "2026-01-01",
+                    "warranty_expiry": "2026-01-01",
+                    "version": 1,
+                }
+            )
+
+    def test_warranty_expiry_before_purchase_date_raises(self) -> None:
+        # Both dates must be in the past, otherwise the future-purchase-date
+        # guard fires first and the test would pass for the wrong reason.
+        with pytest.raises(
+            ValidationError, match="warranty_expiry must be after purchase_date"
+        ):
+            AssetUpdate.model_validate(
+                {
+                    "purchase_date": "2025-06-01",
+                    "warranty_expiry": "2025-01-01",
+                    "version": 1,
+                }
             )
 
 

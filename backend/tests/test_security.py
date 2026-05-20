@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 
+from app.core.config import get_settings
 from app.core.security import (
     InvalidTokenError,
     TokenPayload,
@@ -104,3 +106,43 @@ class TestAccessToken:
     def test_token_carries_role_claim(self) -> None:
         token, _ = create_access_token(subject="u", role=UserRole.MANAGER)
         assert decode_access_token(token).role == UserRole.MANAGER
+
+
+class TestDecodeAccessTokenMalformedClaims:
+    """Cover the second try/except in ``decode_access_token`` (the
+    ``(KeyError, ValueError)`` handler at app/core/security.py:91-92).
+
+    These tokens are *cryptographically valid* — same secret, same algorithm,
+    not expired — but the claim payload itself is malformed. This is the path
+    a forged or version-skewed token takes when the signature happens to line
+    up but the contract has drifted.
+    """
+
+    def _sign(self, claims: dict[str, object]) -> str:
+        """Sign a JWT with the project's secret/algorithm so the signature
+        verifies; the body lets us mutate claim shape independently."""
+        settings = get_settings()
+        return jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+    @staticmethod
+    def _future_exp_ts() -> int:
+        return int((datetime.now(UTC) + timedelta(minutes=5)).timestamp())
+
+    def test_missing_sub_claim_raises_invalid_token(self) -> None:
+        token = self._sign({"role": "holder", "exp": self._future_exp_ts()})
+        with pytest.raises(InvalidTokenError, match="Malformed token claims"):
+            decode_access_token(token)
+
+    def test_missing_role_claim_raises_invalid_token(self) -> None:
+        token = self._sign({"sub": "user-uuid", "exp": self._future_exp_ts()})
+        with pytest.raises(InvalidTokenError, match="Malformed token claims"):
+            decode_access_token(token)
+
+    def test_unknown_role_value_raises_invalid_token(self) -> None:
+        # Role "admin" isn't in UserRole — would otherwise become a privilege
+        # escalation if we accepted it.
+        token = self._sign(
+            {"sub": "user-uuid", "role": "admin", "exp": self._future_exp_ts()}
+        )
+        with pytest.raises(InvalidTokenError, match="Malformed token claims"):
+            decode_access_token(token)

@@ -4,10 +4,13 @@ from collections.abc import Callable, Generator
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.asset import Asset, AssetStatus
@@ -268,3 +271,38 @@ class TestGetImage:
 
         # ImageNotFoundError → 404 via image_storage_error_to_http.
         assert response.status_code == 404
+
+    def test_sqlalchemy_error_on_image_lookup_returns_503(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        upload_dir: Path,
+    ) -> None:
+        # Cover the SQLAlchemyError → 503 branch in get_image (lines 91-96).
+        # Auth's own ``db.scalar`` call must be allowed through first; only
+        # the endpoint's lookup should raise.
+        holder = make_user(role=UserRole.HOLDER)
+        rr = _seed_repair_request(db_session, holder)
+        image = _attach_image(
+            db_session, rr=rr, upload_dir=upload_dir, suffix=".png", content=_PNG_BYTES
+        )
+        db_session.commit()
+
+        real_scalar = db_session.scalar
+        calls = {"n": 0}
+
+        def scalar_side_effect(*args: Any, **kwargs: Any) -> Any:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return real_scalar(*args, **kwargs)
+            raise SQLAlchemyError("DB down")
+
+        with patch.object(db_session, "scalar", side_effect=scalar_side_effect):
+            response = client.get(
+                f"/api/v1/images/{image.id}",
+                headers=auth_headers(holder),
+            )
+
+        assert response.status_code == 503
