@@ -8,12 +8,18 @@ import { ApiError, assetsApi, repairRequestsApi } from '@/api';
 import type { RepairRequestRecord } from '@/api/repair-requests';
 import { buildAssetResponse } from './test-helpers';
 
-// Mock i18next
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
+// Mock i18next — preserve real exports (e.g. initReactI18next, used by
+// src/i18n/index.ts when format.ts is loaded transitively) and only stub
+// useTranslation so component output is deterministic.
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (key: string) => key,
+    }),
+  };
+});
 
 const mockListMyAssets = vi.spyOn(assetsApi, 'listMyAssets');
 const mockSubmitRepairRequest = vi.spyOn(repairRequestsApi, 'submitRepairRequest');
