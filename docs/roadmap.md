@@ -323,6 +323,19 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 **Status (2026-05-20):** W6 started Mon May 19. The original W6 monitoring plan called for CloudWatch, but the team is pivoting to a **self-hosted Grafana observability stack** (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor) so the demo can showcase real metric/log/trace/profile correlation in one tool. Reference lab: `2025-05-observability-demo/` (sibling local project: three-layer app instrumented with the same stack, complete with k6 traffic generators and fault-injection scripts). The stack runs locally via `docker compose` so it is reproducible on the demo laptop without an AWS bill. **Three things carry from W5** and are folded into W6 scope: the DESIGN.md theme pass, the operator-side AWS provisioning (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63)), and the E2E Playwright suite. Test-coverage measurement also lands here.
 
+**Refinements (2026-05-20 PM):** Six tooling decisions were locked in after walking the planned stack against the actual AMS topology (FastAPI + SQLAlchemy + MySQL + nginx-served Vite, ECS Fargate prod, not the reference lab's React/Cockroach). They are summarized here so the implementation week does not re-litigate them; each maps to specific task rows below.
+
+| # | Decision | Rationale |
+|---|----------|-----------|
+| 1 | **Gunicorn: `--workers 1` per task in prod.** Scale via ECS task count, not worker count. | Aligns Prometheus aggregation (one consistent `/metrics` per task; cross-task `sum() by (service)` happens at scrape time) with the existing slowapi rationale already documented in `08-deployment-operations.md` §"API Hardening: Rate Limiting". No new multiproc dir, no `multiproc_mode`. |
+| 2 | **Add `prom/mysqld-exporter` as a compose sidecar.** | Closes the DB-server-metrics gap left by the reference lab being Cockroach. Buys InnoDB buffer-pool hit rate, queries/sec, lock waits, connections via community dashboard ID 7362. |
+| 3 | **Frontend logs: nginx JSON `log_format`, not an Express runtime.** | The lab's frontend logfmt story assumes a Node server. AMS frontend prod image is `nginx:alpine` serving static files, so a 5-line `log_format json_combined` block in `frontend/nginx.conf` gives Loki the same structured fields without a runtime. |
+| 4 | **cAdvisor labels via Alloy `discovery.docker` relabel on `com.docker.compose.service`** instead of adding `cgroup_parent: <name>.slice` to every service in `docker-compose.yml`. | One-line config change in `config/alloy/config.alloy` vs. churn in the shared dev compose file. cAdvisor is local-only anyway: Fargate does not expose host cgroups, so the prod equivalent is the CloudWatch datasource below. |
+| 5 | **Pyroscope: stay on `pyroscope-io` Python SDK.** Lazy-imported, off by default in the prod image, on in the local demo image. | `pyroscope-io` is the current official Python client (the Grafana rename was server-side). The sampling thread interacts poorly with gunicorn's fork model, hence prod-off-by-default. |
+| 6 | **CloudWatch as a second Grafana datasource** (not replaced, not just an ECS log sink). | One IAM-read role + a provisioned datasource block gives the same Grafana a panel set for ECS Container Insights (per-task CPU/mem) and ALB target-group metrics (request count, p95 latency, 5xx rate). Slide story becomes "live correlation locally **plus** the deployed service in the same pane," not "demo here, prod hidden behind the AWS console." |
+
+The six decisions fit inside the existing 2 infra seats, with no change to the resource allocation.
+
 **Why a Grafana stack instead of CloudWatch:**
 
 - Single tool for metrics + logs + traces + profiles, with click-through correlation (Loki log line → Tempo trace via derived `trace_id` field; trace span → Pyroscope flamegraph for the same window).
@@ -335,12 +348,14 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Layer        | Tool                       | What it does in AMS                                                                                 |
 |--------------|----------------------------|------------------------------------------------------------------------------------------------------|
 | Metrics      | **Prometheus** (`:9090`)    | Scrapes a new `/metrics` endpoint on FastAPI (`prometheus-fastapi-instrumentator`) + cAdvisor container metrics |
-| Logs         | **Loki** (`:3100`)          | Centralized log store. Structured JSON logs from backend, CLF-style from nginx (frontend prod image) |
+| Logs         | **Loki** (`:3100`)          | Centralized log store. Structured JSON logs from backend (`structlog`) and from nginx via `log_format json_combined` in the frontend prod image |
 | Traces       | **Tempo** (`:3200`)         | OpenTelemetry OTLP traces from backend (FastAPI + SQLAlchemy auto-instrumentation) and the browser  |
-| Profiling    | **Pyroscope** (`:4040`)     | Continuous Python profiling via `pyroscope-io` SDK in the backend                                    |
-| Collector    | **Grafana Alloy** (`:12345`)| Single agent: reads Docker JSON log files, scrapes Prom targets, receives OTLP on `:4317` / `:4318`, forwards to Prom/Loki/Tempo/Pyroscope. Replaces Promtail |
-| Container    | **cAdvisor**                | Container CPU + memory utilization vs. cgroup limits (uses `cgroup_parent` per service)              |
+| Profiling    | **Pyroscope** (`:4040`)     | Continuous Python profiling via `pyroscope-io` SDK in the backend (lazy-imported; off by default in the prod image, on in the local demo image) |
+| DB metrics   | **`mysqld-exporter`** (`:9104`) | Server-side MySQL metrics (InnoDB buffer pool, queries/sec, lock waits, connections). Local-compose sidecar; scraped by Alloy. Community dashboard ID 7362 |
+| Collector    | **Grafana Alloy** (`:12345`)| Single agent: reads Docker JSON log files, scrapes Prom targets, receives OTLP on `:4317` / `:4318`, forwards to Prom/Loki/Tempo/Pyroscope. Replaces Promtail. Service labels come from `discovery.docker` relabeling on `com.docker.compose.service` (no per-service `cgroup_parent` needed in the compose file) |
+| Container    | **cAdvisor**                | Container CPU + memory utilization vs. cgroup limits (local compose only, since Fargate does not expose host cgroups; prod equivalent is CloudWatch Container Insights below) |
 | Dashboards   | **Grafana** (`:3000`)       | RED, USE, Golden Signals, plus AMS-flow dashboards. Pre-provisioned via `config/grafana/provisioning/` and dashboards JSON                                  |
+| Cloud metrics | **CloudWatch datasource**  | Grafana reads ECS Container Insights (per-task CPU/mem) and ALB target-group metrics (request count, p95 latency, 5xx) so the deployed service shows up in the same pane as the local stack. Provisioned read-only via a scoped IAM user |
 | Load gen     | **k6** (`grafana/k6`)       | Constant-arrival-rate traffic across the 6 critical flows; results shipped to Prom via remote-write  |
 
 **Resources shift:**
@@ -359,11 +374,14 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | **Backend Prometheus metrics** | Mon–Tue | Add `prometheus-fastapi-instrumentator` to `backend/pyproject.toml`; mount on `/metrics` (excluded from auth + rate limit). Default histograms (latency by path/method/status) plus custom counters for FSM transitions and 409 conflicts |
 | **Backend OpenTelemetry traces** | Mon–Wed | `opentelemetry-instrumentation-fastapi` + `opentelemetry-instrumentation-sqlalchemy` auto-instrument incoming requests and outgoing DB queries; export OTLP to `alloy:4317`. Trace ID propagated into structured logs as a `trace_id` field so Loki → Tempo correlation works |
 | **Backend structured JSON logs** | Mon–Tue | Replace the FastAPI default access log with a `structlog` (or stdlib `logging` with JSON formatter) emitter that produces `{"level","service","replica","method","path","status","duration_ms","trace_id"}`. Container `logging` driver already writes to JSON files — Alloy will pick them up |
-| **Backend continuous profiling** | Wed | `pyroscope-io` Python SDK, app name `ams-backend.<replica>`. Lazy-imported so dev runs without it |
+| **Backend continuous profiling** | Wed | `pyroscope-io` Python SDK, app name `ams-backend.<replica>`. Lazy-imported and gated behind `PYROSCOPE_ENABLED=true`. Defaults to off in the prod image because the sampling thread interacts poorly with gunicorn's fork model; on in the local demo image so the trace → flamegraph correlation works for the live demo |
 | **Frontend browser OTLP** | Tue–Wed | `@opentelemetry/sdk-trace-web` + `@opentelemetry/auto-instrumentations-web`, OTLP-HTTP to Alloy on `:4318`. Adds page-load + fetch spans so the asset-list → repair-detail click path shows up in Tempo |
-| **`docker-compose.observability.yml`** | Tue–Wed | Bring up Grafana + Prom + Loki + Tempo + Pyroscope + Alloy + cAdvisor as an overlay compose file (`docker compose -f docker-compose.yml -f docker-compose.observability.yml up`). Volumes, ports, healthchecks, and provisioning paths follow `2025-05-observability-demo/docker-compose.yml` |
-| **Alloy config** | Wed | `config/alloy/config.alloy` — Docker JSON log discovery with low-cardinality labels (`service`, `replica`, `log_format`), Prom scrape jobs (backend `/metrics`, cAdvisor), OTLP receiver, exporters for each backend |
-| **Grafana dashboards** | Wed–Thu | Provision JSON dashboards: `00 Start Here`, `01 Operations Overview` (RED + Golden Signals), `02 Service Drilldown` (per-replica metrics + linked logs), `03 Repair Journey` (FSM transitions + duration + errors by flow), `04 Logs, Traces, Profiles` (correlation example) |
+| **Frontend nginx JSON logs** | Mon (15 min) | Add `log_format json_combined escape=json '{…}'` + `access_log /var/log/nginx/access.log json_combined;` to `frontend/nginx.conf`. No Express/Node, keeping the static-SPA image. Loki indexes the parsed fields the same way it indexes the backend structlog output |
+| **`docker-compose.observability.yml`** | Tue–Wed | Bring up Grafana + Prom + Loki + Tempo + Pyroscope + Alloy + cAdvisor + mysqld-exporter as an overlay compose file (`docker compose -f docker-compose.yml -f docker-compose.observability.yml up`). Volumes, ports, healthchecks, and provisioning paths follow `2025-05-observability-demo/docker-compose.yml` |
+| **`mysqld-exporter` sidecar** | Wed (1 h) | `prom/mysqld-exporter:v0.15.1` against the existing compose `mysql` service. One-time grant (`CREATE USER 'exporter'@'%' …; GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* …;`) runs from a small SQL file under `db/init/` so it survives `down -v` rebuilds. Import community dashboard ID 7362 |
+| **Alloy config** | Wed | `config/alloy/config.alloy`: Docker JSON log discovery with low-cardinality labels (`service`, `replica`, `log_format`) sourced from `discovery.docker` relabeling on `com.docker.compose.service` (no compose-level `cgroup_parent` labels required), Prom scrape jobs (backend `/metrics`, cAdvisor, `mysqld-exporter`), OTLP receiver, exporters for each backend |
+| **CloudWatch Grafana datasource** | Wed (30 min) | `config/grafana/provisioning/datasources/cloudwatch.yml` + a scoped IAM user (`CloudWatchReadOnlyAccess` only, no write/admin). Adds two panels to the Operations Overview dashboard: ECS Container Insights (`CpuUtilized` / `MemoryUtilized` by `ServiceName`) and ALB (`AWS/ApplicationELB`: `RequestCount`, `TargetResponseTime` p95, `HTTPCode_Target_5XX_Count`). Region: `ap-east-2` to match PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) |
+| **Grafana dashboards** | Wed–Thu | Provision JSON dashboards: `00 Start Here`, `01 Operations Overview` (RED + Golden Signals + ECS/ALB CloudWatch panels), `02 Service Drilldown` (per-replica metrics + linked logs), `03 Repair Journey` (FSM transitions + duration + errors by flow), `04 Logs, Traces, Profiles` (correlation example), `05 MySQL` (community dashboard 7362 trimmed to demo-relevant panels) |
 | **Load test with k6** | Thu | Constant-arrival-rate scenario across login + asset register + holder repair submit + manager review + complete + asset search. Sustain peak QPS for 10 min; capture Grafana screenshots for the slides |
 | **Stress test: find breaking point** | Thu | Ramp until P95 > 3s or error rate > 1%; record breakpoint for the testing slide. Toggle `RATE_LIMIT_ENABLED=false` to isolate app behavior from the 100/min ceiling |
 | **AWS provisioning carry-over** | Mon–Tue | Merge PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) (operator hydration of task-def placeholders + `ams/prod/app` secret + IAM roles). Confirm push-to-main triggers ECS rolling update; ALB target group health checks pointed at `/ready` |
@@ -398,10 +416,13 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 
 - [ ] DESIGN.md theme applied (carry from W5)
 - [ ] AWS resources provisioned + app reachable on public URL (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged)
-- [ ] Backend instrumented: `/metrics` endpoint, OTLP traces, structured JSON logs, Pyroscope profiles
-- [ ] Frontend instrumented: browser OTLP for the asset-list → repair-detail click path
+- [ ] Backend instrumented: `/metrics` endpoint, OTLP traces, structured JSON logs, Pyroscope profiles (prod image gated off; local demo image on)
+- [ ] Backend prod task definition runs `gunicorn --workers 1` (per refinement decision 1; ECS scales via task count)
+- [ ] Frontend instrumented: browser OTLP for the asset-list → repair-detail click path, plus nginx JSON access logs landing in Loki
+- [ ] `mysqld-exporter` sidecar scraping the compose MySQL with the read-only `exporter` grant; community dashboard 7362 visible in Grafana
+- [ ] CloudWatch Grafana datasource provisioned; Operations Overview dashboard shows the deployed ECS service's CPU/mem + ALB metrics alongside the local Prom panels
 - [ ] Grafana stack runs via `docker compose -f docker-compose.yml -f docker-compose.observability.yml up`
-- [ ] At least four dashboards provisioned (Operations Overview, Service Drilldown, Repair Journey, Logs/Traces/Profiles correlation example)
+- [ ] At least five dashboards provisioned (Operations Overview, Service Drilldown, Repair Journey, Logs/Traces/Profiles correlation example, MySQL)
 - [ ] One end-to-end correlation demo works live: click a slow request in a dashboard, jump to the Loki log line, jump to the Tempo trace, jump to a Pyroscope flamegraph for the same window
 - [ ] k6 load test report: sustained peak QPS for 10 min, P95 below threshold, with Grafana screenshots for the slides
 - [ ] Stress test breakpoint documented (QPS at which P95 crosses 3s or error rate crosses 1%)
