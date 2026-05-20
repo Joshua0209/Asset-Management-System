@@ -147,6 +147,24 @@
       "under_repair": "維修中",
       "disposed": "已報廢"
     },
+    "category": {
+      "phone": "手機",
+      "computer": "電腦",
+      "tablet": "平板",
+      "monitor": "顯示器",
+      "printer": "印表機",
+      "network_equipment": "網路設備",
+      "other": "其他"
+    },
+    "filters": {
+      "searchPlaceholder": "搜尋資產編號、名稱或型號",
+      "statusPlaceholder": "依狀態篩選",
+      "categoryPlaceholder": "依類別篩選",
+      "departmentPlaceholder": "部門包含...",
+      "locationPlaceholder": "地點包含...",
+      "holderPlaceholder": "持有者姓名包含...",
+      "resetButton": "重設篩選"
+    },
     "empty": "目前檢視條件下沒有資產資料。",
     "pagination": {
       "total": "共 {{count}} 筆"

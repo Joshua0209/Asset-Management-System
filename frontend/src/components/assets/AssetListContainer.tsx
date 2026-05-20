@@ -3,6 +3,8 @@ import { Alert, Card, Space, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import AssetTable from './AssetTable';
 import type { AssetRecord } from '@/api/assets';
+import AssetFilterBar from './AssetFilterBar';
+import type { AssetListFilters, AssetSortState } from './listControls';
 
 interface AssetListContainerProps {
   assets: AssetRecord[];
@@ -11,7 +13,14 @@ interface AssetListContainerProps {
   error: string | null;
   page: number;
   pageSize: number;
+  filters: AssetListFilters;
+  sortState: AssetSortState | null;
+  isManager: boolean;
+  actions?: React.ReactNode;
+  onFilterChange: <K extends keyof AssetListFilters>(field: K, value: AssetListFilters[K]) => void;
+  onResetFilters: () => void;
   onPaginationChange: (page: number, pageSize: number) => void;
+  onSortChange: (sortState: AssetSortState | null) => void;
 }
 
 const AssetListContainer: React.FC<AssetListContainerProps> = ({
@@ -21,7 +30,14 @@ const AssetListContainer: React.FC<AssetListContainerProps> = ({
   error,
   page,
   pageSize,
+  filters,
+  sortState,
+  isManager,
+  actions,
+  onFilterChange,
+  onResetFilters,
   onPaginationChange,
+  onSortChange,
 }) => {
   const { t } = useTranslation();
 
@@ -38,6 +54,15 @@ const AssetListContainer: React.FC<AssetListContainerProps> = ({
 
       <Card>
         <Space orientation="vertical" size={12} style={{ width: '100%' }}>
+          {actions}
+
+          <AssetFilterBar
+            filters={filters}
+            isManager={isManager}
+            onFilterChange={onFilterChange}
+            onResetFilters={onResetFilters}
+          />
+
           <Typography.Text type="secondary">
             {t('assetList.summary', { count: total })}
           </Typography.Text>
@@ -48,7 +73,9 @@ const AssetListContainer: React.FC<AssetListContainerProps> = ({
             total={total}
             page={page}
             pageSize={pageSize}
+            sortState={sortState}
             onPaginationChange={onPaginationChange}
+            onSortChange={onSortChange}
           />
         </Space>
       </Card>

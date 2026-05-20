@@ -61,7 +61,7 @@ describe("api/assets/queries", () => {
     });
 
     it("listAssets returns paginated dummy assets and maps responsible_person_id", async () => {
-      const result = await mod.listAssets({ page: 2, perPage: 3 });
+      const result = await mod.listAssets({ page: 2, perPage: 3, sort: "asset_code" });
 
       expect(mockRequest).not.toHaveBeenCalled();
       expect(result.meta).toEqual({

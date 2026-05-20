@@ -352,6 +352,30 @@ export function listAssets(params?: ListAssetsParams): PaginatedAssetResponse {
     filtered = filtered.filter((asset) => asset.responsible_person_id === params.responsiblePersonId);
   }
 
+  const sortParam = params?.sort ?? "-created_at";
+  const isDesc = sortParam.startsWith("-");
+  const sortField = isDesc ? sortParam.slice(1) : sortParam;
+
+  filtered.sort((left, right) => {
+    switch (sortField) {
+      case "asset_code":
+        return toComparableText(left.asset_code).localeCompare(toComparableText(right.asset_code));
+      case "name":
+        return toComparableText(left.name).localeCompare(toComparableText(right.name));
+      case "status":
+        return toComparableText(left.status).localeCompare(toComparableText(right.status));
+      case "purchase_date":
+        return toComparableText(left.purchase_date).localeCompare(toComparableText(right.purchase_date));
+      case "created_at":
+      default:
+        return toComparableText(left.created_at).localeCompare(toComparableText(right.created_at));
+    }
+  });
+
+  if (isDesc) {
+    filtered.reverse();
+  }
+
   const page = params?.page ?? DEFAULT_ASSET_PAGE;
   const perPage = params?.perPage ?? DEFAULT_ASSET_PER_PAGE;
   return paginate(filtered, page, perPage);

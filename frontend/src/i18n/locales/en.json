@@ -147,6 +147,24 @@
       "under_repair": "Under Repair",
       "disposed": "Disposed"
     },
+    "category": {
+      "phone": "Phone",
+      "computer": "Computer",
+      "tablet": "Tablet",
+      "monitor": "Monitor",
+      "printer": "Printer",
+      "network_equipment": "Network Equipment",
+      "other": "Other"
+    },
+    "filters": {
+      "searchPlaceholder": "Search by asset code, name, or model",
+      "statusPlaceholder": "Filter by status",
+      "categoryPlaceholder": "Filter by category",
+      "departmentPlaceholder": "Department contains...",
+      "locationPlaceholder": "Location contains...",
+      "holderPlaceholder": "Holder name contains...",
+      "resetButton": "Reset Filters"
+    },
     "empty": "No assets found for the current view.",
     "pagination": {
       "total": "Total {{count}} assets"
