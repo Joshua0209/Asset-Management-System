@@ -1,0 +1,32 @@
+# Grafana CloudWatch datasource (Phase 6, W6 milestone M6).
+#
+# Surfaces ECS Container Insights + ALB metrics from the deployed AMS service
+# alongside the local Prometheus panels in the same Grafana. Authenticated as
+# the read-only `ams-grafana-reader` IAM user — see
+# docs/system-design/08-deployment-operations.md § "Observability stack: CloudWatch reader".
+#
+# Locked decisions (docs/plans/observability-implementation-plan.md § Phase 6):
+#   - Long-lived IAM user, NOT OIDC federation (one credential to rotate, no
+#     assume-role refresh shim in Grafana).
+#   - Keys are passed in via the container environment so this file stays in
+#     git. Without them set, Grafana provisions the datasource but the panels
+#     render "No data" — the rest of the dashboard still works.
+#
+# The CLOUDWATCH_ACCESS_KEY / CLOUDWATCH_SECRET_KEY values come from the
+# top-level .env (git-ignored); the compose overlay's grafana service forwards
+# them into the container.
+
+apiVersion: 1
+
+datasources:
+  - name: CloudWatch
+    type: cloudwatch
+    uid: cloudwatch
+    access: proxy
+    editable: false
+    jsonData:
+      authType: keys
+      defaultRegion: ap-east-2
+    secureJsonData:
+      accessKey: ${CLOUDWATCH_ACCESS_KEY}
+      secretKey: ${CLOUDWATCH_SECRET_KEY}

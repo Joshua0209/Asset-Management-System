@@ -132,3 +132,56 @@ Interpretation:
 | `RATE_LIMIT_AUTHENTICATED` | `100/minute` |
 | `RATE_LIMIT_ANONYMOUS` | `30/minute` |
 | `RATE_LIMIT_IMAGES` | `300/minute` |
+
+## Observability stack: CloudWatch reader (Phase 6)
+
+The Grafana overlay (`docker-compose.observability.yml`) provisions a CloudWatch datasource so the `01 Operations Overview` dashboard can surface ECS Container Insights + ALB metrics for the deployed AMS stack next to the local Prometheus panels. Authentication is a **long-lived IAM user**, not OIDC federation (locked decision #7 in `docs/plans/observability-implementation-plan.md`). The trade-off, one more credential to rotate, is accepted to avoid maintaining an assume-role refresh shim in Grafana.
+
+### Create the IAM user
+
+Run once, in the AWS account that owns the production AMS environment:
+
+```bash
+aws iam create-user --user-name ams-grafana-reader
+aws iam attach-user-policy \
+  --user-name ams-grafana-reader \
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
+aws iam create-access-key --user-name ams-grafana-reader
+```
+
+The last command prints the `AccessKeyId` and `SecretAccessKey` exactly once. Capture them: they cannot be retrieved later. Verify the user has nothing else attached:
+
+```bash
+aws iam list-attached-user-policies --user-name ams-grafana-reader
+# Expect exactly one entry: CloudWatchReadOnlyAccess
+```
+
+`CloudWatchReadOnlyAccess` grants read on CloudWatch metrics + Container Insights + Logs only. There is no write surface, no IAM surface, and no cross-service permission, so the blast radius of a leaked key is "someone can read our metrics and logs."
+
+### Store + distribute the keys
+
+Reference copy lives in AWS Secrets Manager under `ams/prod/grafana-cloudwatch-reader` (JSON `{ "access_key": "...", "secret_key": "..." }`). The keys are also written into the local Grafana host's `.env` (top-level, git-ignored; see `.env.example`):
+
+```bash
+# .env (top-level, NEVER committed)
+CLOUDWATCH_ACCESS_KEY=AKIA...
+CLOUDWATCH_SECRET_KEY=...
+```
+
+The compose overlay forwards `${CLOUDWATCH_ACCESS_KEY}` and `${CLOUDWATCH_SECRET_KEY}` into the Grafana container; `config/grafana/provisioning/datasources/cloudwatch.yml` substitutes them into `secureJsonData` at startup. If the variables are unset, the datasource still provisions and the rest of the dashboard works: only the two CloudWatch panels render `No data`.
+
+### Verify the datasource is live
+
+After `make obs-up`, open `http://localhost:3000` and check `Connections → Data sources → CloudWatch → Save & test`. Expected: a green success banner reporting `1 results returned`. If it errors `The security token included in the request is invalid`, the keys in `.env` are stale; rotate them via:
+
+```bash
+aws iam create-access-key --user-name ams-grafana-reader   # mint new pair
+# ...update .env and Secrets Manager...
+aws iam delete-access-key --user-name ams-grafana-reader --access-key-id AKIA<old>
+```
+
+The Grafana CloudWatch datasource caches metric metadata for 24h, so a freshly minted user may show empty dropdowns for a while after `Save & test` succeeds; wait or restart the Grafana container.
+
+### Region
+
+`defaultRegion` is pinned to `ap-east-2` in `config/grafana/provisioning/datasources/cloudwatch.yml` because that is where the deployed AMS ECS service runs (see `infra/ecs/`). If the deployment region ever changes, update both the datasource YAML and the IAM-bound region scope (none today, since `CloudWatchReadOnlyAccess` is region-wide).

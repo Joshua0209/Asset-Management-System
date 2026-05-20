@@ -76,6 +76,13 @@ services:
       # traceqlEditor enables the TraceQL search UI; correlations + traceToProfiles
       # power the M6 single-pane drilldown (log → trace → flamegraph).
       GF_FEATURE_TOGGLES_ENABLE: traceqlEditor correlations traceToProfiles
+      # Phase 6: CloudWatch datasource reader keys. Forwarded from the host
+      # .env (git-ignored) to the container so Grafana can substitute them
+      # into config/grafana/provisioning/datasources/cloudwatch.yml at start.
+      # Unset is fine — the datasource provisions, CloudWatch panels render
+      # "No data", everything else keeps working.
+      CLOUDWATCH_ACCESS_KEY: ${CLOUDWATCH_ACCESS_KEY:-}
+      CLOUDWATCH_SECRET_KEY: ${CLOUDWATCH_SECRET_KEY:-}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
