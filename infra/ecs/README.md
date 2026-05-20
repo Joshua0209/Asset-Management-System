@@ -159,7 +159,8 @@ can do once assumed. Minimum permissions for this pipeline:
         "ecr:InitiateLayerUpload",
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload",
-        "ecr:PutImage"
+        "ecr:PutImage",
+        "ecr:DescribeImageScanFindings"
       ],
       "Resource": "*"
     },

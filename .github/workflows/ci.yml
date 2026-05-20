@@ -311,6 +311,47 @@ jobs:
           echo "backend-image=${REGISTRY}/${BACKEND_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "frontend-image=${REGISTRY}/${FRONTEND_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: ECR image scan gate (block CRITICAL/HIGH CVEs)
+        # Matches the CVSS >= 7 threshold the source-side SCA jobs use
+        # (pip-audit, npm audit --audit-level=high, dependency-check
+        # --failOnCVSS 7). Scans cover OS packages in the final image -
+        # something pip-audit / npm audit cannot see. Requires the ECR
+        # repos to have scan-on-push enabled (basic scanning is free; for
+        # Inspector / Enhanced, the API surface is the same). Tolerates
+        # "scan never started" with a loud warning rather than hanging
+        # the workflow, so a misconfigured repo is visible but not a
+        # hard outage.
+        env:
+          BACKEND_REPO: ${{ vars.ECR_REPOSITORY_BACKEND }}
+          FRONTEND_REPO: ${{ vars.ECR_REPOSITORY_FRONTEND }}
+        run: |
+          set -euo pipefail
+          check_findings() {
+            local repo=$1
+            echo "Waiting for scan on ${repo}:${IMAGE_TAG}..."
+            if ! aws ecr wait image-scan-complete \
+                 --repository-name "$repo" \
+                 --image-id "imageTag=${IMAGE_TAG}" 2>/dev/null; then
+              echo "::warning::Scan did not start or complete for ${repo}:${IMAGE_TAG} - enable scan-on-push on the repository (aws ecr put-image-scanning-configuration)"
+              return 0
+            fi
+            local findings critical high
+            findings=$(aws ecr describe-image-scan-findings \
+              --repository-name "$repo" \
+              --image-id "imageTag=${IMAGE_TAG}" \
+              --query 'imageScanFindings.findingSeverityCounts' \
+              --output json)
+            echo "${repo} severity counts: ${findings}"
+            critical=$(echo "$findings" | jq -r '.CRITICAL // 0')
+            high=$(echo "$findings" | jq -r '.HIGH // 0')
+            if [ "$critical" -gt 0 ] || [ "$high" -gt 0 ]; then
+              echo "::error::${repo}:${IMAGE_TAG} has ${critical} CRITICAL and ${high} HIGH findings (gate: block on CVSS >= 7)"
+              return 1
+            fi
+          }
+          check_findings "$BACKEND_REPO"
+          check_findings "$FRONTEND_REPO"
+
   deploy-backend:
     name: Deploy backend (ECS rolling update)
     needs: build-and-push
