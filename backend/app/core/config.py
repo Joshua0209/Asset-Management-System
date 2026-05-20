@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import BeforeValidator, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 def _parse_string_list(value: object) -> object:
@@ -71,10 +72,14 @@ class Settings(BaseSettings):
         if self.database_url:
             return self.database_url
         # ``_require_database_config`` guarantees these are set when we get here.
-        return (
-            f"mysql+pymysql://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
-        )
+        return URL.create(
+            "mysql+pymysql",
+            username=self.db_user,
+            password=self.db_password,
+            host=self.db_host,
+            port=self.db_port,
+            database=self.db_name,
+        ).render_as_string(hide_password=False)
 
     cors_allowed_origins: _StringList = ["http://localhost:5173"]
 
