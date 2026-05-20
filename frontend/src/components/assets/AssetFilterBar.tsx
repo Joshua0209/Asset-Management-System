@@ -2,7 +2,8 @@ import React from 'react';
 import { Button, Input, Select, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-import type { AssetStatus } from '@/api/assets';
+import type { AssetCategory, AssetStatus } from '@/api/assets';
+import { ASSET_CATEGORY_OPTIONS } from './assetFormShared';
 import type { AssetListFilters } from './listControls';
 
 interface AssetFilterBarProps {
@@ -51,6 +52,18 @@ const AssetFilterBar: React.FC<AssetFilterBarProps> = ({
           label: t(`assetList.status.${status}`),
         }))}
         onChange={(value) => onFilterChange('status', value)}
+      />
+
+      <Select
+        allowClear
+        value={filters.category}
+        style={{ width: 180 }}
+        placeholder={t('assetList.filters.categoryPlaceholder')}
+        options={ASSET_CATEGORY_OPTIONS.map((category) => ({
+          value: category,
+          label: t(`assetList.category.${category}`),
+        }))}
+        onChange={(value) => onFilterChange('category', value as AssetCategory | undefined)}
       />
 
       <Input

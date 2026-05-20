@@ -47,6 +47,7 @@ function buildAsset(overrides: Partial<AssetRecord>): AssetRecord {
 
 const DEFAULT_FILTERS: AssetListFilters = {
   q: '',
+  category: undefined,
   department: '',
   location: '',
   holder: '',
@@ -99,7 +100,7 @@ describe('asset list controls', () => {
     expect(isAssetSortField(123)).toBe(false);
 
     expect(isAssetFilterField('department')).toBe(true);
-    expect(isAssetFilterField('category')).toBe(false);
+    expect(isAssetFilterField('category')).toBe(true);
     expect(isAssetFilterField(null)).toBe(false);
   });
 
@@ -119,6 +120,7 @@ describe('asset list controls', () => {
     const normalized = normalizeFilters({
       q: '  AST  ',
       status: 'in_stock',
+      category: 'computer',
       department: '  Engineering  ',
       location: '  HQ  ',
       holder: '  alice  ',
@@ -127,6 +129,7 @@ describe('asset list controls', () => {
     expect(normalized).toEqual({
       q: 'AST',
       status: 'in_stock',
+      category: 'computer',
       department: 'Engineering',
       location: 'HQ',
       holder: 'alice',
@@ -137,7 +140,7 @@ describe('asset list controls', () => {
         ...DEFAULT_FILTERS,
         q: '',
       }),
-    ).toEqual({ q: undefined, status: undefined });
+    ).toEqual({ q: undefined, status: undefined, category: undefined });
 
     expect(buildServerSortParam(null)).toBeUndefined();
     expect(buildServerSortParam({ field: 'purchase_amount', order: 'ascend' })).toBeUndefined();
@@ -184,11 +187,12 @@ describe('asset list controls', () => {
     ).toBe(false);
   });
 
-  it('applies q/status/department/location filters', () => {
+  it('applies q/status/category/department/location filters', () => {
     const filtered = applyLocalAssetFilters(assets, {
       ...DEFAULT_FILTERS,
       q: 'alpha',
       status: 'in_stock',
+      category: 'printer',
       department: 'fin',
       location: 'branch',
     });
@@ -201,6 +205,15 @@ describe('asset list controls', () => {
     const filtered = applyLocalAssetFilters(assets, {
       ...DEFAULT_FILTERS,
       status: 'under_repair',
+    });
+
+    expect(filtered).toHaveLength(0);
+  });
+
+  it('excludes assets when category enum does not match exactly', () => {
+    const filtered = applyLocalAssetFilters(assets, {
+      ...DEFAULT_FILTERS,
+      category: 'monitor',
     });
 
     expect(filtered).toHaveLength(0);

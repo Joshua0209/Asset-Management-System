@@ -91,12 +91,14 @@ export const useAssetList = ({ fetchFn, enabled = true }: UseAssetListOptions) =
       normalizeFilters({
         q: debouncedKeyword,
         status: filters.status,
+        category: filters.category,
         department: filters.department,
         location: filters.location,
         holder: filters.holder,
       }),
     [
       debouncedKeyword,
+      filters.category,
       filters.department,
       filters.holder,
       filters.location,
