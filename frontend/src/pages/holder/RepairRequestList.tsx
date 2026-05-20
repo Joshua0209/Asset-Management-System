@@ -5,7 +5,6 @@ import {
   Card,
   Space,
   Table,
-  Tag,
   Typography,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
@@ -15,7 +14,12 @@ import { PlusOutlined } from '@ant-design/icons';
 
 import { ApiError, repairRequestsApi } from '@/api';
 import type { RepairRequestRecord, RepairRequestStatus } from '@/api/repair-requests';
-import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
+import {
+  renderRequestAssetCell,
+  renderRequestIdCell,
+  renderRequestStatusTag,
+} from '@/components/repair-requests/columns';
+import { formatDateTime } from '@/utils/format';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -28,12 +32,6 @@ const RepairRequestList: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[1]);
-
-  const formatDateValue = (value: string | null): string => {
-    if (!value) return '-';
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString() + ' ' + parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -76,18 +74,13 @@ const RepairRequestList: React.FC = () => {
       title: t('repairRequestList.columns.id'),
       dataIndex: 'id',
       key: 'id',
-      render: (id: string) => <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{id.slice(0, 8)}...</span>,
+      render: (id: string) => renderRequestIdCell(id),
       width: 120,
     },
     {
       title: t('repairRequestList.columns.asset'),
       key: 'asset',
-      render: (_, record) => (
-        <Space orientation="vertical" size={0}>
-          <Typography.Text strong>{record.asset.name}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: '12px' }}>{record.asset.asset_code}</Typography.Text>
-        </Space>
-      ),
+      render: (_, record) => renderRequestAssetCell(record.asset),
       width: 200,
     },
     {
@@ -95,16 +88,15 @@ const RepairRequestList: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 140,
-      render: (status: RepairRequestStatus) => (
-        <Tag color={REPAIR_REQUEST_STATUS_COLORS[status]}>{t(`repairRequestList.status.${status}`)}</Tag>
-      ),
+      render: (status: RepairRequestStatus) =>
+        renderRequestStatusTag(status, t, 'repairRequestList.status'),
     },
     {
       title: t('repairRequestList.columns.createdAt'),
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (value: string) => formatDateValue(value),
+      render: (value: string) => formatDateTime(value),
     },
     {
       title: t('repairRequestList.columns.actions'),

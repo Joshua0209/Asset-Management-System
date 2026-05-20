@@ -5,7 +5,6 @@ import {
   Select,
   Space,
   Table,
-  Tag,
   Typography,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
@@ -15,7 +14,11 @@ import { useNavigate } from 'react-router-dom';
 import { ApiError, repairRequestsApi } from '@/api';
 import { getApiErrorMessage } from '@/utils/apiErrors';
 import { formatDateTime } from '@/utils/format';
-import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
+import {
+  renderRequestAssetCell,
+  renderRequestIdCell,
+  renderRequestStatusTag,
+} from '@/components/repair-requests/columns';
 import type {
   RepairRequestRecord,
   RepairRequestStatus,
@@ -70,15 +73,16 @@ const Reviews: React.FC = () => {
 
   const columns: TableColumnsType<RepairRequestRecord> = [
     {
-      title: t('reviews.columns.assetCode'),
-      key: 'asset_code',
-      render: (_: unknown, record) => record.asset.asset_code,
-      width: 160,
+      title: t('reviews.columns.id'),
+      dataIndex: 'id',
+      key: 'id',
+      render: (id: string) => renderRequestIdCell(id),
+      width: 120,
     },
     {
       title: t('reviews.columns.assetName'),
       key: 'asset_name',
-      render: (_: unknown, record) => record.asset.name,
+      render: (_: unknown, record) => renderRequestAssetCell(record.asset),
       width: 220,
     },
     {
@@ -92,9 +96,8 @@ const Reviews: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 140,
-      render: (status: RepairRequestStatus) => (
-        <Tag color={REPAIR_REQUEST_STATUS_COLORS[status]}>{t(`reviews.status.${status}`)}</Tag>
-      ),
+      render: (status: RepairRequestStatus) =>
+        renderRequestStatusTag(status, t, 'reviews.status'),
     },
     {
       title: t('reviews.columns.createdAt'),

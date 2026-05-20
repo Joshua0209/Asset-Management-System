@@ -17,12 +17,16 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { count?: number }) =>
-      typeof options?.count === 'number' ? `${key}:${options.count}` : key,
-  }),
-}));
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (key: string, options?: { count?: number }) =>
+        typeof options?.count === 'number' ? `${key}:${options.count}` : key,
+    }),
+  };
+});
 
 type MockSortPayload =
   | {

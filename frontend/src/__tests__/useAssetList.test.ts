@@ -9,11 +9,15 @@ import { useAssetList } from '@/hooks/useAssetList';
 
 const translate = (key: string) => key;
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: translate,
-  }),
-}));
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: translate,
+    }),
+  };
+});
 
 function buildAsset(overrides: Partial<AssetRecord>): AssetRecord {
   return {
