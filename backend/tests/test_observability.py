@@ -333,11 +333,35 @@ def test_settings_observability_fields_defaults(monkeypatch: pytest.MonkeyPatch)
 
     settings = Settings()  # type: ignore[call-arg]
     assert settings.otel_enabled is False
-    assert settings.otel_endpoint == "http://alloy:4317"
+    # Endpoint defaults are empty so the source never ships a clear-text
+    # URL literal; operators set the value when they flip the flag on.
+    assert settings.otel_endpoint == ""
     assert settings.pyroscope_enabled is False
-    assert settings.pyroscope_server == "http://pyroscope:4040"
+    assert settings.pyroscope_server == ""
     # Default replica id is hostname-derived; just confirm it's a non-empty str.
     assert isinstance(settings.replica_id, str) and settings.replica_id
     assert settings.log_format == "json"
+
+
+@pytest.mark.parametrize(
+    ("flag_env", "url_env"),
+    [
+        ("OTEL_ENABLED", "OTEL_ENDPOINT"),
+        ("PYROSCOPE_ENABLED", "PYROSCOPE_SERVER"),
+    ],
+)
+def test_settings_observability_flag_requires_url(
+    monkeypatch: pytest.MonkeyPatch, flag_env: str, url_env: str
+) -> None:
+    """Flipping a feature flag on without setting its URL must fail loud."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.delenv(url_env, raising=False)
+    monkeypatch.setenv(flag_env, "true")
+
+    with pytest.raises(ValueError, match=url_env):
+        Settings()  # type: ignore[call-arg]
 
 
