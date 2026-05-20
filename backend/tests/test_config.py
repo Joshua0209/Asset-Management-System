@@ -186,28 +186,44 @@ def test_settings_accepts_complete_component_db_config(
     )
 
 
+_DB_COMPONENT_FIELDS: tuple[tuple[str, str], ...] = (
+    ("db_host", "DB_HOST"),
+    ("db_name", "DB_NAME"),
+    ("db_user", "DB_USER"),
+    ("db_password", "DB_PASSWORD"),
+)
+
+
+@pytest.mark.parametrize(("missing_field", "expected_in_msg"), _DB_COMPONENT_FIELDS)
 def test_settings_rejects_partial_component_db_config(
     monkeypatch: pytest.MonkeyPatch,
+    missing_field: str,
+    expected_in_msg: str,
 ) -> None:
-    """Missing one component part must fail at load, not boot with a default.
+    """Missing any one component part must fail at load, not boot with a default.
 
     Real-world failure mode: a broken GitHub Actions placeholder
-    substitution leaves DB_HOST empty. Previously the property would
-    fall through to `localhost` and the app would log a misleading
-    connection error against the wrong host. Now it refuses to load.
+    substitution leaves one of the DB_* vars empty. Parametrised over
+    every component so a future refactor that drops one tuple entry from
+    the validator's `missing` list is caught — a single-field check on
+    DB_PASSWORD alone would have missed it.
     """
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    kwargs: dict[str, str] = {
+        "db_host": "rds.example.com",
+        "db_name": "ams",
+        "db_user": "ams_app",
+        "db_password": "hunter2",  # noqa: S106
+    }
+    del kwargs[missing_field]
     with pytest.raises(ValidationError) as excinfo:
         Settings(
             _env_file=None,  # type: ignore[call-arg]
             jwt_secret=_JWT_SECRET,
-            db_host="rds.example.com",
-            db_name="ams",
-            db_user="ams_app",
-            # db_password deliberately missing
+            **kwargs,
         )
     msg = str(excinfo.value)
-    assert "DB_PASSWORD" in msg
+    assert expected_in_msg in msg
     assert "DATABASE_URL" in msg
 
 
@@ -218,5 +234,32 @@ def test_settings_rejects_empty_db_config(monkeypatch: pytest.MonkeyPatch) -> No
         Settings(_env_file=None, jwt_secret=_JWT_SECRET)  # type: ignore[call-arg]
     msg = str(excinfo.value)
     # All four component names should be enumerated to aid debugging.
+    for name in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"):
+        assert name in msg
+
+
+def test_settings_treats_empty_database_url_string_as_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty `DATABASE_URL=""` must trigger component-mode validation.
+
+    pydantic-settings reads `DATABASE_URL=""` as the literal empty
+    string, not None. The validator's `if self.database_url:` truthy
+    check correctly treats empty as "not set" today, but without a
+    locked-in test a future refactor changing the guard to
+    `is not None` would silently regress: production would then accept
+    an empty URL, fall through SQLAlchemy URL parsing, and emit an
+    opaque error far from the root cause. This is exactly the placeholder-
+    substitution regression PR #63 is meant to prevent.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            database_url="",  # empty, mimics a broken placeholder substitution
+            jwt_secret=_JWT_SECRET,
+            # component parts deliberately missing — validator should require them
+        )
+    msg = str(excinfo.value)
     for name in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"):
         assert name in msg
