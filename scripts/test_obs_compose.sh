@@ -39,14 +39,14 @@ for env in OTEL_ENABLED OTEL_ENDPOINT PYROSCOPE_ENABLED LOG_FORMAT REPLICA_ID; d
 done
 pass "backend observability envs wired"
 
-# mysqld-exporter must declare DATA_SOURCE_NAME so it can connect.
-echo "$RENDERED" | grep -q "DATA_SOURCE_NAME" \
-  || fail "mysqld-exporter DATA_SOURCE_NAME not set"
-pass "mysqld-exporter DSN wired"
+# mysqld-exporter must declare the v0.15+ password env so it can connect.
+echo "$RENDERED" | grep -q "MYSQLD_EXPORTER_PASSWORD" \
+  || fail "mysqld-exporter MYSQLD_EXPORTER_PASSWORD not set"
+pass "mysqld-exporter credential wired"
 
 # Named volumes per the plan: each backend writes to its own named volume so
 # data survives `docker compose down` (but not `down -v`).
-for vol in grafana-data prometheus-data loki-data tempo-data pyroscope-data alloy-data; do
+for vol in grafana_data prometheus_data loki_data tempo_data pyroscope_data alloy_data; do
   echo "$RENDERED" | grep -qE "^  ${vol}:" \
     || fail "named volume '${vol}' missing"
 done

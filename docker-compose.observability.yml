@@ -8,7 +8,9 @@
 # Or via the Makefile convenience target: `make obs-up`.
 #
 # Locked decisions (see docs/plans/observability-implementation-plan.md):
-#   - Backend stays gunicorn --workers 1 (rate limiter is in-memory).
+#   - The single-process backend invariant (gunicorn --workers 1 in prod,
+#     uvicorn without --workers in this dev overlay) is what keeps the
+#     in-memory rate limiter coherent across requests.
 #   - mysqld-exporter creds are hardcoded as exporter/exporter — compose-only,
 #     read-only grant (see db/init/01-exporter-grant.sql).
 #   - cAdvisor labels come from com.docker.compose.service via Alloy relabel
@@ -32,6 +34,10 @@ services:
       PYROSCOPE_ENABLED: "true"
       PYROSCOPE_SERVER: http://pyroscope:4040
       LOG_FORMAT: json
+      # Fixed string in dev — Phase 7 load tests will replace with a per-replica
+      # value (e.g. HOSTNAME) once we run `docker compose --scale backend=N`.
+      # Note: the base file pins container_name: ams-backend, which itself
+      # already blocks scaling. Both get revisited together in Phase 7.
       REPLICA_ID: ams-backend-1
     labels:
       # Declared explicitly so Alloy's discovery.docker relabel finds it
@@ -67,7 +73,7 @@ services:
       # power the M6 single-pane drilldown (log → trace → flamegraph).
       GF_FEATURE_TOGGLES_ENABLE: traceqlEditor correlations traceToProfiles
     volumes:
-      - grafana-data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
@@ -94,7 +100,14 @@ services:
       - "9090:9090"
     volumes:
       - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
+      - prometheus_data:/prometheus
+    # The prom/prometheus image ships wget (busybox); curl is not installed.
+    # /-/healthy is the standard liveness endpoint; -O - discards the body.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9090/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     labels:
       com.docker.compose.service: prometheus
 
@@ -107,7 +120,7 @@ services:
       - "3100:3100"
     volumes:
       - ./config/loki/loki.yml:/etc/loki/loki.yml:ro
-      - loki-data:/loki
+      - loki_data:/loki
     labels:
       com.docker.compose.service: loki
 
@@ -120,7 +133,7 @@ services:
       - "3200:3200"
     volumes:
       - ./config/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
-      - tempo-data:/var/tempo
+      - tempo_data:/var/tempo
     labels:
       com.docker.compose.service: tempo
 
@@ -134,7 +147,7 @@ services:
       - "4040:4040"
     volumes:
       - ./config/pyroscope/pyroscope.yml:/etc/pyroscope/pyroscope.yml:ro
-      - pyroscope-data:/var/lib/pyroscope
+      - pyroscope_data:/var/lib/pyroscope
     labels:
       com.docker.compose.service: pyroscope
 
@@ -158,12 +171,18 @@ services:
       - ${DOCKER_ROOT_DIR:-/var/lib/docker}/containers:/var/lib/docker/containers:ro
       # discovery.docker queries the daemon to enumerate containers + labels.
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - alloy-data:/var/lib/alloy/data
+      - alloy_data:/var/lib/alloy/data
     depends_on:
-      - prometheus
-      - loki
-      - tempo
-      - pyroscope
+      # Prometheus has a healthcheck — wait until /-/healthy is actually 200
+      # so Alloy's remote_write doesn't drop its first batch into the void.
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+      tempo:
+        condition: service_started
+      pyroscope:
+        condition: service_started
     labels:
       com.docker.compose.service: alloy
 
@@ -192,18 +211,14 @@ services:
     image: prom/mysqld-exporter:v0.15.1
     container_name: ams-mysqld-exporter
     restart: unless-stopped
-    # DSN uses the read-only exporter user seeded by db/init/01-exporter-grant.sql.
-    # mysqld-exporter v0.15 wants --mysqld.address + --mysqld.username, but it
-    # still accepts DATA_SOURCE_NAME for back-compat which keeps this overlay
-    # easier to read.
+    # Single source of truth for credentials (v0.15+ convention): host + user
+    # via flags, password via MYSQLD_EXPORTER_PASSWORD. Read-only `exporter`
+    # user is seeded by db/init/01-exporter-grant.sql on first MySQL boot.
     command:
       - --mysqld.address=mysql:3306
       - --mysqld.username=exporter
     environment:
-      # MYSQLD_EXPORTER_PASSWORD is the v0.15+ way; keep DATA_SOURCE_NAME for
-      # any tool / collector that still expects the older variable.
       MYSQLD_EXPORTER_PASSWORD: exporter
-      DATA_SOURCE_NAME: exporter:exporter@(mysql:3306)/
     expose:
       - "9104"
     depends_on:
@@ -213,9 +228,9 @@ services:
       com.docker.compose.service: mysqld-exporter
 
 volumes:
-  grafana-data:
-  prometheus-data:
-  loki-data:
-  tempo-data:
-  pyroscope-data:
-  alloy-data:
+  grafana_data:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  pyroscope_data:
+  alloy_data:

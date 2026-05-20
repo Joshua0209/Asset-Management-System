@@ -1,8 +1,20 @@
 .PHONY: help obs-up obs-down obs-restart obs-logs obs-ps obs-pull obs-clean obs-test
 
-# Auto-detect Docker daemon root so Alloy + cAdvisor bind mounts resolve on
-# rootless Docker / Lima / Colima. Falls back to the Docker Desktop default.
-DOCKER_ROOT_DIR ?= $(shell docker info --format '{{.DockerRootDir}}' 2>/dev/null)
+# DOCKER_ROOT_DIR precedence (compose substitutes ${DOCKER_ROOT_DIR:-...} from
+# this value when make invokes compose):
+#   1. shell-exported value     (export DOCKER_ROOT_DIR=...)
+#   2. command-line override    (make obs-up DOCKER_ROOT_DIR=...)
+#   3. value in .env            (read here since make does not auto-source it)
+#   4. `docker info` autodetect (rootless Docker, Lima, Colima, ...)
+#   5. /var/lib/docker fallback (Docker Desktop / rootful Linux default)
+ifeq ($(origin DOCKER_ROOT_DIR), undefined)
+  ifneq (,$(wildcard .env))
+DOCKER_ROOT_DIR := $(shell sed -n 's/^[[:space:]]*DOCKER_ROOT_DIR=//p' .env | tail -n1)
+  endif
+endif
+ifeq ($(DOCKER_ROOT_DIR),)
+DOCKER_ROOT_DIR := $(shell docker info --format '{{.DockerRootDir}}' 2>/dev/null)
+endif
 ifeq ($(DOCKER_ROOT_DIR),)
 DOCKER_ROOT_DIR := /var/lib/docker
 endif
