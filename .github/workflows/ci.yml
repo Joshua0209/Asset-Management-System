@@ -136,6 +136,16 @@ jobs:
         uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
         with:
           virtual-environment: backend/.audit-venv
+          # PYSEC-2025-183: pyjwt "weak encryption" advisory, DISPUTED by
+          # the PyJWT maintainers and has no fix version. The cited risk
+          # (short/weak signing key) is the application's choice, not the
+          # library's. Mitigated by generating production JWT_SECRET with
+          # `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'`
+          # (>=32 bytes random) and stored in AWS Secrets Manager.
+          # Tracked in #69 - revisit when upstream publishes a fix version
+          # or when PyJWT is upgraded to >=3.x.
+          ignore-vulns: |
+            PYSEC-2025-183
   npm-audit:
     name: SCA - Node (npm audit)
     runs-on: ubuntu-latest
