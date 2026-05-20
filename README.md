@@ -10,7 +10,7 @@ Course project for a cloud computing / software engineering class. The repositor
 
 **Weeks 1–5 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud + pip-audit + npm audit + OWASP Dependency-Check), Auth API, Asset CRUD, the full repair-request workflow, asset FSM transitions, image upload + retrieval (now backed by `S3ImageStorage` in prod), manager + holder pages reorganized by role with the two largest pages decomposed into folder-modules, audit log + `GET /assets/:id/history`, composite search indexes + multi-dimensional asset filter/sort UI, optimistic-locking pin tests + conflict-resolution dialog, rate limiting + CORS tightening, full i18n parity (212 keys × 2 locales), production multi-stage Dockerfiles, `/health` + `/ready` probes, and the OIDC-based ECR → ECS Fargate rolling-deploy pipeline. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
 
-**Currently working on Week 6 — Observability + Demo Prep (May 19–23).** Goal: instrument backend + frontend with the **Grafana observability stack** (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor), stand it up locally via a compose overlay, provision dashboards, run k6 load + stress tests, finish the DESIGN.md theme pass, ship the Playwright E2E suite for the 6 critical flows, and merge PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) to land the operator-side AWS provisioning that PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58) was already pointing at.
+**Currently working on Week 6 — Observability + Demo Prep (May 19–23).** Goal: instrument backend + frontend with the **Grafana observability stack** (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor), stand it up locally via a compose overlay, provision dashboards, run k6 load + stress tests, finish the DESIGN.md theme pass, ship the Playwright E2E suite for the 6 critical flows, and run the first `workflow_dispatch` smoke test against the AWS environment now that the operator-side provisioning merged today via PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63).
 
 ### Week 5 — Infra + Testing + Polish (May 12–16) — Closed
 
@@ -22,7 +22,7 @@ Major merges:
 - **PR [#60](https://github.com/Joshua0209/Asset-Management-System/pull/60)** — rate-limited auth endpoints no longer 500 on the third failed login, CORS preflight unblocked.
 - **PR [#62](https://github.com/Joshua0209/Asset-Management-System/pull/62)** — seed-data hardening: DISPOSED transitions, audit-log rows, email collisions, category enum drift.
 
-**Carries into W6:** DESIGN.md theme application (token wiring through Antd `ConfigProvider`), operator-side AWS provisioning (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) is open with the placeholder hydration + IAM roles + `ams/prod/app` secret), the Playwright E2E suite, and a coverage measurement run.
+**Carries into W6:** DESIGN.md theme application (token wiring through Antd `ConfigProvider`), the Playwright E2E suite, and a coverage measurement run. **Operator-side AWS provisioning landed on W6 Tue (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged 2026-05-20)** with hardened `__NAME__` task-def placeholder substitution, fail-fast `require_var` guard against unset/empty GitHub `vars.*`, escape-safe sed (`\`, `|`, `&` neutralised), Secrets Manager refs pinned to `AWSCURRENT`, ECR image-scan gate at CVSS ≥ 7, identity-policy snippet, and deployment circuit breaker docs. The first `workflow_dispatch` smoke test is the only remaining piece. The smaller frontend consistency PR [#65](https://github.com/Joshua0209/Asset-Management-System/pull/65) also merged today: "Fault Content" → "Fault Description", `formatDateTime` follows the i18n locale, shared rendering helpers across `RepairRequestList` + `Reviews`.
 
 ### Week 6 — Observability + Demo Prep (May 19–23) — Active
 
@@ -55,7 +55,7 @@ Resource shift this week: 5 devs → **1 dev (DESIGN.md theme + demo polish)** +
 | `docker-compose.observability.yml` overlay | Tue–Wed | Brings up Grafana + Prom + Loki + Tempo + Pyroscope + Alloy + cAdvisor; mirrors `2025-05-observability-demo/docker-compose.yml` structure |
 | Alloy config + Grafana dashboards | Wed–Thu | Provisioned dashboards: Operations Overview, Service Drilldown, Repair Journey, Logs/Traces/Profiles correlation |
 | k6 load + stress test | Thu | Sustain peak QPS for 10 min; find breakpoint where P95 > 3s or error rate > 1%. Screenshots for slides |
-| AWS provisioning carry-over | Mon–Tue | Merge PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63); confirm push-to-main triggers ECS rolling update; ALB target group → `/ready` |
+| AWS provisioning smoke test | Mon–Tue | ✅ PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged 2026-05-20 (hardened placeholders, secret pinning, ECR scan gate, identity policy). **Open:** `workflow_dispatch` to confirm both task defs render correctly against real GitHub secrets/variables; confirm push-to-main triggers an ECS rolling deploy that reaches steady state with ALB target group health checks green on `/ready` |
 
 #### QA / Testing (1 person)
 
@@ -72,12 +72,13 @@ Resource shift this week: 5 devs → **1 dev (DESIGN.md theme + demo polish)** +
 | DESIGN.md theme via `ConfigProvider` + four-pillar audit | Mon–Wed | W5 carry-over. Wire `docs/designs/design-tokens.json` through Antd; audit visible-on-demo surfaces for precision (8px grid + tabular-nums), restraint (red as accent only, no gradients/emoji), hierarchy through typography, bilingual parity |
 | Demo data: realistic seed | Thu | Believable company/asset names + repair histories spanning all FSM states |
 | Final UX polish for demo flow | Thu–Fri | Focus order, default sort orders, animation timing on the 6 demo flows |
-| Merge small consistency PR [#65](https://github.com/Joshua0209/Asset-Management-System/pull/65) | Mon | "Fault Content" → "Fault Description"; Reviews list shows Request ID; `formatDateTime` follows i18n locale |
+| Small consistency PR [#65](https://github.com/Joshua0209/Asset-Management-System/pull/65) | Mon | ✅ Merged 2026-05-20. "Fault Content" → "Fault Description"; Reviews list shows Request ID; `formatDateTime` follows i18n locale; shared rendering helpers between `RepairRequestList` + `Reviews` |
 
 #### Week 6 milestone — `M6 — Observed & Demo Ready`
 
 - [ ] DESIGN.md theme applied (W5 carry)
-- [ ] AWS resources provisioned + app reachable on public URL (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged)
+- [x] AWS provisioning code merged (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged 2026-05-20)
+- [ ] App reachable on public URL — pending `workflow_dispatch` smoke test + first successful rolling deploy
 - [ ] Backend instrumented: `/metrics`, OTLP traces, structured JSON logs, Pyroscope profiles
 - [ ] Frontend instrumented: browser OTLP
 - [ ] Grafana stack runs via `docker compose -f docker-compose.yml -f docker-compose.observability.yml up`
