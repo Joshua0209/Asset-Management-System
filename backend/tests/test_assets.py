@@ -4,13 +4,15 @@ import itertools
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_request import RepairRequest, RepairRequestStatus
@@ -2020,3 +2022,412 @@ class TestAssignmentDateFields:
 
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "invalid_unassignment_date"
+
+
+class TestListAssetsFilterBranches:
+    """Exercise the status / department / location filter branches of
+    ``_build_asset_filters``. Existing tests only set ``category``; without
+    these the three sibling branches stay unmeasured."""
+
+    def test_filter_by_status_only(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        _make_asset(db_session, asset_code="AST-2026-00001", status=AssetStatus.IN_STOCK)
+        _make_asset(db_session, asset_code="AST-2026-00002", status=AssetStatus.DISPOSED)
+
+        response = client.get(
+            "/api/v1/assets?status=in_stock", headers=auth_headers(manager)
+        )
+
+        assert response.status_code == 200
+        codes = [item["asset_code"] for item in response.json()["data"]]
+        assert codes == ["AST-2026-00001"]
+
+    def test_filter_by_department_only(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        _make_asset(db_session, asset_code="AST-2026-00001", department="IT")
+        _make_asset(db_session, asset_code="AST-2026-00002", department="HR")
+
+        response = client.get(
+            "/api/v1/assets?department=HR", headers=auth_headers(manager)
+        )
+
+        assert response.status_code == 200
+        codes = [item["asset_code"] for item in response.json()["data"]]
+        assert codes == ["AST-2026-00002"]
+
+    def test_filter_by_location_only(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        _make_asset(db_session, asset_code="AST-2026-00001", location="Taipei HQ")
+        _make_asset(db_session, asset_code="AST-2026-00002", location="Kaohsiung Office")
+
+        response = client.get(
+            "/api/v1/assets?location=Kaohsiung+Office", headers=auth_headers(manager)
+        )
+
+        assert response.status_code == 200
+        codes = [item["asset_code"] for item in response.json()["data"]]
+        assert codes == ["AST-2026-00002"]
+
+
+class TestGetAssetDbError:
+    def test_returns_503_on_sqlalchemy_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        # Both ``get_current_user`` and ``get_asset`` use ``db.scalar``; the
+        # auth lookup is always the first call. Let it pass through, then
+        # raise on the endpoint's own scalar so we exercise the SQLAlchemyError
+        # branch (line 380-385) rather than the 401 path.
+        real_scalar = db_session.scalar
+        call_count = {"n": 0}
+
+        def scalar_side_effect(*args: Any, **kwargs: Any) -> Any:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return real_scalar(*args, **kwargs)
+            raise SQLAlchemyError("DB down")
+
+        with patch.object(db_session, "scalar", side_effect=scalar_side_effect):
+            response = client.get(
+                f"/api/v1/assets/{asset.id}", headers=auth_headers(manager)
+            )
+
+        assert response.status_code == 503
+
+
+class TestListMyAssetsDbError:
+    def test_returns_503_on_sqlalchemy_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+
+        with patch.object(db_session, "scalars", side_effect=SQLAlchemyError("DB down")):
+            response = client.get("/api/v1/assets/mine", headers=auth_headers(holder))
+
+        assert response.status_code == 503
+
+
+class TestAssetCodeSequenceCorruption:
+    """Guard against silent recovery from a malformed ``asset_code`` row.
+
+    If we ever wrote a code that doesn't end in a parseable integer (legacy
+    import, schema migration bug, manual SQL touch), ``_next_asset_code``
+    would re-collide on every retry. The endpoint must fail loud with 500.
+    """
+
+    def test_returns_500_when_existing_asset_code_has_non_numeric_suffix(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        # Matches the AST-2026- LIKE filter so it lands as the "latest_code",
+        # but the suffix is not int-parseable.
+        _make_asset(db_session, asset_code="AST-2026-BADCODE")
+
+        response = client.post(
+            "/api/v1/assets",
+            json={
+                "name": "Business Laptop",
+                "model": "Dell Latitude 7440",
+                "category": "computer",
+                "supplier": "Dell",
+                "purchase_date": "2026-01-01",
+                "purchase_amount": "1500.00",
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 500
+
+
+class TestRegisterAssetIntegrityErrors:
+    """Distinguish ``asset_code`` uniqueness collisions (retryable, 409) from
+    other constraint violations (programmer/data error, 422)."""
+
+    def test_non_asset_code_integrity_error_returns_422(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        payload = {
+            "name": "Business Laptop",
+            "model": "Dell Latitude 7440",
+            "category": "computer",
+            "supplier": "Dell",
+            "purchase_date": "2026-01-01",
+            "purchase_amount": "1500.00",
+        }
+
+        # Trip the registration retry loop's IntegrityError handler with an
+        # ``orig`` message that does NOT contain ``asset_code``: the endpoint
+        # must surface this as a validation error, not retry the loop forever.
+        with patch.object(
+            db_session,
+            "flush",
+            side_effect=IntegrityError(
+                "INSERT INTO assets ...", {}, Exception("CHECK constraint failed on purchase_amount")
+            ),
+        ):
+            response = client.post(
+                "/api/v1/assets", json=payload, headers=auth_headers(manager)
+            )
+
+        assert response.status_code == 422
+
+
+class TestAssetMutationCommitErrors:
+    """``StaleDataError`` → 409 and ``IntegrityError`` → 422 on the four
+    mutation endpoints (update / assign / unassign / dispose).
+
+    The catch-all ``SQLAlchemyError`` → 503 branch is already covered by each
+    endpoint's ``test_returns_503_on_db_error``; these cover the two typed
+    branches that sit above it. ``StaleDataError`` in particular is the
+    optimistic-locking signal that the frontend conflict UI consumes.
+    """
+
+    _UPDATE_PAYLOAD = {"location": "Kaohsiung"}
+    _ASSIGN_PAYLOAD_DATE = "2026-04-15"
+
+    def test_update_stale_data_error_returns_409(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        with patch.object(
+            db_session, "commit", side_effect=StaleDataError("row was modified")
+        ):
+            response = client.patch(
+                f"/api/v1/assets/{asset.id}",
+                json={**self._UPDATE_PAYLOAD, "version": asset.version},
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 409
+
+    def test_update_integrity_error_returns_422(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        with patch.object(
+            db_session,
+            "commit",
+            side_effect=IntegrityError("UPDATE assets ...", {}, Exception("check failed")),
+        ):
+            response = client.patch(
+                f"/api/v1/assets/{asset.id}",
+                json={**self._UPDATE_PAYLOAD, "version": asset.version},
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 422
+
+    def test_assign_stale_data_error_returns_409(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+
+        with patch.object(
+            db_session, "commit", side_effect=StaleDataError("row was modified")
+        ):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/assign",
+                json={
+                    "responsible_person_id": target.id,
+                    "assignment_date": self._ASSIGN_PAYLOAD_DATE,
+                    "version": asset.version,
+                },
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 409
+
+    def test_assign_integrity_error_returns_422(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+
+        with patch.object(
+            db_session,
+            "commit",
+            side_effect=IntegrityError(
+                "UPDATE assets ...", {}, Exception("foreign key violation")
+            ),
+        ):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/assign",
+                json={
+                    "responsible_person_id": target.id,
+                    "assignment_date": self._ASSIGN_PAYLOAD_DATE,
+                    "version": asset.version,
+                },
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 422
+
+    def test_unassign_stale_data_error_returns_409(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+
+        with patch.object(
+            db_session, "commit", side_effect=StaleDataError("row was modified")
+        ):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/unassign",
+                json={
+                    "reason": "transfer",
+                    "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                    "version": asset.version,
+                },
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 409
+
+    def test_unassign_integrity_error_returns_422(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+
+        with patch.object(
+            db_session,
+            "commit",
+            side_effect=IntegrityError(
+                "UPDATE assets ...", {}, Exception("constraint violated")
+            ),
+        ):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/unassign",
+                json={
+                    "reason": "transfer",
+                    "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                    "version": asset.version,
+                },
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 422
+
+    def test_dispose_stale_data_error_returns_409(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        with patch.object(
+            db_session, "commit", side_effect=StaleDataError("row was modified")
+        ):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/dispose",
+                json={"disposal_reason": "EOL", "version": asset.version},
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 409
+
+    def test_dispose_integrity_error_returns_422(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        with patch.object(
+            db_session,
+            "commit",
+            side_effect=IntegrityError(
+                "UPDATE assets ...", {}, Exception("constraint violated")
+            ),
+        ):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/dispose",
+                json={"disposal_reason": "EOL", "version": asset.version},
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == 422
