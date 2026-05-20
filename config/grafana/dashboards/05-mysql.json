@@ -24,7 +24,7 @@
       "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}, "mappings": [{"options": {"0": {"color": "red", "text": "DOWN"}, "1": {"color": "green", "text": "UP"}}, "type": "value"}]}, "overrides": []},
       "gridPos": {"h": 4, "w": 4, "x": 0, "y": 3},
       "id": 2,
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["last"], "fields": "", "values": false}, "textMode": "auto"},
       "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_up{service=\"mysqld-exporter\"}", "legendFormat": "up", "refId": "A"}],
       "title": "Up",
       "type": "stat"
