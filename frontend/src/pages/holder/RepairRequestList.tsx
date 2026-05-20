@@ -16,6 +16,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { ApiError, repairRequestsApi } from '@/api';
 import type { RepairRequestRecord, RepairRequestStatus } from '@/api/repair-requests';
 import { REPAIR_REQUEST_STATUS_COLORS } from '@/components/repair-requests/constants';
+import { formatDateTime } from '@/utils/format';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -28,12 +29,6 @@ const RepairRequestList: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[1]);
-
-  const formatDateValue = (value: string | null): string => {
-    if (!value) return '-';
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString() + ' ' + parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +99,7 @@ const RepairRequestList: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (value: string) => formatDateValue(value),
+      render: (value: string) => formatDateTime(value),
     },
     {
       title: t('repairRequestList.columns.actions'),
