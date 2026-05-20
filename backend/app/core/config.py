@@ -60,7 +60,10 @@ class Settings(BaseSettings):
     db_user: str | None = None
     db_password: str | None = None
     db_host: str | None = None
-    db_port: str = "3306"
+    # MySQL default. Pinned as `int` (not `str`) so pydantic rejects a typo
+    # like `DB_PORT=abc` at load time instead of letting it through into
+    # the URL where SQLAlchemy would surface a less actionable error.
+    db_port: int = 3306
     db_name: str | None = None
 
     @property
@@ -81,8 +84,13 @@ class Settings(BaseSettings):
 
     # Bootstrap manager — seeded by scripts/seed_demo_data.py so the first
     # manager exists without a chicken-and-egg problem (Decision A2).
-    bootstrap_manager_email: str = "admin@example.com"
-    bootstrap_manager_password: str = "ChangeMe123"
+    # `bootstrap_manager_email` and `_password` are REQUIRED (no defaults)
+    # so a Secrets Manager injection failure surfaces at boot rather than
+    # silently seeding `admin@example.com` / `ChangeMe123` into production.
+    # Same posture as `jwt_secret`. `name` / `department` keep defaults
+    # since they are not credentials.
+    bootstrap_manager_email: str
+    bootstrap_manager_password: str
     bootstrap_manager_name: str = "Bootstrap Manager"
     bootstrap_manager_department: str = "IT"
 

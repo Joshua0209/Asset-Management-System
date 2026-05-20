@@ -3,6 +3,7 @@ from __future__ import annotations
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.exc import DBAPIError, OperationalError
 
 from alembic import context
 from app.core.config import get_settings
@@ -53,7 +54,11 @@ def run_migrations_online() -> None:
 
             with context.begin_transaction():
                 context.run_migrations()
-    except Exception as exc:
+    except (OperationalError, DBAPIError) as exc:
+        # Only rewrite connection-class errors with the operator-friendly
+        # message. Programming errors (TypeError on a bad import, model-
+        # mapper misconfiguration) propagate with their native traceback
+        # instead of being mislabelled as "DATABASE_URL unreachable".
         print(
             "Migration failed. Ensure DATABASE_URL is set and the server is reachable. "
             f"Error: {exc}",
