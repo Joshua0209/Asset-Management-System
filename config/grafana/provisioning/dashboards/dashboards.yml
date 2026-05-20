@@ -9,11 +9,19 @@
 # doesn't know that wastes time tweaking panels that "snap back". Force a
 # git-tracked workflow instead.
 #
-# `foldersFromFilesStructure: true` makes Grafana put dashboards under a folder
-# matching their parent directory. We mount all dashboards in a single flat
-# folder under `dashboards/` so they all land in the same Grafana folder
-# named after the provider (`AMS Observability`), keeping the dashboard list
-# in obs-up Grafana visually identical to the file listing.
+# `disableDeletion: false` is intentional too, but worth calling out: when a
+# `.json` file is removed from `config/grafana/dashboards/`, Grafana deletes
+# the corresponding dashboard from its database on the next reload tick. There
+# is no UI warning. Since every dashboard is git-tracked the deletion is
+# always recoverable, but a rename (`git mv old.json new.json`) will briefly
+# show up as "dashboard gone" until the next reload picks up the new file.
+#
+# `foldersFromFilesStructure: true` only takes effect when dashboards live
+# under subdirectories of the base `path:` below — Grafana then folders them
+# after their parent directory name. We mount every JSON flat under
+# `/var/lib/grafana/dashboards`, so this flag is effectively a no-op here and
+# the explicit `folder: AMS Observability` above is what governs placement.
+# The flag stays on because it costs nothing and matches the upstream example.
 
 apiVersion: 1
 
