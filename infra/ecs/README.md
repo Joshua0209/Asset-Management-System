@@ -123,9 +123,7 @@ example (substitute your account ID and repo path):
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": {
-        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-      },
-      "StringLike": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
         "token.actions.githubusercontent.com:sub": "repo:Joshua0209/Asset-Management-System:ref:refs/heads/main"
       }
     }
@@ -135,7 +133,91 @@ example (substitute your account ID and repo path):
 
 The `sub` condition restricts the role to runs from the `main` branch
 of this exact repo - critical to prevent a fork or feature branch from
-assuming production credentials.
+assuming production credentials. Use `StringEquals` (not `StringLike`):
+the value contains no wildcards, and `StringLike` would silently honour
+any `*` a future operator pasted in (e.g. broadening to all branches by
+mistake).
+
+## Identity policy for the deploy role
+
+The trust policy above only controls *who* can assume the role. The
+*identity* policy (attached to the same role) controls what the role
+can do once assumed. Minimum permissions for this pipeline:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRPushPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECSDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DescribeServices",
+        "ecs:UpdateService",
+        "ecs:DescribeTasks",
+        "ecs:DescribeTaskDefinition"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassTaskRoles",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::ACCOUNT_ID:role/ams-ecs-task-execution",
+        "arn:aws:iam::ACCOUNT_ID:role/ams-backend-task",
+        "arn:aws:iam::ACCOUNT_ID:role/ams-frontend-task"
+      ],
+      "Condition": {
+        "StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}
+      }
+    }
+  ]
+}
+```
+
+The `iam:PassRole` permission is required because
+`ecs:RegisterTaskDefinition` includes the task and execution role ARNs;
+without `PassRole`, the API call fails. The `PassedToService`
+condition prevents the deploy role from handing those ARNs to anything
+other than ECS tasks (e.g. attaching them to an EC2 instance).
+
+## Required: enable deployment circuit breaker on each ECS service
+
+The deploy workflow uses `wait-for-service-stability: true` with
+`wait-for-minutes: 10`. That only times out the *workflow* if the new
+task set crash-loops past 10 minutes — ECS itself keeps trying to
+launch the broken task definition indefinitely, draining service
+capacity. Configure auto-rollback **on the service**, not the task
+definition:
+
+```bash
+aws ecs update-service \
+  --cluster "$ECS_CLUSTER" \
+  --service ams-backend \
+  --deployment-configuration '{"deploymentCircuitBreaker":{"enable":true,"rollback":true},"maximumPercent":200,"minimumHealthyPercent":100}'
+```
+
+Repeat for `ams-frontend`. With this setting, a deployment that fails
+to reach steady state is automatically reverted to the previous task
+definition — closing the gap where a red CI run leaves a broken
+revision serving traffic.
 
 ## Health check note
 
