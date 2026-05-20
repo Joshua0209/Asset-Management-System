@@ -1,0 +1,69 @@
+name: Render ECS task definition
+description: >-
+  Substitute __NAME__ placeholders in an ECS task-def JSON template, reject
+  unset/empty env vars up-front, and fail the build if any sentinel slips
+  through. Shared by the backend and frontend deploy jobs so the helpers and
+  guard live in one place.
+
+inputs:
+  task-def-path:
+    description: Path to the JSON task-def template (placeholders left as __NAME__)
+    required: true
+  required-vars:
+    description: >-
+      Newline-separated names of env vars that must be non-empty. Each name
+      NAME is substituted into the placeholder __NAME__ in the task-def file.
+      Values come from the calling step's `env:` block.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Sentinel tokens (__NAME__) avoid collision with env-var names like
+    # DB_HOST that legitimately appear in the JSON. The `|` sed delimiter
+    # tolerates `/` inside values (CIDRs like 10.0.0.0/16, secret paths
+    # like ams/prod/app). `escape_sed` neutralises the remaining sed-
+    # metacharacters (`\`, `&`, `|`) so a value containing them does not
+    # corrupt the JSON silently. `require_var` rejects unset / empty
+    # GitHub variables up-front - otherwise the sentinel is consumed and
+    # the `grep '__[A-Z_]+__'` guard would pass on a broken task-def.
+    # When adding a placeholder, add the env var name to the caller's
+    # `required-vars:` and `env:` blocks; the loop below picks it up.
+    - shell: bash
+      env:
+        TASK_DEF_PATH: ${{ inputs.task-def-path }}
+        REQUIRED_VARS: ${{ inputs.required-vars }}
+      run: |
+        set -euo pipefail
+        require_var() {
+          local name=$1
+          local val=${!name-}
+          if [ -z "$val" ]; then
+            echo "::error::$name is unset or empty - configure it under Settings -> Secrets and variables -> Actions"
+            exit 1
+          fi
+        }
+        escape_sed() {
+          # Escape sed-metacharacters in the REPLACEMENT half of `s|A|B|g`:
+          # backslash, the `|` delimiter, and `&` (which would expand to the
+          # matched pattern). Order matters - escape `\` first.
+          printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/|/\\|/g' -e 's/&/\\&/g'
+        }
+        # Parse required-vars: one name per line, tolerate blank lines and
+        # surrounding whitespace from the YAML block scalar.
+        names=()
+        while IFS= read -r raw; do
+          v="${raw//[[:space:]]/}"
+          [ -z "$v" ] && continue
+          names+=("$v")
+        done <<< "$REQUIRED_VARS"
+        for v in "${names[@]}"; do
+          require_var "$v"
+        done
+        for v in "${names[@]}"; do
+          sed -i "s|__${v}__|$(escape_sed "${!v}")|g" "$TASK_DEF_PATH"
+        done
+        if grep -E '__[A-Z_]+__' "$TASK_DEF_PATH"; then
+          echo "::error::Unsubstituted placeholder left in $TASK_DEF_PATH"
+          exit 1
+        fi

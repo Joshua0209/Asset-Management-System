@@ -28,19 +28,30 @@ work across environments.
 
 ### Placeholder convention (read before adding new ones)
 
+Substitution lives in the composite action at
+[`.github/actions/render-task-def/action.yml`](../../.github/actions/render-task-def/action.yml),
+called by both `deploy-backend` and `deploy-frontend`. Adding a placeholder is a
+two-touch change: add `__NAME__` in the task-def JSON, then add `NAME` to that
+job's `required-vars:` list (and to its `env:` block, mapping to the matching
+GitHub secret or variable).
+
 1. **Use `__NAME__` sentinels**, not bare `NAME`. Bare tokens collide with
    real values in the JSON: `{"name": "DB_HOST", "value": "DB_HOST"}` would
    rewrite the env-var **name** as well as the value, and the container would
    not see `DB_HOST` at all. The double-underscore wrapper makes the placeholder
-   unambiguous.
+   unambiguous. The action substitutes `__NAME__` from the env var named `NAME`,
+   so the names must match exactly.
 2. **Use `|` as the `sed` delimiter**, not `/`. Several injected values
    legitimately contain `/`: CIDRs (`10.0.0.0/16`), secret paths
-   (`ams/prod/app`). `/` as delimiter breaks `sed` parsing.
+   (`ams/prod/app`). `/` as delimiter breaks `sed` parsing. The action uses
+   `|` for this reason; do not change it.
 3. **Reference values via `env:`**, not inline `${{ ... }}` expressions. Avoids
    GitHub Actions expression-injection patterns and keeps the script auditable.
-4. The deploy step ends with a `grep '__[A-Z_]+__'` guard that fails the build
-   if any placeholder slipped through. Always update both the JSON and the
-   workflow together; the guard will catch one-sided changes.
+   The action reads via `${!name}` indirect expansion, so the caller's `env:`
+   block is the only entry point for values.
+4. The action ends with a `grep '__[A-Z_]+__'` guard that fails the build
+   if any placeholder slipped through. Always update the JSON and the
+   caller's `required-vars:` together; the guard will catch one-sided changes.
 
 ### Secret-name vars must include the AWS-side suffix (CRITICAL)
 
