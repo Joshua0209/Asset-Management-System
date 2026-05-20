@@ -55,7 +55,7 @@
       "gridPos": {"h": 5, "w": 6, "x": 18, "y": 4},
       "id": 5,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/auth/login\"}[5m])) by (le))", "legendFormat": "login p95", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/auth/login\", method=\"POST\"}[5m])) by (le))", "legendFormat": "login p95", "refId": "A"}],
       "title": "Login p95",
       "type": "stat"
     },
@@ -86,14 +86,15 @@
       "id": 8,
       "options": {"legend": {"calcs": ["max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
       "targets": [
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/auth/login\"}[5m])) by (le))", "legendFormat": "login", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/auth/login\", method=\"POST\"}[5m])) by (le))", "legendFormat": "login", "refId": "A"},
         {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests\", method=\"POST\"}[5m])) by (le))", "legendFormat": "submit-repair", "refId": "B"},
         {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests/{repair_request_id}/approve\"}[5m])) by (le))", "legendFormat": "approve-repair", "refId": "C"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests/{repair_request_id}/reject\"}[5m])) by (le))", "legendFormat": "reject-repair", "refId": "G"},
         {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests/{repair_request_id}/complete\"}[5m])) by (le))", "legendFormat": "complete-repair", "refId": "D"},
         {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/assets\", method=\"POST\"}[5m])) by (le))", "legendFormat": "register-asset", "refId": "E"},
         {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/assets\", method=\"GET\"}[5m])) by (le))", "legendFormat": "search-assets", "refId": "F"}
       ],
-      "title": "p95 Latency For Six Critical Flows",
+      "title": "p95 Latency For Seven Critical Flows",
       "type": "timeseries"
     },
     {
