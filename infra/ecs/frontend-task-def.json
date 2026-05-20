@@ -4,8 +4,8 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ams-ecs-task-execution",
-  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ams-frontend-task",
+  "executionRoleArn": "arn:aws:iam::__ACCOUNT_ID__:role/ams-ecs-task-execution",
+  "taskRoleArn": "arn:aws:iam::__ACCOUNT_ID__:role/ams-frontend-task",
   "containerDefinitions": [
     {
       "name": "frontend",
@@ -28,7 +28,7 @@
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/ams-frontend",
-          "awslogs-region": "REGION",
+          "awslogs-region": "__REGION__",
           "awslogs-stream-prefix": "frontend"
         }
       },

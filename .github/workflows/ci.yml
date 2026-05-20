@@ -329,15 +329,35 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Fill placeholders in backend task definition
+        # Sentinel tokens (__NAME__) avoid collision with env-var names like
+        # DB_HOST that legitimately appear in the JSON. The `|` sed delimiter
+        # tolerates `/` inside values (CIDRs like 10.0.0.0/16, secret paths
+        # like ams/prod/app). When adding a placeholder, follow the same
+        # __TOKEN__ + `|` delimiter convention.
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          REGION: ${{ vars.AWS_REGION }}
+          REPAIR_S3_BUCKET: ${{ vars.REPAIR_S3_BUCKET }}
+          ALB_VPC_CIDR: ${{ vars.ALB_VPC_CIDR }}
+          DB_HOST: ${{ vars.DB_HOST }}
+          DB_NAME: ${{ vars.DB_NAME }}
+          RDS_SECRET_NAME: ${{ vars.RDS_SECRET_NAME }}
+          APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
+          BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
         run: |
-          sed -i "s/ACCOUNT_ID/${{ secrets.AWS_ACCOUNT_ID }}/g" infra/ecs/backend-task-def.json
-          sed -i "s/REGION/${{ vars.AWS_REGION }}/g" infra/ecs/backend-task-def.json
-          sed -i "s/REPAIR_S3_BUCKET/${{ vars.REPAIR_S3_BUCKET }}/g" infra/ecs/backend-task-def.json
-          sed -i "s/ALB_VPC_CIDR/${{ vars.ALB_VPC_CIDR }}/g" infra/ecs/backend-task-def.json
-          sed -i "s/DB_HOST/${{ vars.DB_HOST }}/g" infra/ecs/backend-task-def.json
-          sed -i "s/DB_NAME/${{ vars.DB_NAME }}/g" infra/ecs/backend-task-def.json
-          sed -i "s/RDS_SECRET_NAME/${{ vars.RDS_SECRET_NAME }}/g" infra/ecs/backend-task-def.json
-          sed -i "s/APP_SECRET_NAME/${{ vars.APP_SECRET_NAME }}/g" infra/ecs/backend-task-def.json
+          sed -i "s|__ACCOUNT_ID__|${ACCOUNT_ID}|g" infra/ecs/backend-task-def.json
+          sed -i "s|__REGION__|${REGION}|g" infra/ecs/backend-task-def.json
+          sed -i "s|__REPAIR_S3_BUCKET__|${REPAIR_S3_BUCKET}|g" infra/ecs/backend-task-def.json
+          sed -i "s|__ALB_VPC_CIDR__|${ALB_VPC_CIDR}|g" infra/ecs/backend-task-def.json
+          sed -i "s|__DB_HOST__|${DB_HOST}|g" infra/ecs/backend-task-def.json
+          sed -i "s|__DB_NAME__|${DB_NAME}|g" infra/ecs/backend-task-def.json
+          sed -i "s|__RDS_SECRET_NAME__|${RDS_SECRET_NAME}|g" infra/ecs/backend-task-def.json
+          sed -i "s|__APP_SECRET_NAME__|${APP_SECRET_NAME}|g" infra/ecs/backend-task-def.json
+          sed -i "s|__BOOTSTRAP_MANAGER_EMAIL__|${BOOTSTRAP_MANAGER_EMAIL}|g" infra/ecs/backend-task-def.json
+          if grep -E '__[A-Z_]+__' infra/ecs/backend-task-def.json; then
+            echo "::error::Unsubstituted placeholder left in backend-task-def.json"
+            exit 1
+          fi
 
       - name: Render backend task definition
         # Patches the container image into the committed task-def template.
@@ -382,9 +402,16 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Fill placeholders in frontend task definition
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          REGION: ${{ vars.AWS_REGION }}
         run: |
-          sed -i "s/ACCOUNT_ID/${{ secrets.AWS_ACCOUNT_ID }}/g" infra/ecs/frontend-task-def.json
-          sed -i "s/REGION/${{ vars.AWS_REGION }}/g" infra/ecs/frontend-task-def.json
+          sed -i "s|__ACCOUNT_ID__|${ACCOUNT_ID}|g" infra/ecs/frontend-task-def.json
+          sed -i "s|__REGION__|${REGION}|g" infra/ecs/frontend-task-def.json
+          if grep -E '__[A-Z_]+__' infra/ecs/frontend-task-def.json; then
+            echo "::error::Unsubstituted placeholder left in frontend-task-def.json"
+            exit 1
+          fi
 
       - name: Render frontend task definition
         id: render

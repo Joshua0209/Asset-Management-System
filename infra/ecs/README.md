@@ -8,25 +8,44 @@ ECS service to reach steady state.
 
 ## Placeholders
 
-The committed files contain placeholders that are dynamically substituted during the
-deployment pipeline in `.github/workflows/ci.yml`. This ensures that sensitive
-identifiers like Account IDs are kept out of source control and allows the same
-templates to be used across different environments.
+The committed files contain placeholders that are dynamically substituted during
+the deployment pipeline in `.github/workflows/ci.yml`. This keeps sensitive
+identifiers like account IDs out of source control and lets the same templates
+work across environments.
 
-| Placeholder         | Source (GitHub Actions)                                                                  |
-|---------------------|------------------------------------------------------------------------------------------|
-| `ACCOUNT_ID`        | `${{ secrets.AWS_ACCOUNT_ID }}`                                                          |
-| `REGION`            | `${{ vars.AWS_REGION }}`                                                                 |
-| `PLACEHOLDER_IMAGE` | Replaced by `aws-actions/amazon-ecs-render-task-definition`                              |
-| `REPAIR_S3_BUCKET`  | `${{ vars.REPAIR_S3_BUCKET }}`                                                           |
-| `ALB_VPC_CIDR`      | `${{ vars.ALB_VPC_CIDR }}` (becomes `FORWARDED_ALLOW_IPS`)                               |
-| `DB_HOST`           | `${{ vars.DB_HOST }}` (RDS Endpoint)                                                     |
-| `DB_NAME`           | `${{ vars.DB_NAME }}` (Database name, e.g. `ams`)                                        |
-| `RDS_SECRET_NAME`   | `${{ vars.RDS_SECRET_NAME }}` (System-managed RDS secret name)                           |
-| `APP_SECRET_NAME`   | `${{ vars.APP_SECRET_NAME }}` (Application secret name, e.g. `ams/prod/app`)             |
+| Placeholder              | Source (GitHub Actions)                                                                  |
+|--------------------------|------------------------------------------------------------------------------------------|
+| `__ACCOUNT_ID__`         | `${{ secrets.AWS_ACCOUNT_ID }}`                                                          |
+| `__REGION__`             | `${{ vars.AWS_REGION }}`                                                                 |
+| `PLACEHOLDER_IMAGE`      | Replaced by `aws-actions/amazon-ecs-render-task-definition`                              |
+| `__REPAIR_S3_BUCKET__`   | `${{ vars.REPAIR_S3_BUCKET }}`                                                           |
+| `__ALB_VPC_CIDR__`       | `${{ vars.ALB_VPC_CIDR }}` (becomes `FORWARDED_ALLOW_IPS`)                               |
+| `__DB_HOST__`            | `${{ vars.DB_HOST }}` (RDS endpoint)                                                     |
+| `__DB_NAME__`            | `${{ vars.DB_NAME }}` (database name, e.g. `ams`)                                        |
+| `__RDS_SECRET_NAME__`    | `${{ vars.RDS_SECRET_NAME }}` (system-managed RDS secret name)                           |
+| `__APP_SECRET_NAME__`    | `${{ vars.APP_SECRET_NAME }}` (application secret name, e.g. `ams/prod/app`)             |
+| `__BOOTSTRAP_MANAGER_EMAIL__` | `${{ vars.BOOTSTRAP_MANAGER_EMAIL }}` (email of the seeded first manager)           |
 
-The CI/CD pipeline uses `sed` to hydrate these values before rendering the final
-task definition and deploying to ECS.
+### Placeholder convention (read before adding new ones)
+
+1. **Use `__NAME__` sentinels**, not bare `NAME`. Bare tokens collide with
+   real values in the JSON: `{"name": "DB_HOST", "value": "DB_HOST"}` would
+   rewrite the env-var **name** as well as the value, and the container would
+   not see `DB_HOST` at all. The double-underscore wrapper makes the placeholder
+   unambiguous.
+2. **Use `|` as the `sed` delimiter**, not `/`. Several injected values
+   legitimately contain `/`: CIDRs (`10.0.0.0/16`), secret paths
+   (`ams/prod/app`). `/` as delimiter breaks `sed` parsing.
+3. **Reference values via `env:`**, not inline `${{ ... }}` expressions. Avoids
+   GitHub Actions expression-injection patterns and keeps the script auditable.
+4. The deploy step ends with a `grep '__[A-Z_]+__'` guard that fails the build
+   if any placeholder slipped through. Always update both the JSON and the
+   workflow together; the guard will catch one-sided changes.
+
+`DB_PORT` is intentionally not parameterised — it is pinned to MySQL's default
+`3306` in `backend/app/core/config.py`. If a future RDS instance uses a non-
+default port, add `DB_PORT` to the task-def `environment` block (no secret
+indirection needed) and to the placeholder list above.
 
 `WEB_CONCURRENCY=1` is set explicitly in the task definition even though
 the image default also pins it — operators reading the task-def should
@@ -65,6 +84,7 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 | `DB_NAME`             | e.g. `ams`                                       |
 | `RDS_SECRET_NAME`     | Name of the managed RDS secret                   |
 | `APP_SECRET_NAME`     | e.g. `ams/prod/app`                              |
+| `BOOTSTRAP_MANAGER_EMAIL` | Email of the seeded first manager (e.g. `admin@ams.example.com`) |
 
 ## OIDC trust policy snippet
 

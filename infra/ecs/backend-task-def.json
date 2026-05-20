@@ -4,8 +4,8 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ams-ecs-task-execution",
-  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ams-backend-task",
+  "executionRoleArn": "arn:aws:iam::__ACCOUNT_ID__:role/ams-ecs-task-execution",
+  "taskRoleArn": "arn:aws:iam::__ACCOUNT_ID__:role/ams-backend-task",
   "containerDefinitions": [
     {
       "name": "backend",
@@ -19,17 +19,18 @@
       ],
       "environment": [
         {"name": "REPAIR_IMAGE_BACKEND", "value": "s3"},
-        {"name": "REPAIR_S3_BUCKET", "value": "REPAIR_S3_BUCKET"},
-        {"name": "FORWARDED_ALLOW_IPS", "value": "ALB_VPC_CIDR"},
+        {"name": "REPAIR_S3_BUCKET", "value": "__REPAIR_S3_BUCKET__"},
+        {"name": "FORWARDED_ALLOW_IPS", "value": "__ALB_VPC_CIDR__"},
         {"name": "WEB_CONCURRENCY", "value": "1"},
-        {"name": "DB_HOST", "value": "DB_HOST"},
-        {"name": "DB_NAME", "value": "DB_NAME"}
+        {"name": "DB_HOST", "value": "__DB_HOST__"},
+        {"name": "DB_NAME", "value": "__DB_NAME__"},
+        {"name": "BOOTSTRAP_MANAGER_EMAIL", "value": "__BOOTSTRAP_MANAGER_EMAIL__"}
       ],
       "secrets": [
-        {"name": "DB_USER", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:RDS_SECRET_NAME:username::"},
-        {"name": "DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:RDS_SECRET_NAME:password::"},
-        {"name": "JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:APP_SECRET_NAME:JWT_SECRET::"},
-        {"name": "BOOTSTRAP_MANAGER_PASSWORD", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:APP_SECRET_NAME:BOOTSTRAP_MANAGER_PASSWORD::"}
+        {"name": "DB_USER", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__RDS_SECRET_NAME__:username::"},
+        {"name": "DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__RDS_SECRET_NAME__:password::"},
+        {"name": "JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:JWT_SECRET::"},
+        {"name": "BOOTSTRAP_MANAGER_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:BOOTSTRAP_MANAGER_PASSWORD::"}
       ],
       "healthCheck": {
         "command": ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2).status==200 else 1)\""],
@@ -42,7 +43,7 @@
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/ams-backend",
-          "awslogs-region": "REGION",
+          "awslogs-region": "__REGION__",
           "awslogs-stream-prefix": "backend"
         }
       },

@@ -145,3 +145,78 @@ def test_settings_rejects_wildcard_via_comma_form() -> None:
         )
     msg = str(excinfo.value)
     assert "wildcard" in msg.lower() or "*" in msg
+
+
+# ---------------------------------------------------------------------------
+# DB-config completeness guard — production task definitions hydrate
+# DB_HOST/DB_NAME plus secret-derived DB_USER/DB_PASSWORD. If a placeholder
+# substitution breaks (e.g. an unset GitHub variable expanding to empty),
+# we want to fail at config load rather than silently fall through to
+# localhost defaults and produce a misleading runtime error.
+# ---------------------------------------------------------------------------
+
+
+def test_settings_accepts_full_database_url_alone() -> None:
+    """`DATABASE_URL` is sufficient — component parts not required."""
+    settings = Settings(database_url=_DB_URL, jwt_secret=_JWT_SECRET)
+    assert settings.sqlalchemy_database_url == _DB_URL
+
+
+def test_settings_accepts_complete_component_db_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Production path: all four DB_* component parts present.
+
+    The test suite's ``conftest`` seeds ``DATABASE_URL`` into ``os.environ``
+    for the rest of the suite; the component-mode validator only runs when
+    ``DATABASE_URL`` is unset, so we strip it (along with the local
+    ``.env`` via ``_env_file=None``) for the DB-config tests.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]  # pydantic-settings runtime kwarg
+        jwt_secret=_JWT_SECRET,
+        db_host="rds.example.com",
+        db_name="ams",
+        db_user="ams_app",
+        db_password="hunter2",  # noqa: S106  # test fixture, not a real credential
+    )
+    assert settings.sqlalchemy_database_url == (
+        "mysql+pymysql://ams_app:hunter2@rds.example.com:3306/ams"
+    )
+
+
+def test_settings_rejects_partial_component_db_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing one component part must fail at load, not boot with a default.
+
+    Real-world failure mode: a broken GitHub Actions placeholder
+    substitution leaves DB_HOST empty. Previously the property would
+    fall through to `localhost` and the app would log a misleading
+    connection error against the wrong host. Now it refuses to load.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            jwt_secret=_JWT_SECRET,
+            db_host="rds.example.com",
+            db_name="ams",
+            db_user="ams_app",
+            # db_password deliberately missing
+        )
+    msg = str(excinfo.value)
+    assert "DB_PASSWORD" in msg
+    assert "DATABASE_URL" in msg
+
+
+def test_settings_rejects_empty_db_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing supplied at all — must fail at load."""
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(_env_file=None, jwt_secret=_JWT_SECRET)  # type: ignore[call-arg]
+    msg = str(excinfo.value)
+    # All four component names should be enumerated to aid debugging.
+    for name in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"):
+        assert name in msg

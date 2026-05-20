@@ -2,7 +2,7 @@ import json
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import BeforeValidator, field_validator
+from pydantic import BeforeValidator, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,18 +41,37 @@ class Settings(BaseSettings):
     app_name: str = "Asset Management System API"
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
-    database_url: str | None = None  # Full URL takes precedence
-    db_user: str = "root"
-    db_password: str = ""
-    db_host: str = "localhost"
+    # Database connection: two mutually exclusive modes.
+    #
+    # 1. **Full URL** (dev / docker-compose): set ``DATABASE_URL`` to a complete
+    #    SQLAlchemy URL like ``mysql+pymysql://user:pass@host:3306/ams``. This
+    #    is what ``.env`` and the local stack use.
+    # 2. **Component parts** (production / ECS): set ``DB_HOST``, ``DB_NAME``,
+    #    ``DB_USER``, ``DB_PASSWORD`` (the last two come from the
+    #    RDS-managed Secrets Manager entry; see ``infra/ecs/README.md``).
+    #    Letting ECS reference the RDS secret directly avoids manually
+    #    copying the rotated password into a second secret.
+    #
+    # When ``DATABASE_URL`` is set it wins; otherwise the component parts
+    # are required and validated together by ``_require_database_config``.
+    # No fallback to localhost defaults — silent prod misconfiguration was
+    # the regression flagged in PR #63 review.
+    database_url: str | None = None
+    db_user: str | None = None
+    db_password: str | None = None
+    db_host: str | None = None
     db_port: str = "3306"
-    db_name: str = "ams"
+    db_name: str | None = None
 
     @property
     def sqlalchemy_database_url(self) -> str:
         if self.database_url:
             return self.database_url
-        return f"mysql+pymysql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        # ``_require_database_config`` guarantees these are set when we get here.
+        return (
+            f"mysql+pymysql://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
 
     cors_allowed_origins: _StringList = ["http://localhost:5173"]
 
@@ -96,6 +115,37 @@ class Settings(BaseSettings):
     cors_allowed_headers: _StringList = ["Authorization", "Content-Type"]
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @model_validator(mode="after")
+    def _require_database_config(self) -> "Settings":
+        """Fail fast when DB configuration is incomplete.
+
+        Either ``DATABASE_URL`` *or* the full ``DB_HOST`` / ``DB_NAME`` /
+        ``DB_USER`` / ``DB_PASSWORD`` set must be supplied. We refuse to
+        boot with partial config (e.g. ``DB_HOST`` missing because of a
+        broken placeholder substitution) instead of falling through to a
+        bogus default that would silently try to connect to localhost.
+        Same posture as the wildcard-CORS check above and the required
+        ``JWT_SECRET`` field.
+        """
+        if self.database_url:
+            return self
+        missing = [
+            name
+            for name, value in (
+                ("DB_HOST", self.db_host),
+                ("DB_NAME", self.db_name),
+                ("DB_USER", self.db_user),
+                ("DB_PASSWORD", self.db_password),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                "Database configuration incomplete: set DATABASE_URL, or all "
+                f"of DB_HOST/DB_NAME/DB_USER/DB_PASSWORD (missing: {', '.join(missing)})."
+            )
+        return self
 
     @field_validator("cors_allowed_origins")
     @classmethod
