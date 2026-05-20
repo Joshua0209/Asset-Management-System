@@ -24,10 +24,8 @@
       "environment": [
         {"name": "REPAIR_IMAGE_BACKEND", "value": "s3"},
         {"name": "REPAIR_S3_BUCKET", "value": "__REPAIR_S3_BUCKET__"},
-        {"name": "FORWARDED_ALLOW_IPS", "value": "__ALB_VPC_CIDR__"},
+        {"name": "FORWARDED_ALLOW_IPS", "value": "*"},
         {"name": "WEB_CONCURRENCY", "value": "1"},
-        {"name": "DB_HOST", "value": "__DB_HOST__"},
-        {"name": "DB_NAME", "value": "__DB_NAME__"},
         {"name": "BOOTSTRAP_MANAGER_EMAIL", "value": "__BOOTSTRAP_MANAGER_EMAIL__"},
         {"name": "ENVIRONMENT", "value": "production"},
         {"name": "OTEL_ENABLED", "value": "true"},
@@ -36,8 +34,7 @@
         {"name": "PYROSCOPE_SERVER", "value": "__GC_PYROSCOPE_ENDPOINT__"}
       ],
       "secrets": [
-        {"name": "DB_USER", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__RDS_SECRET_NAME__:username:AWSCURRENT:"},
-        {"name": "DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__RDS_SECRET_NAME__:password:AWSCURRENT:"},
+        {"name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__DATABASE_URL_SECRET_NAME__:DATABASE_URL:AWSCURRENT:"},
         {"name": "JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:JWT_SECRET:AWSCURRENT:"},
         {"name": "BOOTSTRAP_MANAGER_PASSWORD", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__APP_SECRET_NAME__:BOOTSTRAP_MANAGER_PASSWORD:AWSCURRENT:"},
         {"name": "OTEL_EXPORTER_OTLP_HEADERS", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__GC_SECRET_NAME__:OTEL_EXPORTER_OTLP_HEADERS:AWSCURRENT:"},

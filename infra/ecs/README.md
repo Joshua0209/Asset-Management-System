@@ -19,10 +19,7 @@ work across environments.
 | `__REGION__`             | `${{ vars.AWS_REGION }}`                                                                 |
 | `PLACEHOLDER_IMAGE`      | Replaced by `aws-actions/amazon-ecs-render-task-definition`                              |
 | `__REPAIR_S3_BUCKET__`   | `${{ vars.REPAIR_S3_BUCKET }}`                                                           |
-| `__ALB_VPC_CIDR__`       | `${{ vars.ALB_VPC_CIDR }}` (becomes `FORWARDED_ALLOW_IPS`)                               |
-| `__DB_HOST__`            | `${{ vars.DB_HOST }}` (RDS endpoint)                                                     |
-| `__DB_NAME__`            | `${{ vars.DB_NAME }}` (database name, e.g. `ams`)                                        |
-| `__RDS_SECRET_NAME__`    | `${{ vars.RDS_SECRET_NAME }}` (system-managed RDS secret name, must include 6-char ARN suffix — see below) |
+| `__DATABASE_URL_SECRET_NAME__` | `${{ vars.DATABASE_URL_SECRET_NAME }}` (application secret name for DATABASE_URL, must include 6-char ARN suffix) |
 | `__APP_SECRET_NAME__`    | `${{ vars.APP_SECRET_NAME }}` (application secret name, must include 6-char ARN suffix — see below) |
 | `__BOOTSTRAP_MANAGER_EMAIL__` | `${{ vars.BOOTSTRAP_MANAGER_EMAIL }}` (email of the seeded first manager)           |
 | `__GC_OTLP_ENDPOINT__`   | `${{ secrets.GC_OTLP_ENDPOINT }}` (Grafana Cloud OTLP gateway URL, e.g. `https://otlp-gateway-prod-eu-west-3.grafana.net/otlp`) |
@@ -60,7 +57,7 @@ GitHub secret or variable).
 
 AWS Secrets Manager appends a 6-character random suffix to every secret
 ARN (e.g. `ams/prod/app-AbCdEf`). The task definition references the
-full ARN, so `vars.RDS_SECRET_NAME` and `vars.APP_SECRET_NAME` MUST be
+full ARN, so `vars.DATABASE_URL_SECRET_NAME` and `vars.APP_SECRET_NAME` MUST be
 set to the name **with** the suffix. Looking up a secret by bare name
 (`ams/prod/app`) yields a `ResourceNotFoundException` at task launch.
 
@@ -104,15 +101,12 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 |-----------------------|--------------------------------------------------|
 | `AWS_REGION`          | e.g. `ap-northeast-1`                            |
 | `REPAIR_S3_BUCKET`    | Name of the S3 bucket for repair images          |
-| `ALB_VPC_CIDR`        | VPC CIDR of the ALB subnets (e.g. `10.0.0.0/16`) |
 | `ECR_REPOSITORY_BACKEND`  | e.g. `ams-backend`                           |
 | `ECR_REPOSITORY_FRONTEND` | e.g. `ams-frontend`                          |
 | `ECS_CLUSTER`         | e.g. `ams-prod`                                  |
 | `ECS_SERVICE_BACKEND` | e.g. `ams-backend`                               |
 | `ECS_SERVICE_FRONTEND`| e.g. `ams-frontend`                              |
-| `DB_HOST`             | RDS instance endpoint                            |
-| `DB_NAME`             | e.g. `ams`                                       |
-| `RDS_SECRET_NAME`     | Name of the managed RDS secret, **including the 6-char ARN suffix** (e.g. `rds!db-AbCdEf`) |
+| `DATABASE_URL_SECRET_NAME` | Name of the database secret, **including the 6-char ARN suffix** (e.g. `ams/prod/db-AbCdEf`) |
 | `APP_SECRET_NAME`     | Name of the application secret, **including the 6-char ARN suffix** (e.g. `ams/prod/app-Xy12Ab`) |
 | `BOOTSTRAP_MANAGER_EMAIL` | Email of the seeded first manager (e.g. `admin@ams.example.com`) |
 | `VITE_API_BASE_URL`   | Optional. Build-time API base for the frontend bundle. Defaults to `/api/v1` (same-origin via ALB path routing) — override only if FE and BE are on separate domains |
@@ -128,7 +122,7 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 > the *Variables* tab and recreate them as *Secrets* with the same value.
 
 **GitHub vs AWS secrets.** Items in *Repository secrets* and *Repository
-variables* tables live in GitHub Actions settings. `RDS_SECRET_NAME` /
+variables* tables live in GitHub Actions settings. `DATABASE_URL_SECRET_NAME` /
 `APP_SECRET_NAME` / `GC_SECRET_NAME` only carry the *names* of secrets that
 live in **AWS Secrets Manager** — the credentials themselves never enter
 GitHub. The task-def's `secrets:` block resolves those names to live values

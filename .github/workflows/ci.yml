@@ -679,10 +679,7 @@ jobs:
             ACCOUNT_ID
             REGION
             REPAIR_S3_BUCKET
-            ALB_VPC_CIDR
-            DB_HOST
-            DB_NAME
-            RDS_SECRET_NAME
+            DATABASE_URL_SECRET_NAME
             APP_SECRET_NAME
             BOOTSTRAP_MANAGER_EMAIL
             GC_OTLP_ENDPOINT
@@ -692,10 +689,7 @@ jobs:
           ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           REGION: ${{ vars.AWS_REGION }}
           REPAIR_S3_BUCKET: ${{ vars.REPAIR_S3_BUCKET }}
-          ALB_VPC_CIDR: ${{ vars.ALB_VPC_CIDR }}
-          DB_HOST: ${{ vars.DB_HOST }}
-          DB_NAME: ${{ vars.DB_NAME }}
-          RDS_SECRET_NAME: ${{ vars.RDS_SECRET_NAME }}
+          DATABASE_URL_SECRET_NAME: ${{ vars.DATABASE_URL_SECRET_NAME }}
           APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
           BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
           # The Grafana Cloud OTLP + Pyroscope endpoint URLs are read
