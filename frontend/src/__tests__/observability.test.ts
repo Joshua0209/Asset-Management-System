@@ -73,6 +73,7 @@ describe("initObservability", () => {
     registerInstrumentationsMock.mockClear();
     getWebAutoInstrumentationsMock.mockClear();
     providerRegister.mockClear();
+    vi.unstubAllEnvs();
   });
 
   it("does nothing when explicitly disabled", async () => {
@@ -133,6 +134,54 @@ describe("initObservability", () => {
     );
     expect(registerInstrumentationsMock).toHaveBeenCalledWith(
       expect.objectContaining({ instrumentations: ["fake-instrumentation"] }),
+    );
+  });
+
+  it("reads VITE_OTEL_ENABLED and VITE_OTEL_ENDPOINT from env on zero-arg startup", async () => {
+    vi.stubEnv("VITE_OTEL_ENABLED", "true");
+    vi.stubEnv("VITE_OTEL_ENDPOINT", "https://otel.example.com/v1/traces");
+    const { initObservability } = await importFreshModule();
+    const result = initObservability();
+    expect(result).toBe(true);
+    expect(OTLPTraceExporterMock).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://otel.example.com/v1/traces" }),
+    );
+  });
+
+  it("derives propagateTraceHeaderCorsUrls from VITE_API_BASE_URL when cross-origin", async () => {
+    vi.stubEnv("VITE_OTEL_ENABLED", "true");
+    vi.stubEnv("VITE_API_BASE_URL", "http://localhost:8000/api/v1");
+    const { initObservability } = await importFreshModule();
+    initObservability();
+    const config = lastInstrumentationConfig();
+    expect(config?.["@opentelemetry/instrumentation-fetch"]).toEqual(
+      expect.objectContaining({
+        propagateTraceHeaderCorsUrls: ["http://localhost:8000"],
+      }),
+    );
+  });
+
+  it("does not derive propagation URLs when VITE_API_BASE_URL is relative", async () => {
+    vi.stubEnv("VITE_OTEL_ENABLED", "true");
+    vi.stubEnv("VITE_API_BASE_URL", "/api/v1");
+    const { initObservability } = await importFreshModule();
+    initObservability();
+    const config = lastInstrumentationConfig();
+    expect(
+      config?.["@opentelemetry/instrumentation-fetch"]?.propagateTraceHeaderCorsUrls,
+    ).toBeUndefined();
+  });
+
+  it("prefers an explicit propagateTraceHeaderCorsUrls option over the env-derived default", async () => {
+    vi.stubEnv("VITE_OTEL_ENABLED", "true");
+    vi.stubEnv("VITE_API_BASE_URL", "http://localhost:8000/api/v1");
+    const { initObservability } = await importFreshModule();
+    initObservability({ propagateTraceHeaderCorsUrls: [/^https:\/\/api\.prod\//] });
+    const config = lastInstrumentationConfig();
+    expect(config?.["@opentelemetry/instrumentation-fetch"]).toEqual(
+      expect.objectContaining({
+        propagateTraceHeaderCorsUrls: [/^https:\/\/api\.prod\//],
+      }),
     );
   });
 

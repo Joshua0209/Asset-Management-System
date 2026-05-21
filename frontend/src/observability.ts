@@ -25,6 +25,8 @@ export function initObservability(options: InitObservabilityOptions = {}): boole
   const endpoint =
     options.endpoint ?? readEnvString("VITE_OTEL_ENDPOINT") ?? DEFAULT_ENDPOINT;
   const serviceName = options.serviceName ?? DEFAULT_SERVICE_NAME;
+  const propagateTraceHeaderCorsUrls =
+    options.propagateTraceHeaderCorsUrls ?? derivePropagateUrlsFromEnv();
 
   const exporter = new OTLPTraceExporter({ url: endpoint });
   const resource = resourceFromAttributes({ [ATTR_SERVICE_NAME]: serviceName });
@@ -38,7 +40,7 @@ export function initObservability(options: InitObservabilityOptions = {}): boole
     instrumentations: getWebAutoInstrumentations({
       "@opentelemetry/instrumentation-xml-http-request": { enabled: false },
       "@opentelemetry/instrumentation-fetch": {
-        propagateTraceHeaderCorsUrls: options.propagateTraceHeaderCorsUrls,
+        propagateTraceHeaderCorsUrls,
       },
     }),
   });
@@ -52,10 +54,28 @@ function readEnvFlag(key: "VITE_OTEL_ENABLED"): boolean {
   return env[key] === "true";
 }
 
-function readEnvString(key: "VITE_OTEL_ENDPOINT"): string | undefined {
+function readEnvString(
+  key: "VITE_OTEL_ENDPOINT" | "VITE_API_BASE_URL",
+): string | undefined {
   const env = safeImportMetaEnv();
   const value = env[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+// OTel's fetch instrumentation only injects `traceparent` into outgoing
+// requests whose URL matches an entry in this list. The app's API base lives
+// under VITE_API_BASE_URL — if it's absolute and cross-origin, derive the
+// matcher from it so frontend → backend spans correlate without callers
+// having to pass it explicitly. Same-origin (relative base) needs nothing.
+function derivePropagateUrlsFromEnv(): (string | RegExp)[] | undefined {
+  const apiBase = readEnvString("VITE_API_BASE_URL");
+  if (!apiBase) return undefined;
+  try {
+    const origin = new URL(apiBase).origin;
+    return [origin];
+  } catch {
+    return undefined;
+  }
 }
 
 function safeImportMetaEnv(): Record<string, string | undefined> {
