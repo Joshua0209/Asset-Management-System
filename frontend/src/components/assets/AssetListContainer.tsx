@@ -46,9 +46,6 @@ const AssetListContainer: React.FC<AssetListContainerProps> = ({
       <Typography.Title level={2} style={{ marginBottom: 0 }}>
         {t('assetList.title')}
       </Typography.Title>
-      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-        {t('assetList.description')}
-      </Typography.Paragraph>
 
       {error ? <Alert title={error} type="error" showIcon /> : null}
 
