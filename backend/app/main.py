@@ -200,8 +200,14 @@ app.add_middleware(
 # Observability (W6 Phase 1):
 #   * setup_metrics mounts /metrics and registers the request
 #     instrumentation. It must come after SlowAPIMiddleware (see comment
-#     above) but before include_router so the instrumentator's startup
-#     hook has the app's route table when it indexes labels.
+#     above) so the limiter sees /metrics scrapes and `@limiter.exempt`
+#     is the single bypass point. The other ordering constraint is
+#     simply that ``instrument(app)`` installs an ASGI middleware, and
+#     FastAPI rejects middleware registration after app startup — so
+#     all middleware setup lives in this pre-router block. Note: the
+#     instrumentator resolves the route template per-request (via
+#     ``request.scope["route"]``), so route-template ``handler`` labels
+#     work even for routers added after this call.
 #   * setup_tracing is a no-op when OTEL_ENABLED is false (pytest
 #     default); the SQLAlchemy instrumentor would otherwise hook the
 #     SQLite test engine's event listeners and add per-statement overhead
