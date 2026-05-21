@@ -110,8 +110,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
         theme={isDarkMode ? "dark" : "light"}
         width={240}
       >
-        <div className="brand-mark" aria-label="Asset Management System">
-          {collapsed ? "A" : "AMS"}
+        <div className="brand-mark" aria-label="TSMC">
+          {collapsed ? "T" : "TSMC"}
         </div>
         <Menu
           theme={isDarkMode ? "dark" : "light"}
