@@ -37,4 +37,4 @@ export const formatDateTime = (value: string | null | undefined): string => {
 
 export const formatRepairCost = (
   value: string | number | null | undefined,
-): string => (value === null || value === undefined || value === '' ? '-' : formatAmountValue(value));
+): string => (value === null || value === undefined || value === '' ? '-' : `TWD ${value}`);
