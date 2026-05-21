@@ -209,6 +209,10 @@
     },
     "loginFailed": "Incorrect email or password"
   },
+  "dashboard": {
+    "description": "Monitor asset inventory, repair workload, and review activity from one operational view.",
+    "demoNotice": "Dashboard metrics are reserved for the demo data pass."
+  },
   "reviews": {
     "title": "Repair Reviews",
     "description": "Review, process, and complete repair requests.",

@@ -210,3 +210,19 @@ export const applyDesignCssVariables = (isDarkMode: boolean): void => {
     root.style.setProperty(name, tokenValue);
   });
 };
+
+export const designStatusColors = {
+  asset: {
+    inStock: value(tokens.color.neutral[600]),
+    inUse: value(tokens.color.status.active),
+    pendingRepair: value(tokens.color.status["in-repair"]),
+    underRepair: value(tokens.color.status["in-repair"]),
+    disposed: value(tokens.color.status.decommissioned),
+  },
+  repairRequest: {
+    pendingReview: value(tokens.color.status.pending),
+    underRepair: value(tokens.color.status["in-repair"]),
+    completed: value(tokens.color.status.active),
+    rejected: value(tokens.color.status.rejected),
+  },
+} as const;

@@ -209,6 +209,10 @@
     },
     "loginFailed": "電子郵件或密碼錯誤"
   },
+  "dashboard": {
+    "description": "從單一營運視圖掌握資產庫存、維修負載與審核活動。",
+    "demoNotice": "儀表板指標保留給 demo 資料整理階段補齊。"
+  },
   "reviews": {
     "title": "維修審核",
     "description": "審核、處理並完成維修申請。",

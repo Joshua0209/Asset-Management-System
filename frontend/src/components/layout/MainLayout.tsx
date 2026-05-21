@@ -74,7 +74,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
   const {
-    token: { colorBgContainer, borderRadiusLG },
+    token: { colorBorder, colorTextSecondary },
   } = theme.useToken();
 
   const menuItems = useMemo(
@@ -103,15 +103,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Sider trigger={null} collapsible collapsed={collapsed} theme={isDarkMode ? "dark" : "light"}>
-        <div
-          style={{
-            height: 32,
-            margin: 16,
-            background: "rgba(0, 0, 0, 0.2)",
-            borderRadius: 6,
-          }}
-        />
+      <Sider
+        trigger={null}
+        collapsible
+        collapsed={collapsed}
+        theme={isDarkMode ? "dark" : "light"}
+        width={240}
+      >
+        <div className="brand-mark" aria-label="Asset Management System">
+          {collapsed ? "A" : "AMS"}
+        </div>
         <Menu
           theme={isDarkMode ? "dark" : "light"}
           mode="inline"
@@ -124,7 +125,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
         <Header
           style={{
             padding: 0,
-            background: colorBgContainer,
+            height: 56,
+            lineHeight: "56px",
+            background: "var(--color-bg-primary)",
+            borderBottom: `1px solid ${colorBorder}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -135,7 +139,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? "expand sidebar" : "collapse sidebar"}
-            style={{ fontSize: "16px", width: 64, height: 64 }}
+            style={{ fontSize: 16, width: 56, height: 56 }}
           />
           <div style={{ paddingRight: 24, display: "flex", alignItems: "center", gap: 16 }}>
             <Button
@@ -151,7 +155,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
                 <Space style={{ cursor: "pointer" }}>
                   <Avatar size="small" icon={<UserOutlined />} />
                   <Typography.Text>{user.name}</Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  <Typography.Text style={{ color: colorTextSecondary, fontSize: "var(--font-size-xs)" }}>
                     {t(`auth.role.${user.role}`)}
                   </Typography.Text>
                 </Space>
@@ -161,11 +165,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, toggleTheme }) => {
         </Header>
         <Content
           style={{
-            margin: "24px 16px",
-            padding: 24,
+            margin: 24,
+            padding: 0,
             minHeight: 280,
-            background: colorBgContainer,
-            borderRadius: borderRadiusLG,
+            background: "transparent",
           }}
         >
           <Outlet />

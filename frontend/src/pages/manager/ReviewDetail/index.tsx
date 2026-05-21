@@ -195,7 +195,7 @@ const ReviewDetail: React.FC = () => {
             {t('repairRequestDetail.title')}
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-            {request.asset.name} ({request.asset.asset_code})
+            {request.asset.name} (<span className="asset-code">{request.asset.asset_code}</span>)
           </Typography.Paragraph>
 
           <Card title={t('reviews.columns.actions')}>{renderActions()}</Card>
@@ -211,10 +211,10 @@ const ReviewDetail: React.FC = () => {
                 {request.requester.name}
               </Descriptions.Item>
               <Descriptions.Item label={t('repairRequestDetail.fields.createdAt')}>
-                {formatDateTime(request.created_at)}
+                <span className="tabular-nums">{formatDateTime(request.created_at)}</span>
               </Descriptions.Item>
               <Descriptions.Item label={t('repairRequestDetail.fields.completedAt')}>
-                {formatDateTime(request.completed_at)}
+                <span className="tabular-nums">{formatDateTime(request.completed_at)}</span>
               </Descriptions.Item>
             </Descriptions>
           </Card>
@@ -250,13 +250,13 @@ const ReviewDetail: React.FC = () => {
           <Card title={t('repairRequestDetail.sections.result')}>
             <Descriptions column={{ xs: 1, sm: 2 }}>
               <Descriptions.Item label={t('repairRequestDetail.fields.repairDate')}>
-                {request.repair_date || '-'}
+                <span className="tabular-nums">{request.repair_date || '-'}</span>
               </Descriptions.Item>
               <Descriptions.Item label={t('repairRequestDetail.fields.repairVendor')}>
                 {request.repair_vendor || '-'}
               </Descriptions.Item>
               <Descriptions.Item label={t('repairRequestDetail.fields.repairCost')}>
-                {formatRepairCost(request.repair_cost)}
+                <span className="tabular-nums">{formatRepairCost(request.repair_cost)}</span>
               </Descriptions.Item>
               <Descriptions.Item label={t('repairRequestDetail.fields.rejectionReason')}>
                 {request.rejection_reason || '-'}

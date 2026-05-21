@@ -214,7 +214,7 @@ const AssetDetail: React.FC = () => {
       >
         <Descriptions column={{ xxl: 3, xl: 3, lg: 2, md: 2, sm: 1, xs: 1 }} bordered>
           <Descriptions.Item label={t('assetList.columns.assetCode')}>
-            {asset.asset_code}
+            <span className="asset-code">{asset.asset_code}</span>
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.columns.name')}>
             {asset.name}
@@ -226,10 +226,10 @@ const AssetDetail: React.FC = () => {
             {asset.responsible_person?.name ?? t('assetList.detail.unassigned')}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.assignmentDate')}>
-            {formatDateValue(asset.assignment_date, t)}
+            <span className="tabular-nums">{formatDateValue(asset.assignment_date, t)}</span>
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.unassignmentDate')}>
-            {formatDateValue(asset.unassignment_date, t)}
+            <span className="tabular-nums">{formatDateValue(asset.unassignment_date, t)}</span>
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.model')}>
             {asset.model}
@@ -241,10 +241,10 @@ const AssetDetail: React.FC = () => {
             {asset.supplier}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.activationDate')}>
-            {formatDateValue(asset.activation_date, t)}
+            <span className="tabular-nums">{formatDateValue(asset.activation_date, t)}</span>
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.warrantyExpiry')}>
-            {formatDateValue(asset.warranty_expiry, t)}
+            <span className="tabular-nums">{formatDateValue(asset.warranty_expiry, t)}</span>
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.columns.department')}>
             {asset.department}
@@ -253,10 +253,10 @@ const AssetDetail: React.FC = () => {
             {asset.location}
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.columns.purchaseAmount')}>
-            {formatAmountValue(asset.purchase_amount)}
+            <span className="tabular-nums">{formatAmountValue(asset.purchase_amount)}</span>
           </Descriptions.Item>
           <Descriptions.Item label={t('assetList.columns.purchaseDate')}>
-            {formatDateValue(asset.purchase_date, t)}
+            <span className="tabular-nums">{formatDateValue(asset.purchase_date, t)}</span>
           </Descriptions.Item>
         </Descriptions>
       </Card>

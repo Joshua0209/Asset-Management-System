@@ -55,7 +55,7 @@ const RepairRequestDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '50px' }}>
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
         <Spin size="large" />
       </div>
     );
@@ -127,11 +127,11 @@ const RepairRequestDetail: React.FC = () => {
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label={t('repairRequestDetail.fields.createdAt')}>
-                  {formatDateTime(request.created_at)}
+                  <span className="tabular-nums">{formatDateTime(request.created_at)}</span>
                 </Descriptions.Item>
                 {request.completed_at && (
                   <Descriptions.Item label={t('repairRequestDetail.fields.completedAt')}>
-                    {formatDateTime(request.completed_at)}
+                    <span className="tabular-nums">{formatDateTime(request.completed_at)}</span>
                   </Descriptions.Item>
                 )}
               </Descriptions>
@@ -143,7 +143,7 @@ const RepairRequestDetail: React.FC = () => {
                   {request.asset.name}
                 </Descriptions.Item>
                 <Descriptions.Item label={t('repairRequestDetail.fields.assetCode')}>
-                  <Typography.Text code>{request.asset.asset_code}</Typography.Text>
+                  <Typography.Text className="asset-code">{request.asset.asset_code}</Typography.Text>
                 </Descriptions.Item>
               </Descriptions>
             </Card>
@@ -183,13 +183,13 @@ const RepairRequestDetail: React.FC = () => {
               <Card title={t('repairRequestDetail.sections.result')}>
                 <Descriptions column={{ xs: 1, sm: 2 }}>
                   <Descriptions.Item label={t('repairRequestDetail.fields.repairDate')}>
-                    {request.repair_date || '-'}
+                    <span className="tabular-nums">{request.repair_date || '-'}</span>
                   </Descriptions.Item>
                   <Descriptions.Item label={t('repairRequestDetail.fields.repairVendor')}>
                     {request.repair_vendor || '-'}
                   </Descriptions.Item>
                   <Descriptions.Item label={t('repairRequestDetail.fields.repairCost')}>
-                    {formatRepairCost(request.repair_cost)}
+                    <span className="tabular-nums">{formatRepairCost(request.repair_cost)}</span>
                   </Descriptions.Item>
                 </Descriptions>
                 <Divider style={{ margin: '12px 0' }} />
