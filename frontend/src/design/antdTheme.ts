@@ -1,6 +1,6 @@
 import type { ThemeConfig } from "antd";
 
-import designTokens from "../../../docs/designs/design-tokens.json";
+import designTokens from "./design-tokens.json";
 
 type TokenLeaf<T = string> = {
   $value: T;
