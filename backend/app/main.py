@@ -179,13 +179,17 @@ _warn_if_proxy_trust_misconfigured(settings, os.environ.get("FORWARDED_ALLOW_IPS
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
 # request time and emits the X-RateLimit-* headers.
 #
-# Middleware-order invariant (kept in sync with tests/test_rate_limit.py
-# and tests/test_observability.py): SlowAPIMiddleware is registered
+# Middleware-order invariant (W6 Phase 8 regression test pinned in
+# tests/test_rate_limit.py::test_metrics_scrape_does_not_burn_rate_limit_quota,
+# alongside tests/test_observability.py): SlowAPIMiddleware is registered
 # BEFORE the prometheus-fastapi-instrumentator mounts its handler.
 # Slowapi must see every request (including /metrics scrapes) so the
 # request reaches `@limiter.exempt` on the metrics route. Reversing the
 # order would let the instrumentator's request hook fire on a request
-# the limiter then drops, double-counting in dashboards.
+# the limiter then drops, double-counting in dashboards. Dropping the
+# `@limiter.exempt` mark on /metrics (e.g. by switching to the
+# instrumentator's built-in `.expose()` whose handler slowapi cannot
+# tag) would silently burn the anonymous tier on every 15s scrape.
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
