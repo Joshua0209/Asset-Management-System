@@ -152,10 +152,14 @@ def _structlog_processor_trace_context(
 def setup_logging(settings: Settings) -> None:
     """Configure structlog to emit JSON (prod) or key=value text (dev/pytest).
 
-    Routes uvicorn's loggers through structlog's stdlib bridge so the
-    access log and our application logs share a single JSON record shape.
-    Uvicorn's default plaintext access log is silenced to avoid double
-    emission — dashboards pivot on the structured record only.
+    Application logs flow through structlog's stdlib bridge so every record
+    that hits the root logger shares one JSON shape. Uvicorn's plaintext
+    access logger is intentionally silenced: request visibility is provided
+    by the Prometheus ``/metrics`` endpoint (rate / error / duration) plus
+    OTLP spans when ``otel_enabled`` is on, so the per-request access line
+    would be noisy duplicate signal. A structured JSON access middleware
+    can be layered back in later if dashboards need fields that ``/metrics``
+    labels can't carry (e.g. user_id), but is out of scope for Phase 1.
     """
     shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
@@ -200,8 +204,10 @@ def setup_logging(settings: Settings) -> None:
     root.addHandler(handler)
     root.setLevel(logging.INFO)
 
-    # Silence uvicorn's plaintext access line; the JSON emission above
-    # carries the same fields plus trace_id.
+    # Drop uvicorn's plaintext access line. /metrics (RED) and OTLP spans
+    # cover per-request observability; the access line would just be
+    # noise on top. See setup_logging docstring for the JSON-access-log
+    # follow-up note.
     for noisy in ("uvicorn.access",):
         access_logger = logging.getLogger(noisy)
         access_logger.handlers.clear()
