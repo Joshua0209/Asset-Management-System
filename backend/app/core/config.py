@@ -1,10 +1,22 @@
 import json
+import os
+import socket
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import BeforeValidator, field_validator, model_validator
+from pydantic import BeforeValidator, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
+
+
+def _default_replica_id() -> str:
+    """Stable per-process replica label.
+
+    Prefer ``HOSTNAME`` (set by Docker / ECS) so a single Grafana drop-down
+    can list every replica without operator setup. Fall back to the local
+    hostname, then a literal ``ams-backend-0`` so the field never blanks.
+    """
+    return os.environ.get("HOSTNAME") or socket.gethostname() or "ams-backend-0"
 
 
 def _parse_string_list(value: object) -> object:
@@ -127,6 +139,27 @@ class Settings(BaseSettings):
     cors_allowed_methods: _StringList = ["GET", "POST", "PATCH", "OPTIONS"]
     cors_allowed_headers: _StringList = ["Authorization", "Content-Type"]
 
+    # Observability (W6 Phase 1) — all opt-in so a stale ECS task without
+    # the new env vars keeps booting. The compose overlay flips these on
+    # for the local demo stack; production toggles them on the task
+    # definition once Alloy/Pyroscope endpoints exist. Endpoint defaults
+    # are empty rather than the docker-compose service names because the
+    # source must not ship a baked-in clear-text URL (SonarCloud S5332);
+    # the operator who flips the flag also sets the URL via env, and the
+    # `_require_observability_endpoints` validator fails fast otherwise.
+    # See backend/.env.example for the canonical local-stack values.
+    otel_enabled: bool = False
+    otel_endpoint: str = ""
+    pyroscope_enabled: bool = False
+    pyroscope_server: str = ""
+    # Hostname-derived per-process label. `default_factory` rather than a
+    # module-import-time read so a unit test that swaps HOSTNAME via
+    # `monkeypatch.setenv` and then constructs `Settings()` sees the swap.
+    replica_id: str = Field(default_factory=_default_replica_id)
+    # `text` for readable test logs; `json` for production. Validated to a
+    # narrow set so a typo'd env var fails loud at boot.
+    log_format: str = "json"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @model_validator(mode="after")
@@ -159,6 +192,43 @@ class Settings(BaseSettings):
                 f"of DB_HOST/DB_NAME/DB_USER/DB_PASSWORD (missing: {', '.join(missing)})."
             )
         return self
+
+    @model_validator(mode="after")
+    def _require_observability_endpoints(self) -> "Settings":
+        """Fail fast when an observability flag is on but its URL is empty.
+
+        The `otel_endpoint` / `pyroscope_server` defaults are intentionally
+        empty so the source never ships a clear-text URL literal. When the
+        operator flips a feature flag on they must also point it at a real
+        collector — same posture as a missing DATABASE_URL or JWT_SECRET.
+        """
+        if self.otel_enabled and not self.otel_endpoint:
+            raise ValueError(
+                "OTEL_ENABLED=true requires OTEL_ENDPOINT to be set "
+                "(e.g. http://alloy:4317 for the local docker stack)."
+            )
+        if self.pyroscope_enabled and not self.pyroscope_server:
+            raise ValueError(
+                "PYROSCOPE_ENABLED=true requires PYROSCOPE_SERVER to be set "
+                "(e.g. http://pyroscope:4040 for the local docker stack)."
+            )
+        return self
+
+    @field_validator("log_format")
+    @classmethod
+    def _validate_log_format(cls, value: str) -> str:
+        """Refuse boot on a typo'd LOG_FORMAT.
+
+        Two values supported: ``json`` (the default; structured prod logs)
+        and ``text`` (pytest / interactive debug). Anything else points at
+        operator confusion — fail loud rather than silently degrade.
+        """
+        allowed = {"json", "text"}
+        if value not in allowed:
+            raise ValueError(
+                f"LOG_FORMAT={value!r} is not one of {sorted(allowed)}."
+            )
+        return value
 
     @field_validator("cors_allowed_origins")
     @classmethod
