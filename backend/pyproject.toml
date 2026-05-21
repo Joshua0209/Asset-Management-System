@@ -13,11 +13,20 @@ dependencies = [
   "bcrypt>=4.1,<5.0",
   "email-validator>=2.1,<3.0",
   "fastapi>=0.115,<1.0",
+  # Phase 1 observability (W6) — Prometheus exposition, OTLP traces,
+  # structured JSON logs. See docs/plans/observability-implementation-plan.md.
+  "opentelemetry-api>=1.27,<2.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.27,<2.0",
+  "opentelemetry-instrumentation-fastapi>=0.48b0,<1.0",
+  "opentelemetry-instrumentation-sqlalchemy>=0.48b0,<1.0",
+  "opentelemetry-sdk>=1.27,<2.0",
+  "prometheus-fastapi-instrumentator>=7.0,<8.0",
   "pydantic-settings>=2.2,<3.0",
   "pyjwt>=2.9,<3.0",
   "pymysql>=1.1,<2.0",
   "slowapi>=0.1.9,<1.0",
   "sqlalchemy>=2.0,<3.0",
+  "structlog>=24.1,<26.0",
   "uvicorn[standard]>=0.30,<1.0",
 ]
 
@@ -37,6 +46,11 @@ dev = [
 prod = [
   "gunicorn>=22.0,<24.0",
   "boto3>=1.34,<2.0",
+  # Continuous profiling, opt-in via PYROSCOPE_ENABLED=true. Lazy-imported in
+  # app.core.observability so the dev image does not need it. Locked decision
+  # 5 in the W6 plan: off by default in prod (gunicorn fork interaction); on
+  # in the local demo (single-process uvicorn).
+  "pyroscope-io>=0.8,<1.0",
 ]
 
 [tool.setuptools.packages.find]
