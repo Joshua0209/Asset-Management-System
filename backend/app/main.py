@@ -14,13 +14,25 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.observability import (
+    maybe_setup_profiling,
+    setup_logging,
+    setup_metrics,
+    setup_tracing,
+)
 from app.core.rate_limit import limiter
 from app.db.session import engine
 from app.schemas.repair_request import RepairRequestCreate
 
-logger = logging.getLogger(__name__)
-
 settings = get_settings()
+
+# Configure structlog BEFORE any logger.warning() below so the boot-time
+# rate-limit / proxy-trust warnings (and the single-worker guard's
+# RuntimeError chain) land as structured records, not pre-config plaintext.
+# Idempotent for re-imports under pytest.
+setup_logging(settings)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.app_name,
@@ -166,6 +178,14 @@ _warn_if_proxy_trust_misconfigured(settings, os.environ.get("FORWARDED_ALLOW_IPS
 
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
 # request time and emits the X-RateLimit-* headers.
+#
+# Middleware-order invariant (kept in sync with tests/test_rate_limit.py
+# and tests/test_observability.py): SlowAPIMiddleware is registered
+# BEFORE the prometheus-fastapi-instrumentator mounts its handler.
+# Slowapi must see every request (including /metrics scrapes) so the
+# request reaches `@limiter.exempt` on the metrics route. Reversing the
+# order would let the instrumentator's request hook fire on a request
+# the limiter then drops, double-counting in dashboards.
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
@@ -176,6 +196,27 @@ app.add_middleware(
     allow_methods=settings.cors_allowed_methods,
     allow_headers=settings.cors_allowed_headers,
 )
+
+# Observability (W6 Phase 1):
+#   * setup_metrics mounts /metrics and registers the request
+#     instrumentation. It must come after SlowAPIMiddleware (see comment
+#     above) so the limiter sees /metrics scrapes and `@limiter.exempt`
+#     is the single bypass point. The other ordering constraint is
+#     simply that ``instrument(app)`` installs an ASGI middleware, and
+#     FastAPI rejects middleware registration after app startup — so
+#     all middleware setup lives in this pre-router block. Note: the
+#     instrumentator resolves the route template per-request (via
+#     ``request.scope["route"]``), so route-template ``handler`` labels
+#     work even for routers added after this call.
+#   * setup_tracing is a no-op when OTEL_ENABLED is false (pytest
+#     default); the SQLAlchemy instrumentor would otherwise hook the
+#     SQLite test engine's event listeners and add per-statement overhead
+#     the suite doesn't budget for.
+#   * maybe_setup_profiling stays off in prod gunicorn (locked decision
+#     5) and on for the single-process dev / demo image.
+setup_metrics(app)
+setup_tracing(app, settings)
+maybe_setup_profiling(settings)
 
 # Map HTTP status → machine-readable error code per docs/system-design/12-api-design.md
 _STATUS_CODE_MAP = {
