@@ -226,9 +226,11 @@ def _conflict(
 ) -> HTTPException:
     # Counter increment lives at the single helper so all 409s in this
     # module are observed by Prometheus without per-callsite duplication.
-    # The ``endpoint`` label defaults to the module name; callers raising
-    # from a known route can pass the route template
-    # (e.g. ``POST /repair-requests``) so dashboards can slice by surface.
+    # The ``endpoint`` label is module-scoped (``"repair_requests"``) today —
+    # see ``OPTIMISTIC_CONFLICTS`` in ``app/core/observability.py``. The
+    # kwarg is the seam for a follow-up that threads route templates
+    # (e.g. ``POST /repair-requests/{id}/approve``) through to dashboards
+    # without changing the metric schema. Until then, slice by ``code``.
     OPTIMISTIC_CONFLICTS.labels(endpoint=endpoint, code=code).inc()
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,

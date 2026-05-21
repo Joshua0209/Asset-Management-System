@@ -113,11 +113,13 @@ def _not_found() -> HTTPException:
 def _conflict(
     message: str, *, code: str = "conflict", endpoint: str = "assets"
 ) -> HTTPException:
-    # See app/core/observability.py: a single helper is the only place
+    # See ``app/core/observability.py``: a single helper is the only place
     # 409s are minted for this module, so the Prometheus counter is also
-    # updated here. ``endpoint="assets"`` keeps the label low-cardinality;
-    # callers raising from a specific surface (e.g. ``POST /assets``) can
-    # pass a tighter value.
+    # updated here. The ``endpoint`` label is module-scoped (``"assets"``)
+    # today — keeps cardinality bounded and lets dashboards split asset
+    # vs repair-request 409s. Route-template granularity is deferred;
+    # the kwarg is the seam to thread it through later. Until then,
+    # slice by ``code`` (invalid_transition, version_conflict, …).
     OPTIMISTIC_CONFLICTS.labels(endpoint=endpoint, code=code).inc()
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,

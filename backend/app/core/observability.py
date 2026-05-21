@@ -74,10 +74,15 @@ OPTIMISTIC_CONFLICTS = Counter(
 )
 """Labelled counter for 409 conflicts.
 
-* ``endpoint``: route template (e.g. ``POST /repair-requests``) so the
-  series stays low-cardinality. Endpoints pass this explicitly rather
-  than reading ``request.url.path`` (the latter explodes when an asset
-  ID is in the path).
+* ``endpoint``: **module-scoped today** — the value is whatever the
+  per-module ``_conflict`` helper defaults to (``"assets"`` or
+  ``"repair_requests"``). This keeps the series low-cardinality and
+  lets dashboards split by surface area, but it does NOT give
+  route-template granularity (``POST /repair-requests`` vs
+  ``POST /repair-requests/{id}/approve``). Route-level breakdown is
+  a Phase-1-follow-up: helpers already accept an ``endpoint=...``
+  kwarg, so callsites can be threaded through without a schema change.
+  Until then, slice by ``code`` for granularity.
 * ``code``: the granular error code from the project envelope
   (``duplicate_request``, ``invalid_transition``, ``version_conflict``,
   …). Matches ``docs/system-design/12-api-design.md`` §"409 Conflict".
