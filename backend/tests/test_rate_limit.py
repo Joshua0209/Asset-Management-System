@@ -455,3 +455,117 @@ def test_authenticated_route_inherits_default_tier_limit(
         "expected default authenticated tier (5/minute under conftest) to "
         "kick in on an undecorated authenticated route"
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 — middleware-order regression test
+#
+# Pins the prometheus-fastapi-instrumentator + slowapi co-tenancy contract
+# from ``docs/plans/observability-implementation-plan.md`` § Phase 8:
+#
+#   1. ``SlowAPIMiddleware`` is registered before the instrumentator mounts
+#      ``/metrics`` (see the comment block in ``app/main.py`` right above
+#      ``app.add_middleware(SlowAPIMiddleware)``).
+#   2. ``/metrics`` is exempt from the limiter via ``@limiter.exempt``.
+#
+# If either invariant breaks, this test fires. A future refactor that
+# swaps the registration order, drops the exemption, or replaces the
+# bespoke ``/metrics`` route with the instrumentator's built-in
+# ``.expose()`` (whose handler ``@limiter.exempt`` cannot tag) gets a
+# unit-test-speed failure instead of a silent dashboard regression in
+# production (each scrape would burn a slot of the anonymous tier and
+# either DoS the metrics scrape or double-count requests).
+# ---------------------------------------------------------------------------
+
+
+def _remaining(response: object) -> int:
+    """Pull ``X-RateLimit-Remaining`` off a response as an int.
+
+    Slowapi emits the header on every response where the limiter saw the
+    request (2xx and 4xx alike). Returns -1 when missing so an absent
+    header is loud rather than silently coerced to 0.
+    """
+    raw = response.headers.get("x-ratelimit-remaining")  # type: ignore[attr-defined]
+    if raw is None:
+        return -1
+    return int(raw)
+
+
+def test_metrics_scrape_does_not_burn_rate_limit_quota(
+    enabled_limiter: TestClient,
+) -> None:
+    """Middleware-order regression: a ``/metrics`` scrape interleaved
+    with normal traffic must leave the limiter counter untouched.
+
+    Concretely, ``X-RateLimit-Remaining`` on the sibling route must
+    decrement by exactly 1 per call regardless of how many ``/metrics``
+    requests happen in between. The conftest sets
+    ``RATE_LIMIT_ANONYMOUS=3/minute`` and ``POST /api/v1/auth/login``
+    carries an explicit ``@limiter.limit(_anonymous_rate_limit)`` so 4xx
+    responses still ride along with ``X-RateLimit-*`` headers. Wrong
+    creds keep the test free of DB-seed coupling — the 401 path is
+    enough to exercise the limiter.
+
+    Failure modes this guards against:
+
+    * Registering ``SlowAPIMiddleware`` *after* the instrumentator: the
+      limiter no longer sees ``/metrics`` requests, so the exemption is
+      moot but the instrumentator double-counts requests the limiter
+      then rejects (an inconsistency dashboards bury).
+    * Dropping ``@limiter.exempt`` on ``/metrics``: every Prometheus
+      scrape (one every 15s in the W6 stack) consumes a slot of the
+      ``3/minute`` anonymous bucket, silently choking application traffic.
+    """
+    sibling_path = "/api/v1/auth/login"
+    sibling_payload = {"email": "phase8@example.com", "password": "wrongpass"}
+
+    # First sibling call establishes the limit and current remaining.
+    first = enabled_limiter.post(sibling_path, json=sibling_payload)
+    assert first.status_code == 401, first.text
+    limit = int(first.headers["x-ratelimit-limit"])
+    assert limit >= 2, (
+        f"test expects an anonymous tier with at least 2 slots "
+        f"(conftest sets 3/minute); got limit={limit}"
+    )
+    remaining_after_first = _remaining(first)
+    assert remaining_after_first == limit - 1, (limit, remaining_after_first)
+
+    # Interleave a /metrics scrape; it must NOT decrement the counter.
+    scrape_a = enabled_limiter.get("/metrics")
+    assert scrape_a.status_code == 200, scrape_a.text
+    # Sanity: the scrape didn't somehow get a *fresh* X-RateLimit header
+    # of its own that would imply the limiter ran for it.
+    assert "x-ratelimit-remaining" not in {
+        k.lower() for k in scrape_a.headers.keys()
+    }, "exempt /metrics must not carry slowapi's rate-limit headers"
+
+    # Second sibling call: remaining must decrement by exactly 1, not 2.
+    second = enabled_limiter.post(sibling_path, json=sibling_payload)
+    assert second.status_code == 401, second.text
+    assert _remaining(second) == limit - 2, (
+        limit,
+        _remaining(second),
+        "interleaved /metrics scrape must not burn a limit slot",
+    )
+
+    # Another scrape, then exhaust the remaining slots.
+    enabled_limiter.get("/metrics")
+    while True:
+        response = enabled_limiter.post(sibling_path, json=sibling_payload)
+        if response.status_code == 429:
+            assert response.json()["error"]["code"] == "rate_limit_exceeded"
+            break
+        assert response.status_code == 401, response.text
+        # Interleave a /metrics scrape between every sibling call so the
+        # regression's blast radius covers the full burn-down path, not
+        # just the first pair of requests.
+        enabled_limiter.get("/metrics")
+
+    # After exhaustion the sibling 429s, but /metrics is still 200 — the
+    # @limiter.exempt mark survives the bucket being empty.
+    post_exhaustion_scrape = enabled_limiter.get("/metrics")
+    assert post_exhaustion_scrape.status_code == 200, post_exhaustion_scrape.text
+    # And the body still contains the default-collector smoke line so we
+    # know we got real exposition and not a slowapi-wrapped 429 payload
+    # whose status happens to be 200.
+    assert "python_gc_objects_collected_total" in post_exhaustion_scrape.text
