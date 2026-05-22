@@ -237,7 +237,9 @@ class TestSeedDemoRealism:
             RepairRequestStatus.REJECTED: 2,
         }
         assert not any("Issue" in rr.fault_description for rr in repair_requests)
-        assert not any(rr.fault_content == f"Verified issue for {rr.asset_id}" for rr in repair_requests)
+        assert not any(
+            rr.fault_content == f"Verified issue for {rr.asset_id}" for rr in repair_requests
+        )
         assert "FixIt Services" not in {rr.repair_vendor for rr in repair_requests}
 
         detailed_requests = [

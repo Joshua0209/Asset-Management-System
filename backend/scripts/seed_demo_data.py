@@ -22,35 +22,172 @@ from app.models.user import User, UserRole
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-DEPARTMENTS = ["IT", "HR", "Finance", "Operations"]
-LOCATIONS = ["Taipei HQ", "Hsinchu Office", "Taichung Branch"]
-SUPPLIERS = ["Apple", "Dell", "Lenovo", "ASUS", "Samsung"]
+DEPARTMENTS = [
+    "製造一部",
+    "製造二部",
+    "研發中心",
+    "品保部",
+    "設備工程部",
+    "資訊維運部",
+    "資產管理部",
+]
+LOCATIONS = [
+    "新竹 Fab12 行政樓",
+    "台北南港總部 8F",
+    "台中后里廠 R&D Lab",
+    "台南 Fab18 廠辦",
+]
+MANAGER_NAMES = [
+    ("manager1@example.com", "陳怡君", "資訊維運部"),
+    ("manager2@example.com", "王志豪", "資產管理部"),
+    ("manager3@example.com", "李欣穎", "資產管理部"),
+]
+HOLDER_NAMES = [
+    ("holder1@example.com", "林佳穎", "製造一部"),
+    ("holder2@example.com", "張育誠", "研發中心"),
+    ("holder3@example.com", "黃柏睿", "製造二部"),
+    ("holder4@example.com", "吳思妤", "品保部"),
+    ("holder5@example.com", "周冠廷", "研發中心"),
+    ("holder6@example.com", "蔡宜庭", "製造一部"),
+    ("holder7@example.com", "鄭俊翔", "設備工程部"),
+    ("holder8@example.com", "許雅婷", "品保部"),
+    ("holder9@example.com", "楊承翰", "設備工程部"),
+    ("holder10@example.com", "高芷涵", "製造二部"),
+]
 # Category strings MUST match ``AssetCategory`` in ``app/schemas/asset.py``
 # (the API Literal). The DB column is plain ``String(100)`` so non-canonical
 # values would insert without error but then fail every API write and vanish
 # from the UI's category filter. Pinned by
 # ``test_seed_categories_match_asset_category_literal``.
+# The schema also supports printer/network_equipment; the live-demo seed keeps
+# to the five categories represented in the current demo asset mix.
 CATEGORIES = ["computer", "phone", "tablet", "monitor", "other"]
-ASSET_NAMES = {
-    "computer": "Business Laptop",
-    "phone": "Company Phone",
-    "tablet": "Field Tablet",
-    "monitor": "Office Monitor",
-    "other": "Docking Station",
+MODEL_BY_CATEGORY = {
+    "computer": [
+        ("ThinkPad X1 Carbon Gen 11", "Lenovo"),
+        ("MacBook Pro 14 M3", "Apple"),
+        ("Dell Latitude 7440", "Dell"),
+        ("ASUS ExpertBook B5", "ASUS"),
+    ],
+    "phone": [
+        ("iPhone 15 Pro", "Apple"),
+        ("Galaxy S24", "Samsung"),
+        ("Pixel 8", "Google"),
+        ("ASUS ROG Phone 8", "ASUS"),
+    ],
+    "tablet": [
+        ('iPad Air 11" M2', "Apple"),
+        ("Galaxy Tab S9", "Samsung"),
+        ("Surface Pro 10", "Microsoft"),
+        ("Lenovo Tab P12", "Lenovo"),
+    ],
+    "monitor": [
+        ('Dell U2723QE 27" 4K', "Dell"),
+        ("LG UltraFine 27UP850", "LG"),
+        ("ASUS ProArt PA279CV", "ASUS"),
+        ("Samsung ViewFinity S8", "Samsung"),
+    ],
+    "other": [
+        ("Dell WD22TB4 Thunderbolt Dock", "Dell"),
+        ("Anker PowerExpand 13-in-1", "Anker"),
+        ("Logitech MX Keys + MX Master 3S", "Logitech"),
+        ("Jabra Evolve2 75 Headset", "Jabra"),
+    ],
 }
-MODELS = {
-    "computer": ["Dell Latitude 7440", "MacBook Pro 14", "ThinkPad T14"],
-    "phone": ["iPhone 15", "Galaxy S24", "Pixel 9"],
-    "tablet": ["iPad Air", "Galaxy Tab S9", "Surface Go 4"],
-    "monitor": ["Dell U2723QE", "LG 27UP850", "ASUS ProArt 27"],
-    "other": ["Dell WD22TB4", "Anker Hub 565", "Lenovo Dock Gen 2"],
-}
-FAULT_DESCRIPTIONS = [
-    "Screen flickers intermittently during work.",
-    "Battery drains unusually fast after charging.",
-    "Device overheats when running normal office apps.",
-    "Wi-Fi disconnects several times a day.",
-    "Keyboard keys sometimes stop responding.",
+FAULT_SCENARIOS = [
+    {
+        "fault_description": "螢幕右下角出現一條垂直亮線，重開機後仍存在。",
+        "fault_content": "確認為面板背光漏光，需更換 LCD 模組。",
+        "repair_plan": "送原廠維修中心更換螢幕總成，預估 3 工作天。",
+        "vendor": "聯強國際維修中心",
+        "cost": Decimal("4800.00"),
+    },
+    {
+        "fault_description": "電池充飽後 2 小時內掉到 20%，前一週還能撐 6 小時。",
+        "fault_content": "電池循環次數已達 850，健康度 62%。",
+        "repair_plan": "更換原廠電池，回廠後重新校正電量。",
+        "vendor": "Apple 授權服務中心",
+        "cost": Decimal("3200.00"),
+    },
+    {
+        "fault_description": "鍵盤 E、R、T 三鍵間歇性失效，外接鍵盤正常。",
+        "fault_content": "鍵盤排線氧化，需更換 C 件。",
+        "repair_plan": "拆機更換鍵盤模組，含 7 天保固。",
+        "vendor": "良興電子維修部",
+        "cost": Decimal("2400.00"),
+    },
+    {
+        "fault_description": "充電孔接觸不良，需要喬角度才能充電。",
+        "fault_content": "Type-C 母座焊點脫落。",
+        "repair_plan": "重焊主機板 USB-C 母座，無料件成本。",
+        "vendor": "捷元 NB 維修中心",
+        "cost": Decimal("1500.00"),
+    },
+    {
+        "fault_description": "開會時風扇狂轉，機身燙手且效能明顯下降。",
+        "fault_content": "散熱膏老化、出風口積塵嚴重。",
+        "repair_plan": "拆機清潔散熱模組並更換導熱膏。",
+        "vendor": "內部 IT 維護組",
+        "cost": Decimal("800.00"),
+    },
+    {
+        "fault_description": "Wi-Fi 每天斷線數次，需手動重連才能恢復。",
+        "fault_content": "Wi-Fi 模組故障，藍牙同時受影響。",
+        "repair_plan": "更換 Intel AX211 無線網卡。",
+        "vendor": "聯強國際維修中心",
+        "cost": Decimal("1200.00"),
+    },
+    {
+        "fault_description": "螢幕轉軸鬆動，掀蓋後無法定位在固定角度。",
+        "fault_content": "轉軸金屬支架斷裂。",
+        "repair_plan": "更換左右轉軸組與外蓋。",
+        "vendor": "捷元 NB 維修中心",
+        "cost": Decimal("3600.00"),
+    },
+    {
+        "fault_description": "喇叭只有左聲道有聲音。",
+        "fault_content": "右聲道喇叭單體損壞。",
+        "repair_plan": "更換喇叭模組並測試音訊輸出。",
+        "vendor": "良興電子維修部",
+        "cost": Decimal("900.00"),
+    },
+    {
+        "fault_description": "觸控板點擊無反應，手勢操作完全失效。",
+        "fault_content": "觸控板 FPC 排線鬆脫。",
+        "repair_plan": "重新安裝排線並校正韌體。",
+        "vendor": "內部 IT 維護組",
+        "cost": Decimal("500.00"),
+    },
+    {
+        "fault_description": "開機後約 10 分鐘隨機藍底重開，已重灌系統仍發生。",
+        "fault_content": "記憶體模組故障，MemTest86 連續報錯。",
+        "repair_plan": "更換 16GB DDR5 SO-DIMM 一條。",
+        "vendor": "原價屋技術部",
+        "cost": Decimal("1800.00"),
+    },
+]
+REJECTION_REASONS = [
+    "現場重新測試無法重現，請持續觀察 1 週後再申請。",
+    "同一設備 30 天內已申請過相同問題並完成維修，請改循保固廠商窗口。",
+]
+DISPOSAL_REASONS = [
+    "已超過 5 年使用年限，效能不符現行作業需求，汰換為新機。",
+    "主機板損壞，維修報價超過殘值 70%，報廢處置。",
+    "出差期間設備遺失，已完成警政報案與資產註銷程序。",
+]
+REPAIR_STATUS_PLAN = [
+    RepairRequestStatus.PENDING_REVIEW,
+    RepairRequestStatus.PENDING_REVIEW,
+    RepairRequestStatus.PENDING_REVIEW,
+    RepairRequestStatus.UNDER_REPAIR,
+    RepairRequestStatus.UNDER_REPAIR,
+    RepairRequestStatus.UNDER_REPAIR,
+    RepairRequestStatus.COMPLETED,
+    RepairRequestStatus.COMPLETED,
+    RepairRequestStatus.COMPLETED,
+    RepairRequestStatus.COMPLETED,
+    RepairRequestStatus.REJECTED,
+    RepairRequestStatus.REJECTED,
 ]
 DEMO_JPEG_BYTES = (
     b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00"
@@ -98,31 +235,29 @@ def build_users() -> list[User]:
     # it to e.g. "manager1@example.com" raises a unique-constraint error on flush.
     seen_emails = {bootstrap.email}
 
-    for index in range(2):
-        email = f"manager{index + 1}@example.com"
+    for email, name, department in MANAGER_NAMES:
         if email in seen_emails:
             continue
         users.append(
             User(
                 email=email,
                 password_hash=hash_password("Password123"),
-                name=f"Manager {index + 1}",
+                name=name,
                 role=UserRole.MANAGER,
-                department=DEPARTMENTS[index],
+                department=department,
             )
         )
         seen_emails.add(email)
-    for index in range(2):
-        email = f"holder{index + 1}@example.com"
+    for email, name, department in HOLDER_NAMES:
         if email in seen_emails:
             continue
         users.append(
             User(
                 email=email,
                 password_hash=hash_password("Password123"),
-                name=f"Holder {index + 1}",
+                name=name,
                 role=UserRole.HOLDER,
-                department=DEPARTMENTS[index + 2],
+                department=department,
             )
         )
         seen_emails.add(email)
@@ -132,21 +267,22 @@ def build_users() -> list[User]:
 def build_assets(holders: list[User]) -> list[Asset]:
     assets: list[Asset] = []
     today = date.today()
-    for index in range(50):
+    for index in range(60):
         category = CATEGORIES[index % len(CATEGORIES)]
+        model, supplier = MODEL_BY_CATEGORY[category][index % len(MODEL_BY_CATEGORY[category])]
         holder = holders[index % len(holders)] if index % 3 != 0 else None
         status = AssetStatus.IN_USE if holder else AssetStatus.IN_STOCK
         purchase_date = today - timedelta(days=40 + index * 7)
         assets.append(
             Asset(
                 asset_code=f"AST-{today.year}-{index + 1:05d}",
-                name=ASSET_NAMES[category],
-                model=MODELS[category][index % len(MODELS[category])],
-                specs=f"{category} demo configuration #{index + 1}",
+                name=model,
+                model=model,
+                specs=f"{model} demo configuration #{index + 1}",
                 category=category,
-                supplier=SUPPLIERS[index % len(SUPPLIERS)],
+                supplier=supplier,
                 purchase_date=purchase_date,
-                purchase_amount=Decimal("1500.00") + Decimal(index * 25),
+                purchase_amount=Decimal("18000.00") + Decimal(index * 350),
                 location=LOCATIONS[index % len(LOCATIONS)],
                 department=holder.department if holder else DEPARTMENTS[index % len(DEPARTMENTS)],
                 activation_date=purchase_date + timedelta(days=3),
@@ -156,26 +292,27 @@ def build_assets(holders: list[User]) -> list[Asset]:
                 assignment_date=(purchase_date + timedelta(days=10) if holder else None),
             )
         )
-    # Two DISPOSED assets so the dispose branch, ``disposal_reason``, and
+    # DISPOSED assets exercise the dispose branch, ``disposal_reason``, and
     # ``unassignment_date`` are all exercised. Per the dispose endpoint
     # (``app/api/v1/endpoints/assets.py``), the FSM requires IN_STOCK with no
     # responsible_person before transitioning to DISPOSED, so we leave both
     # cleared here and write a matching DISPOSE audit row in
     # ``build_action_histories``.
-    for offset in range(2):
-        index = 50 + offset
+    for offset, disposal_reason in enumerate(DISPOSAL_REASONS):
+        index = 60 + offset
         category = CATEGORIES[index % len(CATEGORIES)]
+        model, supplier = MODEL_BY_CATEGORY[category][index % len(MODEL_BY_CATEGORY[category])]
         purchase_date = today - timedelta(days=400 + index * 7)
         assets.append(
             Asset(
                 asset_code=f"AST-{today.year}-{index + 1:05d}",
-                name=ASSET_NAMES[category],
-                model=MODELS[category][index % len(MODELS[category])],
-                specs=f"{category} retired configuration #{offset + 1}",
+                name=model,
+                model=model,
+                specs=f"{model} retired configuration #{offset + 1}",
                 category=category,
-                supplier=SUPPLIERS[index % len(SUPPLIERS)],
+                supplier=supplier,
                 purchase_date=purchase_date,
-                purchase_amount=Decimal("1500.00") + Decimal(index * 25),
+                purchase_amount=Decimal("18000.00") + Decimal(index * 350),
                 location=LOCATIONS[index % len(LOCATIONS)],
                 department=DEPARTMENTS[index % len(DEPARTMENTS)],
                 activation_date=purchase_date + timedelta(days=3),
@@ -184,7 +321,7 @@ def build_assets(holders: list[User]) -> list[Asset]:
                 responsible_person_id=None,
                 assignment_date=None,
                 unassignment_date=today - timedelta(days=30),
-                disposal_reason="End-of-life replacement after warranty expiry.",
+                disposal_reason=disposal_reason,
             )
         )
     return assets
@@ -196,8 +333,11 @@ def build_repair_requests(
     managers: list[User],
 ) -> list[RepairRequest]:
     requests: list[RepairRequest] = []
+    today = date.today()
     holders_by_id = {holder.id: holder for holder in holders}
-    in_use_assets = [item for item in assets if item.status == AssetStatus.IN_USE][:10]
+    in_use_assets = [item for item in assets if item.status == AssetStatus.IN_USE][
+        : len(REPAIR_STATUS_PLAN)
+    ]
     for index, asset in enumerate(in_use_assets):
         assert asset.responsible_person_id is not None, (
             f"IN_USE asset {asset.asset_code} has no responsible_person_id; "
@@ -205,13 +345,8 @@ def build_repair_requests(
         )
         manager = managers[index % len(managers)]
         holder = holders_by_id[asset.responsible_person_id]
-        status_cycle = [
-            RepairRequestStatus.PENDING_REVIEW,
-            RepairRequestStatus.UNDER_REPAIR,
-            RepairRequestStatus.COMPLETED,
-            RepairRequestStatus.REJECTED,
-        ]
-        status = status_cycle[index % len(status_cycle)]
+        status = REPAIR_STATUS_PLAN[index]
+        scenario = FAULT_SCENARIOS[index % len(FAULT_SCENARIOS)]
         repair_request = RepairRequest(
             asset_id=asset.id,
             # Sequential within this seed run; _next_repair_id will resume
@@ -220,16 +355,16 @@ def build_repair_requests(
             requester_id=holder.id,
             reviewer_id=manager.id if status != RepairRequestStatus.PENDING_REVIEW else None,
             status=status,
-            fault_description=FAULT_DESCRIPTIONS[index % len(FAULT_DESCRIPTIONS)],
+            fault_description=str(scenario["fault_description"]),
         )
         if status in {RepairRequestStatus.UNDER_REPAIR, RepairRequestStatus.COMPLETED}:
-            repair_request.repair_date = date.today() - timedelta(days=index + 2)
-            repair_request.fault_content = f"Verified issue for {asset.asset_code}"
-            repair_request.repair_plan = "Replace worn component and validate stability."
-            repair_request.repair_cost = Decimal("250.00") + Decimal(index * 10)
-            repair_request.repair_vendor = "FixIt Services"
+            repair_request.repair_date = today - timedelta(days=5 + ((index * 3) % 21))
+            repair_request.fault_content = str(scenario["fault_content"])
+            repair_request.repair_plan = str(scenario["repair_plan"])
+            repair_request.repair_cost = scenario["cost"]
+            repair_request.repair_vendor = str(scenario["vendor"])
         if status == RepairRequestStatus.REJECTED:
-            repair_request.rejection_reason = "Issue could not be reproduced during review."
+            repair_request.rejection_reason = REJECTION_REASONS[index % len(REJECTION_REASONS)]
         if status == RepairRequestStatus.COMPLETED:
             repair_request.completed_at = datetime.now(UTC)
         requests.append(repair_request)
@@ -246,7 +381,13 @@ def build_repair_requests(
 def build_images(repair_requests: list[RepairRequest]) -> list[RepairImage]:
     images: list[RepairImage] = []
     upload_root = Path(get_settings().repair_upload_dir)
-    for request in repair_requests[:6]:
+    eligible_requests = [
+        request
+        for request in repair_requests
+        if request.status in {RepairRequestStatus.UNDER_REPAIR, RepairRequestStatus.COMPLETED}
+    ]
+    target_requests = eligible_requests if eligible_requests else repair_requests
+    for request in target_requests[:6]:
         image_id = str(uuid.uuid4())
         storage_key = f"{request.id}/{image_id}.jpg"
         target = upload_root / storage_key
