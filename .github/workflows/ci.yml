@@ -138,7 +138,11 @@ jobs:
     name: Backend - pytest + coverage
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.backend == 'true' }}
+    # No path filter: pytest+coverage runs on every PR / main push so the
+    # SonarQube job downstream always sees a backend coverage artifact.
+    # Skipping this on docs-only PRs would also skip SonarQube (which needs
+    # both coverage files to avoid distorting the project-wide trend), and
+    # we want SonarQube's quality gate to evaluate every change.
     defaults:
       run:
         working-directory: backend
@@ -170,8 +174,47 @@ jobs:
           path: backend/coverage.xml
           if-no-files-found: ignore
 
+  frontend-test:
+    name: Frontend - vitest + coverage
+    runs-on: ubuntu-latest
+    needs: changes
+    # No path filter: see backend-test for the same rationale. The two
+    # test jobs run unconditionally so SonarQube downstream always has
+    # both coverage files and never has to publish a partial trend.
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Cache node_modules
+        # Shared cache key with the `frontend` job below - both install
+        # the same lockfile-pinned tree, so a hit in one warms the other.
+        # See `frontend` for the full rationale on the key composition.
+        id: node-modules-cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        with:
+          path: frontend/node_modules
+          key: node-modules-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-node22-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Install dependencies
+        if: ${{ steps.node-modules-cache.outputs.cache-hit != 'true' }}
+        run: npm ci
+      - name: Vitest with coverage
+        run: npm run test:coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/lcov.info
+          if-no-files-found: ignore
+
   frontend:
-    name: Frontend (eslint + tsc + vitest + build)
+    name: Frontend (eslint + tsc + build)
     runs-on: ubuntu-latest
     needs: changes
     if: ${{ needs.changes.outputs.frontend == 'true' }}
@@ -209,15 +252,6 @@ jobs:
         run: npm run lint
       - name: TypeScript typecheck
         run: npm run typecheck
-      - name: Vitest with coverage
-        run: npm run test:coverage
-      - name: Upload coverage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/lcov.info
-          if-no-files-found: ignore
       - name: Build
         run: npm run build
 
@@ -390,15 +424,12 @@ jobs:
   sonarqube:
     name: SonarQube quality gate
     runs-on: ubuntu-latest
-    needs: [changes, backend-test, frontend]
-    # Run ONLY when BOTH test jobs succeeded. Partial-coverage uploads
-    # against a `sonar.sources=backend,frontend` baseline silently distort
-    # the project-wide coverage trend (the missing side counts as 0%, then
-    # bounces back the next full run). Skipping cleanly when one side was
-    # path-filtered out is safer than publishing a misleading metric.
-    # `skipped` is treated as not-failure by the deploy gate, so this does
-    # not block build-and-push.
-    if: ${{ !cancelled() && needs.backend-test.result == 'success' && needs.frontend.result == 'success' }}
+    needs: [changes, backend-test, frontend-test]
+    # Runs on every event the `changes` gate admits (PR / main push /
+    # workflow_dispatch). The two test jobs above are path-filter free, so
+    # SonarQube always sees both coverage artifacts and the project-wide
+    # coverage trend cannot be distorted by a missing side.
+    if: ${{ !cancelled() && needs.backend-test.result == 'success' && needs.frontend-test.result == 'success' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -445,6 +476,7 @@ jobs:
       - backend-typecheck
       - backend-test
       - frontend
+      - frontend-test
       - secrets
       - sast
       - pip-audit
@@ -452,8 +484,9 @@ jobs:
       - trivy
       - sonarqube
     # always() + !failure() + !cancelled() allows skipped upstream jobs
-    # (e.g. backend-test skipped on a frontend-only main push) to pass the
-    # gate without firing the deploy on docs-only commits. workflow_dispatch
+    # (e.g. the path-filtered `frontend` lint/build job skipped on a
+    # backend-only main push) to pass the gate without firing the deploy
+    # on docs-only commits. workflow_dispatch
     # is also restricted to main: dispatching from a feature branch must NOT
     # ship un-reviewed code to ECS, even though the dispatch path bypasses
     # the per-side path check (manual hot-fix re-deploys against main need
