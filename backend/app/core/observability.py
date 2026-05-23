@@ -127,6 +127,9 @@ def _real_get_current_span() -> _SpanProto:
     return otel_trace.get_current_span()
 
 
+_trace_context_warning_emitted = False
+
+
 def _structlog_processor_trace_context(
     _logger: Any,
     _method_name: str,
@@ -140,12 +143,31 @@ def _structlog_processor_trace_context(
     so that pre-startup boot logs (which run before ``setup_tracing``)
     aren't decorated with a bogus all-zeros trace.
 
-    The ``_get_current_span`` seam exists for unit testing only — production
-    callers always take the default.
+    If ``_get_current_span`` itself raises (an OTel SDK bug during
+    tracer-provider shutdown, a stale shim, etc.) we still swallow the
+    exception — letting a log call propagate would crash whichever
+    business code triggered the log — but emit a one-shot ``stderr``
+    breadcrumb so operators see "trace_id absent" has a cause rather
+    than scratching their heads in front of a silent Grafana panel.
+
+    The ``_get_current_span`` seam exists for unit testing only —
+    production callers always take the default.
     """
+    global _trace_context_warning_emitted
     try:
         span = _get_current_span()
-    except Exception:  # noqa: BLE001 — never let a log call raise
+    except Exception as exc:  # noqa: BLE001 — never let a log call raise
+        if not _trace_context_warning_emitted:
+            _trace_context_warning_emitted = True
+            # Use stderr direct: stdlib ``logger.warning`` would re-enter the
+            # processor chain and (worst case) loop the failure.
+            print(
+                "WARN observability: trace-context processor "
+                f"swallowed {type(exc).__name__}: {exc}. trace_id will be "
+                "absent until the OTel SDK recovers.",
+                file=sys.stderr,
+                flush=True,
+            )
         return event_dict
     ctx = getattr(span, "get_span_context", lambda: None)()
     if ctx is None or not getattr(ctx, "is_valid", False):

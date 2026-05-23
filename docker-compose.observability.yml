@@ -211,8 +211,18 @@ services:
     #
     # The new docker handler resolves container roots through the containerd
     # API, which means cadvisor needs the containerd socket. OrbStack exposes
-    # it at /run/docker/containerd/containerd.sock (not the upstream default
-    # /run/containerd/containerd.sock), so we pass --containerd= explicitly.
+    # it at /run/docker/containerd/containerd.sock; Docker Desktop with the
+    # containerd image store enabled uses the same path; vanilla Linux Docker
+    # uses /run/containerd/containerd.sock (upstream default). The value is
+    # plumbed through ``CADVISOR_CONTAINERD_SOCK`` so an operator on a
+    # non-OrbStack engine can override it without editing this overlay:
+    #
+    #   CADVISOR_CONTAINERD_SOCK=/run/containerd/containerd.sock make obs-up
+    #
+    # If the socket cannot be reached cadvisor logs an error once and falls
+    # back to cgroup-root aggregates — the per-container CPU / Memory panels
+    # on dashboards 01 / 05 will then go flat. Watch for that signal in
+    # ``docker logs ams-cadvisor`` after a fresh ``make obs-up``.
     image: gcr.io/cadvisor/cadvisor:v0.55.1
     container_name: ams-cadvisor
     restart: unless-stopped
@@ -223,7 +233,7 @@ services:
       - --whitelisted_container_labels=com.docker.compose.service
       - --housekeeping_interval=10s
       - --docker_only=true
-      - --containerd=/run/docker/containerd/containerd.sock
+      - --containerd=${CADVISOR_CONTAINERD_SOCK:-/run/docker/containerd/containerd.sock}
     expose:
       - "8080"
     volumes:
@@ -249,6 +259,10 @@ services:
       # which MySQL 8.4+ rejects (replaced by `SHOW REPLICA STATUS`), producing
       # an Error 1064 every scrape interval that pollutes the MySQL log panel.
       # AMS is single-node so the replication metrics are non-applicable anyway.
+      # If we ever add a read replica, REMOVE THIS FLAG and update dashboard 05's
+      # "MySQL replication" panel — until then operators reading dashboard 05
+      # should treat the absence of replication metrics as deliberate, not as
+      # "replica is healthy".
       - --no-collect.slave_status
     environment:
       MYSQLD_EXPORTER_PASSWORD: exporter
