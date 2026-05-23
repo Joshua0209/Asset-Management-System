@@ -7,6 +7,12 @@ on:
   # Manual rollout path for hot-fixes that need a re-deploy without a new
   # commit. Gated by the same `if:` on the deploy jobs below.
   workflow_dispatch:
+    inputs:
+      run_seed:
+        description: 'Run demo data seeding (WARNING: deletes ALL data)'
+        required: false
+        default: 'false'
+        type: boolean
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   # PR / feature pushes cancel older runs for fast feedback. Pushes to
