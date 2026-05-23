@@ -25,7 +25,7 @@
       "gridPos": {"h": 12, "w": 12, "x": 0, "y": 5},
       "id": 2,
       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"backend\"} | json | trace_id != \"\"", "refId": "A"}],
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"backend\", log_format=\"json\"} | json", "refId": "A"}],
       "title": "Backend Logs With trace_id (click trace_id → Tempo)",
       "type": "logs"
     },

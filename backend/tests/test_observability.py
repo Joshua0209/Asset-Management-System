@@ -365,3 +365,63 @@ def test_settings_observability_flag_requires_url(
         Settings()  # type: ignore[call-arg]
 
 
+# ---------------------------------------------------------------------------
+# AccessLogMiddleware — per-request JSON access log
+# ---------------------------------------------------------------------------
+
+
+def test_access_log_emits_one_record_per_request(client: TestClient) -> None:
+    """A routed request emits exactly one ``app.access`` event carrying
+    method / path / route / status_code / duration_ms / client_ip.
+
+    Uses ``structlog.testing.capture_logs`` instead of ``caplog`` because
+    the middleware logs via structlog (kwargs go into the event_dict
+    natively). caplog would only see the post-render stdlib LogRecord
+    whose attributes do not include the structured kwargs.
+    """
+    import structlog
+
+    with structlog.testing.capture_logs() as captured:
+        resp = client.get(
+            "/api/v1/assets/mine", headers={"Authorization": "Bearer bogus"}
+        )
+    # 401 from the bearer reject is fine — we care that the request was
+    # observed by the middleware, not that the route succeeded.
+    assert resp.status_code in (401, 403, 422)
+
+    # ``capture_logs`` short-circuits the processor chain so
+    # ``add_logger_name`` never fires — match on the ``event`` field
+    # (unique to AccessLogMiddleware) instead of ``logger``.
+    access = [e for e in captured if e.get("event") == "request"]
+    assert len(access) == 1, captured
+    entry = access[0]
+    assert entry["method"] == "GET"
+    assert entry["path"] == "/api/v1/assets/mine"
+    assert entry["status_code"] == resp.status_code
+    assert isinstance(entry["duration_ms"], float)
+    assert entry["duration_ms"] >= 0.0
+
+
+def test_access_log_skips_metrics_health_ready(client: TestClient) -> None:
+    """Scrape / probe paths are excluded — their volume would dominate
+    the log stream without surfacing user-facing flow signal.
+    """
+    import structlog
+
+    with structlog.testing.capture_logs() as captured:
+        for path in ("/metrics", "/health", "/ready"):
+            client.get(path)
+    assert [e for e in captured if e.get("event") == "request"] == []
+
+
+def test_access_log_middleware_path_constants() -> None:
+    """The exclusion set is the single source of truth for what we skip;
+    pin it so a future edit doesn't silently regress dashboard expectations.
+    """
+    from app.core.observability import AccessLogMiddleware
+
+    assert AccessLogMiddleware.EXCLUDED_PATHS == frozenset(
+        {"/metrics", "/health", "/ready"}
+    )
+
+

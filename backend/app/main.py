@@ -16,6 +16,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.observability import (
     maybe_setup_profiling,
+    setup_access_log,
     setup_logging,
     setup_metrics,
     setup_tracing,
@@ -221,6 +222,13 @@ app.add_middleware(
 setup_metrics(app)
 setup_tracing(app, settings)
 maybe_setup_profiling(settings)
+# setup_access_log MUST run after setup_tracing so the AccessLogMiddleware
+# sits inside the OTel span context — otherwise trace_id is not stamped on
+# the access record and dashboards 03 / 04 lose the log → trace correlation.
+# It is the last middleware registration, making it the innermost layer
+# (closest to the endpoint) — the log fires after the endpoint returns,
+# while OTel's span is still active.
+setup_access_log(app)
 
 # Map HTTP status → machine-readable error code per docs/system-design/12-api-design.md
 _STATUS_CODE_MAP = {

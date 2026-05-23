@@ -245,6 +245,11 @@ services:
     command:
       - --mysqld.address=mysql:3306
       - --mysqld.username=exporter
+      # Disable slave_status collector: v0.15.1 still issues `SHOW SLAVE STATUS`
+      # which MySQL 8.4+ rejects (replaced by `SHOW REPLICA STATUS`), producing
+      # an Error 1064 every scrape interval that pollutes the MySQL log panel.
+      # AMS is single-node so the replication metrics are non-applicable anyway.
+      - --no-collect.slave_status
     environment:
       MYSQLD_EXPORTER_PASSWORD: exporter
     expose:
