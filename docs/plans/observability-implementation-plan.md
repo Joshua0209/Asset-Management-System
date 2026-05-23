@@ -437,6 +437,8 @@ curl -s 'http://localhost:3200/api/search?service.name=ams-backend' | jq
 
 ## Phase 7 — k6 load + stress tests
 
+**Status:** Implemented on `feat/observability-phase7-k6`. Six scripts ship (smoke/steady/spike/load/stress/consistent), shared `lib/` helpers, profile-gated `k6` + `traffic-generator` services, Makefile targets, and `scripts/test_obs_k6.py` regression gate hooked into `make obs-test`.
+
 **Session goal:** Constant-arrival-rate traffic across the 6 critical AMS flows hits the local stack; results land in Prometheus via k6's `--out experimental-prometheus-rw`. Two scripts: `k6-load.js` (sustained 10 min peak) and `k6-stress.js` (ramp until P95 > 3s or error rate > 1%).
 
 ### Prerequisites

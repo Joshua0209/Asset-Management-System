@@ -112,10 +112,20 @@ def check_scripts() -> None:
         for needle in spec["must_contain"]:
             if needle not in text:
                 fail(f"load/{name} missing required marker {needle!r}")
-        # Every script must read BASE_URL from __ENV so the compose k6 service
-        # can point it at the backend without rebuilding the image.
-        if "__ENV.BASE_URL" not in text:
-            fail(f"load/{name} does not honour __ENV.BASE_URL override")
+        # Every script must surface BASE_URL from env so the compose k6 service
+        # can point it at the backend without rebuilding the image. Scripts
+        # either read __ENV.BASE_URL directly or import the resolved value
+        # from lib/auth.js (which is the convention for the AMS flow scripts).
+        reads_env = "__ENV.BASE_URL" in text
+        imports_lib = (
+            'from "./lib/auth.js"' in text or "from './lib/auth.js'" in text
+        )
+        uses_base_url = "BASE_URL" in text
+        if not (reads_env or (imports_lib and uses_base_url)):
+            fail(
+                f"load/{name} does not honour BASE_URL "
+                "(neither __ENV.BASE_URL nor lib/auth.js import found)",
+            )
     passed(f"{len(REQUIRED_SCRIPTS)} k6 scripts present with required markers")
 
 

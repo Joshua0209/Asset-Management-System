@@ -243,6 +243,64 @@ services:
     labels:
       com.docker.compose.service: mysqld-exporter
 
+  # ── Phase 7: k6 load + stress runners ───────────────────────────────────────
+  # The `k6` service is the one-shot entrypoint for `make load-smoke / steady
+  # / spike / load / stress`. Profile-gated under `tools` so it stays out of
+  # `make obs-up`'s default lift. The Makefile drives it via `docker compose
+  # run --rm k6 run /scripts/<file>.js`; the SCRIPT/ARGS are not baked in
+  # here so the same service runs all six scenarios.
+  k6:
+    image: grafana/k6:0.54.0
+    profiles:
+      - tools
+    restart: on-failure
+    # backend:8000 is the in-network address — the default in load/lib/auth.js
+    # but redeclared here so an operator running an ad-hoc `docker compose run
+    # --rm k6 run ...` does not need to remember to set BASE_URL.
+    environment:
+      BASE_URL: http://backend:8000
+    volumes:
+      - ./load:/scripts:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      com.docker.compose.service: k6
+      com.observability.log_format: text
+
+  # The traffic-generator runs k6-consistent.js as a long-running pod. Under
+  # the `traffic` profile so it can be started/stopped independently of the
+  # rest of the stack via `make traffic-start / traffic-stop`. Per-flow rates
+  # are passed through the environment so an operator can tune the demo load
+  # without rebuilding the image.
+  traffic-generator:
+    image: grafana/k6:0.54.0
+    profiles:
+      - traffic
+    restart: on-failure
+    command: run /scripts/k6-consistent.js
+    environment:
+      BASE_URL: http://backend:8000
+      TRAFFIC_DURATION: ${TRAFFIC_DURATION:-30m}
+      SEARCH_PER_MIN: ${SEARCH_PER_MIN:-30}
+      MY_ASSETS_PER_MIN: ${MY_ASSETS_PER_MIN:-15}
+      LIST_REPAIRS_PER_MIN: ${LIST_REPAIRS_PER_MIN:-10}
+      SUBMIT_PER_MIN: ${SUBMIT_PER_MIN:-4}
+      APPROVE_PER_MIN: ${APPROVE_PER_MIN:-4}
+      COMPLETE_PER_MIN: ${COMPLETE_PER_MIN:-4}
+      REGISTER_PER_MIN: ${REGISTER_PER_MIN:-2}
+      HEALTH_PER_MIN: ${HEALTH_PER_MIN:-6}
+      PREALLOCATED_VUS: ${PREALLOCATED_VUS:-}
+      MAX_VUS: ${MAX_VUS:-50}
+    volumes:
+      - ./load:/scripts:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    labels:
+      com.docker.compose.service: traffic-generator
+      com.observability.log_format: text
+
 volumes:
   grafana_data:
   prometheus_data:
