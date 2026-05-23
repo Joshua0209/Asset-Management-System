@@ -23,10 +23,15 @@ import { check } from "k6";
 
 import {
   BASE_URL,
+  HOLDER_EMAIL,
+  HOLDER_PASSWORD,
+  MANAGER_EMAIL,
+  MANAGER_PASSWORD,
   authHeaders,
   jsonAuthHeaders,
   loginHolder,
   loginManager,
+  refreshIfUnauthorized,
 } from "./auth.js";
 import { JPEG, JPEG_CONTENT_TYPE, JPEG_FILENAME } from "./fixtures.js";
 
@@ -86,7 +91,16 @@ export function myAssetsFlow() {
 }
 
 // ── list_repair_requests — supports the approve/complete flows ──────────────
-function listRepairs(token, statusFilter, asActor) {
+// Returns ``{token, items}`` so callers learn whether the cached token was
+// refreshed mid-flight (long stress runs that outlive the JWT TTL would
+// otherwise loop on a stale token, see auth.js::refreshIfUnauthorized).
+// The k6 ``check()`` distinguishes:
+//   * 200 — happy path (items may be empty if no candidates exist).
+//   * 401 → 200 after refresh — token expiry recovered (a soft signal).
+//   * any other status — explicit "list_repairs failed" check so a 500
+//     from the API isn't silently confused with "no candidates available"
+//     by the downstream approve/complete flows.
+function listRepairs(token, statusFilter, asActor, email, password) {
   const params = {
     headers: authHeaders(token),
     tags: {
@@ -94,15 +108,28 @@ function listRepairs(token, statusFilter, asActor) {
       actor: asActor,
     },
   };
-  const res = http.get(
+  let res = http.get(
     `${BASE_URL}/api/v1/repair-requests?status=${statusFilter}&per_page=20`,
     params,
   );
+  const refreshed = refreshIfUnauthorized(res, email, password);
+  let activeToken = token;
+  if (refreshed) {
+    activeToken = refreshed;
+    res = http.get(
+      `${BASE_URL}/api/v1/repair-requests?status=${statusFilter}&per_page=20`,
+      { ...params, headers: authHeaders(activeToken) },
+    );
+  }
+  check(res, {
+    "list_repairs prereq 200": (r) => r.status === 200,
+  });
   if (res.status !== 200) {
-    return [];
+    return { token: activeToken, items: [] };
   }
   const body = res.json();
-  return (body && body.data) || [];
+  const items = (body && body.data) || [];
+  return { token: activeToken, items };
 }
 
 export function listRepairsFlow() {
@@ -126,15 +153,25 @@ export function listRepairsFlow() {
 // expected at high arrival rates; we just want to drive the multipart parser
 // + ImageStorage write path.
 export function submitRepairFlow() {
-  const token = loginHolder();
+  let token = loginHolder();
   const listParams = {
     headers: authHeaders(token),
     tags: { name: "GET /assets/mine", ...HOLDER_TAG },
   };
-  const assets = http.get(
+  let assets = http.get(
     `${BASE_URL}/api/v1/assets/mine?status=in_use&per_page=20`,
     listParams,
   );
+  // Recover from JWT expiry on long runs: a 401 here would silently
+  // degrade the rest of the run to "no target" without an explicit signal.
+  const refreshed = refreshIfUnauthorized(assets, HOLDER_EMAIL, HOLDER_PASSWORD);
+  if (refreshed) {
+    token = refreshed;
+    assets = http.get(
+      `${BASE_URL}/api/v1/assets/mine?status=in_use&per_page=20`,
+      { ...listParams, headers: authHeaders(token) },
+    );
+  }
   if (assets.status !== 200) {
     check(assets, { "assets/mine 200 (precondition)": (r) => false });
     return;
@@ -165,8 +202,15 @@ export function submitRepairFlow() {
 
 // ── approve_repair (flow #4) ────────────────────────────────────────────────
 export function approveRepairFlow() {
-  const token = loginManager();
-  const candidates = listRepairs(token, "pending_review", "manager");
+  let token = loginManager();
+  const { token: refreshedToken, items: candidates } = listRepairs(
+    token,
+    "pending_review",
+    "manager",
+    MANAGER_EMAIL,
+    MANAGER_PASSWORD,
+  );
+  token = refreshedToken;
   if (candidates.length === 0) {
     check(true, { "approve_repair has no candidate": () => false });
     return;
@@ -189,8 +233,15 @@ export function approveRepairFlow() {
 
 // ── complete_repair (flow #5) ───────────────────────────────────────────────
 export function completeRepairFlow() {
-  const token = loginManager();
-  const candidates = listRepairs(token, "under_repair", "manager");
+  let token = loginManager();
+  const { token: refreshedToken, items: candidates } = listRepairs(
+    token,
+    "under_repair",
+    "manager",
+    MANAGER_EMAIL,
+    MANAGER_PASSWORD,
+  );
+  token = refreshedToken;
   if (candidates.length === 0) {
     check(true, { "complete_repair has no candidate": () => false });
     return;

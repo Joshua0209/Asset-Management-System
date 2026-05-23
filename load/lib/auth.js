@@ -14,7 +14,7 @@
 // haven't been planted.
 
 import http from "k6/http";
-import { check, fail } from "k6";
+import { check, fail, Counter } from "k6";
 
 export const BASE_URL = (__ENV.BASE_URL || "http://backend:8000").replace(
   /\/$/,
@@ -34,10 +34,13 @@ export const HOLDER_PASSWORD = __ENV.HOLDER_PASSWORD || "Password123";
 // the credentials this VU touched.
 const tokenCache = new Map();
 
-export function login(email, password) {
-  if (tokenCache.has(email)) {
-    return tokenCache.get(email);
-  }
+// Counter surfaced on the k6 summary + dashboards so a token-expiry storm
+// during long stress / consistent runs is visible instead of degrading to a
+// "no work done" silence. One increment per cache eviction triggered by a
+// downstream 401 (see ``invalidateToken`` below).
+export const tokenEvictions = new Counter("ams_load_token_evictions");
+
+function performLogin(email, password) {
   const res = http.post(
     `${BASE_URL}/api/v1/auth/login`,
     JSON.stringify({ email, password }),
@@ -63,12 +66,53 @@ export function login(email, password) {
   return token;
 }
 
+export function login(email, password) {
+  if (tokenCache.has(email)) {
+    return tokenCache.get(email);
+  }
+  return performLogin(email, password);
+}
+
 export function loginManager() {
   return login(MANAGER_EMAIL, MANAGER_PASSWORD);
 }
 
 export function loginHolder() {
   return login(HOLDER_EMAIL, HOLDER_PASSWORD);
+}
+
+// Drop a cached token after a downstream 401 so a long run that outlives
+// the JWT TTL recovers on the next iteration instead of silently looping
+// on a stale token. Returns the credentials that were cached so callers
+// can re-login eagerly via ``loginManager`` / ``loginHolder`` / ``login``.
+//
+// Default behaviour: if the email is known, drop it and bump the
+// ``ams_load_token_evictions`` counter. Calling this on an unknown email
+// is a no-op (e.g. a flow that uses a per-VU throwaway address).
+export function invalidateToken(email) {
+  if (tokenCache.has(email)) {
+    tokenCache.delete(email);
+    tokenEvictions.add(1, { email_role: roleForEmail(email) });
+  }
+}
+
+function roleForEmail(email) {
+  if (email === MANAGER_EMAIL) return "manager";
+  if (email === HOLDER_EMAIL) return "holder";
+  return "other";
+}
+
+// Helper for flow scripts: if ``res.status`` is 401, drop the cached
+// token for this email and re-login once. The flow is expected to retry
+// its downstream call after this returns the fresh token. Returns
+// ``null`` when no retry is warranted (status != 401), so the caller can
+// branch.
+export function refreshIfUnauthorized(res, email, password) {
+  if (res.status !== 401) {
+    return null;
+  }
+  invalidateToken(email);
+  return performLogin(email, password);
 }
 
 export function authHeaders(token) {
