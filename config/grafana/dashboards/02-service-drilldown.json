@@ -113,7 +113,7 @@
       "gridPos": {"h": 10, "w": 12, "x": 12, "y": 20},
       "id": 10,
       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"$service\", replica=~\"$replica\"} | json | level=~\"WARNING|ERROR|CRITICAL\"", "refId": "A"}],
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"$service\", replica=~\"$replica\"} | json | level=~\"(?i)warning|error|critical\"", "refId": "A"}],
       "title": "Warning + Error Logs Only",
       "type": "logs"
     },

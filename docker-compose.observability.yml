@@ -203,7 +203,17 @@ services:
       com.docker.compose.service: alloy
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    # v0.55.1 includes upstream PR #3709 which adds containerd-snapshotter /
+    # overlayfs storage-driver support. v0.49.x–v0.52.x fail to identify the
+    # read-write layer for any container on macOS Docker engines that use
+    # `overlayfs` as the storage driver (OrbStack, Docker Desktop), and emit
+    # only cgroup-root aggregates instead of per-container metrics.
+    #
+    # The new docker handler resolves container roots through the containerd
+    # API, which means cadvisor needs the containerd socket. OrbStack exposes
+    # it at /run/docker/containerd/containerd.sock (not the upstream default
+    # /run/containerd/containerd.sock), so we pass --containerd= explicitly.
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
     container_name: ams-cadvisor
     restart: unless-stopped
     privileged: true
@@ -212,6 +222,8 @@ services:
       - --store_container_labels=true
       - --whitelisted_container_labels=com.docker.compose.service
       - --housekeeping_interval=10s
+      - --docker_only=true
+      - --containerd=/run/docker/containerd/containerd.sock
     expose:
       - "8080"
     volumes:

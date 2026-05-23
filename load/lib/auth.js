@@ -21,11 +21,11 @@ export const BASE_URL = (__ENV.BASE_URL || "http://backend:8000").replace(
   "",
 );
 
-// Seed defaults match scripts/seed_demo_data.py's bootstrap manager + first
-// holder. Override via env if a different account should drive the load.
-export const MANAGER_EMAIL = __ENV.MANAGER_EMAIL || "manager@example.com";
-export const MANAGER_PASSWORD =
-  __ENV.MANAGER_PASSWORD || "ChangeMe123!"; // matches BOOTSTRAP_MANAGER_PASSWORD default in .env.example
+// Seed defaults match the BOOTSTRAP_MANAGER_* env in docker-compose.yml
+// (bootstrap manager) and scripts/seed_demo_data.py (first holder).
+// Override via env if a different account should drive the load.
+export const MANAGER_EMAIL = __ENV.MANAGER_EMAIL || "admin@example.com";
+export const MANAGER_PASSWORD = __ENV.MANAGER_PASSWORD || "ChangeMe123";
 export const HOLDER_EMAIL = __ENV.HOLDER_EMAIL || "holder1@example.com";
 export const HOLDER_PASSWORD = __ENV.HOLDER_PASSWORD || "Password123";
 

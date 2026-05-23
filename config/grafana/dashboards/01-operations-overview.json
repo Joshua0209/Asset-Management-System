@@ -104,7 +104,7 @@
       "gridPos": {"h": 9, "w": 24, "x": 0, "y": 21},
       "id": 9,
       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"backend\"} | json | level=~\"WARNING|ERROR|CRITICAL\"", "refId": "A"}],
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"backend\"} | json | level=~\"(?i)warning|error|critical\"", "refId": "A"}],
       "title": "Backend Warning + Error Logs (click trace_id to open Tempo)",
       "type": "logs"
     },
