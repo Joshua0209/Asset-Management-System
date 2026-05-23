@@ -1,0 +1,38 @@
+# Grafana file-based dashboard provisioning for the AMS observability overlay.
+#
+# Mounts to /etc/grafana/provisioning/dashboards via docker-compose.observability.yml.
+# The dashboards themselves live alongside, mounted at the path below; Grafana
+# reloads any changed file every `updateIntervalSeconds`.
+#
+# `allowUiUpdates: false` is intentional. Provisioning is the single source of
+# truth — UI edits get silently overwritten on the next reload, and a user who
+# doesn't know that wastes time tweaking panels that "snap back". Force a
+# git-tracked workflow instead.
+#
+# `disableDeletion: false` is intentional too, but worth calling out: when a
+# `.json` file is removed from `config/grafana/dashboards/`, Grafana deletes
+# the corresponding dashboard from its database on the next reload tick. There
+# is no UI warning. Since every dashboard is git-tracked the deletion is
+# always recoverable, but a rename (`git mv old.json new.json`) will briefly
+# show up as "dashboard gone" until the next reload picks up the new file.
+#
+# `foldersFromFilesStructure: true` only takes effect when dashboards live
+# under subdirectories of the base `path:` below — Grafana then folders them
+# after their parent directory name. We mount every JSON flat under
+# `/var/lib/grafana/dashboards`, so this flag is effectively a no-op here and
+# the explicit `folder: AMS Observability` above is what governs placement.
+# The flag stays on because it costs nothing and matches the upstream example.
+
+apiVersion: 1
+
+providers:
+  - name: AMS Observability
+    orgId: 1
+    folder: AMS Observability
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

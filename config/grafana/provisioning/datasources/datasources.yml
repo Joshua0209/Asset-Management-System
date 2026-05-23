@@ -1,0 +1,106 @@
+# Grafana datasource provisioning for the AMS observability overlay.
+#
+# Three correlations stitched into the datasources, mirroring the M6 demo:
+#
+#   1. Loki  → Tempo via derivedFields. A log line with `"trace_id":"<hex>"`
+#      gets a clickable link that jumps to the Tempo trace UID. Two regex
+#      variants because backend logs are JSON (matched on the quoted form)
+#      and other emitters may write logfmt (matched on `trace_id=<hex>`).
+#   2. Tempo → Loki via tracesToLogsV2. Span → matching service's log lines
+#      around the span window. Uses the `service` label that Alloy's docker
+#      discovery relabel sets from `com.docker.compose.service` — same
+#      indexed label the dashboards pivot on.
+#   3. Tempo → Pyroscope via tracesToProfilesV2. The `traceToProfiles`
+#      feature toggle is enabled on the Grafana service (see
+#      docker-compose.observability.yml). Default profile type is CPU so
+#      "Profiles for this span" lands on the same flamegraph the slides
+#      reference.
+#
+# `uid:` values are stable identifiers referenced by dashboard JSON panels
+# (`datasource: {type: ..., uid: <here>}`). Renaming any of these requires
+# updating every dashboard panel in lockstep — keep them terse + lower-case.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      # 10s is the Alloy scrape interval for the backend metrics; let Grafana
+      # autoset minStep to scrape interval so panels don't over-sample.
+      timeInterval: 10s
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      # Phase 4's Alloy pipeline writes trace_id both as a structured-metadata
+      # field on JSON-format logs and as a substring of the log line itself.
+      # The derived field regex matches the latter so the click-to-Tempo flow
+      # works without depending on Loki 3 structured-metadata expansion in
+      # the UI (the JSON variant covers backend; the logfmt variant covers
+      # any future logfmt-emitting service).
+      derivedFields:
+        - name: trace_id
+          matcherRegex: '"trace_id":"([a-f0-9]{32})"'
+          datasourceUid: tempo
+          url: '$${__value.raw}'
+        - name: trace_id_logfmt
+          matcherRegex: 'trace_id=([a-f0-9]{32})'
+          datasourceUid: tempo
+          url: '$${__value.raw}'
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      httpMethod: GET
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      tracesToLogsV2:
+        datasourceUid: loki
+        # Window slack: -10m/+10m so spans whose surrounding log lines arrive
+        # late (e.g. uvicorn access logs that flush at request end) still get
+        # picked up. Matches the reference lab and the values Grafana's docs
+        # call out as the sweet spot for Loki retention windows.
+        spanStartTimeShift: -10m
+        spanEndTimeShift: 10m
+        filterByTraceID: true
+        filterBySpanID: false
+        # Tags Loki uses to scope the auto-query. resource.service.name is the
+        # OTel attribute Phase 1 sets on every span; it maps cleanly onto
+        # Alloy's `service` label so the trace→logs jump lands on the right
+        # service's stream.
+        tags:
+          - key: service.name
+            value: service
+      tracesToProfilesV2:
+        datasourceUid: pyroscope
+        # `process_cpu` is the Pyroscope profile type that Phase 1's Python
+        # SDK emits by default (pyroscope-io samples on-CPU stacks). The
+        # query field is left empty so Grafana inherits the active filter
+        # from the span's `service.name`, matching the application name
+        # Phase 1's setup_profiling passes to `configure(application_name=…)`.
+        profileTypeId: process_cpu:cpu:nanoseconds:cpu:nanoseconds
+        tags:
+          - key: service.name
+            value: service_name
+      tracesToMetrics:
+        datasourceUid: prometheus
+
+  - name: Pyroscope
+    uid: pyroscope
+    type: grafana-pyroscope-datasource
+    access: proxy
+    url: http://pyroscope:4040
