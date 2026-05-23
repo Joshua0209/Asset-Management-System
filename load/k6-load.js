@@ -78,15 +78,38 @@ export const options = {
     register: scenario("register", 0.05),
   },
   thresholds: {
-    // Strict on overall failure rate — anything > 1% on the load mix means
-    // a flow is degrading the run.
-    http_req_failed: ["rate<0.05"],
+    // Strict on overall failure rate — anything > 5% on the load mix means
+    // a flow is degrading the run. ``abortOnFail`` so a fully-broken stack
+    // ends the run early instead of burning the full ``K6_DURATION`` (10m
+    // default) and filling dashboards with misleading "we got data" panels.
+    // ``delayAbortEval`` gives the warmup a moment so a single bad first
+    // batch doesn't tear the run down before steady state.
+    http_req_failed: [
+      { threshold: "rate<0.05", abortOnFail: true, delayAbortEval: "30s" },
+    ],
     // p(95) is generous because the submit path runs through multipart +
     // ImageStorage + audit log + flush. Tighter SLOs belong on per-route
-    // dashboards.
-    http_req_duration: ["p(95)<3000"],
+    // dashboards. Abort if p95 explodes past 8s for over a minute — that's
+    // well into "the app is wedged" territory, not just transient queueing.
+    http_req_duration: [
+      { threshold: "p(95)<3000" },
+      { threshold: "p(95)<8000", abortOnFail: true, delayAbortEval: "60s" },
+    ],
     // Per-flow SLO: search must stay snappy or dashboards lose signal.
     "http_req_duration{flow:search}": ["p(95)<800"],
+    // Per-flow check threshold: if every submit/approve/complete is
+    // checks-failing (e.g. listRepairs prereq broken), the dashboard
+    // signal is gone. Abort early rather than ride out the rest of the
+    // run on an empty FSM-transition counter.
+    "checks{flow:submit}": [
+      { threshold: "rate>0.50", abortOnFail: true, delayAbortEval: "60s" },
+    ],
+    "checks{flow:approve}": [
+      { threshold: "rate>0.50", abortOnFail: true, delayAbortEval: "60s" },
+    ],
+    "checks{flow:complete}": [
+      { threshold: "rate>0.50", abortOnFail: true, delayAbortEval: "60s" },
+    ],
   },
   summaryTrendStats: ["avg", "min", "med", "p(90)", "p(95)", "p(99)", "max"],
 };
