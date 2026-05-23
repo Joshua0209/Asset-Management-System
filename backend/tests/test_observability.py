@@ -425,6 +425,88 @@ def test_access_log_middleware_path_constants() -> None:
     )
 
 
+def test_access_log_resolves_route_template_for_parameterized_path(
+    client: TestClient,
+) -> None:
+    """The ``route`` field carries the FastAPI route TEMPLATE so dashboards
+    can group by handler without exploding cardinality on the per-request
+    raw path.
+
+    Regression guard for ``observability.py::AccessLogMiddleware`` line
+    where ``route_template = getattr(route, "path", scope.get("path", ""))``.
+    The auth dependency 401s before the handler runs, but routing has
+    already matched the template by then, so ``scope["route"].path`` is
+    populated. If a future edit drops the ``getattr(route, "path", ...)``
+    resolution and just records ``scope["path"]`` (the raw URL), the Loki
+    label cardinality on dashboards 03 / 04 explodes on every unique
+    ``{repair_request_id}`` an operator hits.
+    """
+    import structlog
+
+    raw_path = "/api/v1/repair-requests/99999"
+    with structlog.testing.capture_logs() as captured:
+        client.get(raw_path, headers={"Authorization": "Bearer bogus"})
+
+    access = [e for e in captured if e.get("event") == "request"]
+    assert len(access) == 1, captured
+    entry = access[0]
+    assert entry["path"] == raw_path
+    assert entry["route"] == "/api/v1/repair-requests/{repair_request_id}", entry
+
+
+def test_access_log_defaults_status_to_500_when_no_response_start() -> None:
+    """If the downstream app raises before ``http.response.start`` fires,
+    AccessLogMiddleware still records a ``status_code`` on the access log
+    so dashboards see the row.
+
+    Exercises the ``status_code = 500`` default at
+    ``observability.py::AccessLogMiddleware.__call__``. The FastAPI test
+    client routes raised exceptions through registered exception handlers
+    that DO call ``send`` with a real status code, so this branch is
+    unreachable from a normal request. We invoke the middleware directly
+    with a stub inner ASGI app that raises before sending anything — the
+    same shape an exception escaping ServerErrorMiddleware would take.
+    """
+    import asyncio
+
+    import structlog
+
+    from app.core.observability import AccessLogMiddleware
+
+    async def broken_inner(scope, receive, send):  # type: ignore[no-untyped-def]
+        # Raise before emitting http.response.start so send_wrapper's
+        # status capture never runs and the default kicks in.
+        raise RuntimeError("simulated catastrophic failure")
+
+    middleware = AccessLogMiddleware(broken_inner)
+
+    async def fake_receive() -> dict[str, str]:
+        return {"type": "http.request"}
+
+    async def fake_send(_message: dict[str, object]) -> None:  # pragma: no cover
+        raise AssertionError("send must not be called when inner raises")
+
+    scope: dict[str, object] = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/something",
+        "headers": [],
+        "client": ("127.0.0.1", 0),
+    }
+
+    with structlog.testing.capture_logs() as captured:
+        with pytest.raises(RuntimeError, match="simulated"):
+            asyncio.run(middleware(scope, fake_receive, fake_send))
+
+    access = [e for e in captured if e.get("event") == "request"]
+    assert len(access) == 1, captured
+    entry = access[0]
+    assert entry["status_code"] == 500, entry
+    assert entry["method"] == "POST"
+    assert entry["path"] == "/api/v1/something"
+    assert isinstance(entry["duration_ms"], float)
+
+
 def test_access_log_runs_inside_otel_layer() -> None:
     """Pin: in the built middleware stack, OpenTelemetryMiddleware is
     OUTSIDE AccessLogMiddleware, so the OTel span context is still
