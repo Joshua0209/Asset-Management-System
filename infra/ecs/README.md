@@ -105,6 +105,8 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 | `ECS_CLUSTER`         | e.g. `ams-prod`                                  |
 | `ECS_SERVICE_BACKEND` | e.g. `ams-backend`                               |
 | `ECS_SERVICE_FRONTEND`| e.g. `ams-frontend`                              |
+| `ECS_MIGRATION_SUBNETS` | JSON array of subnet IDs for one-off tasks (e.g. `["subnet-123", "subnet-456"]`) |
+| `ECS_MIGRATION_SECURITY_GROUPS` | JSON array of security group IDs for one-off tasks (e.g. `["sg-123"]`) |
 | `DATABASE_URL_SECRET_NAME` | Name of the database secret, **including the 6-char ARN suffix** (e.g. `ams/prod/db-AbCdEf`) |
 | `APP_SECRET_NAME`     | Name of the application secret, **including the 6-char ARN suffix** (e.g. `ams/prod/app-Xy12Ab`) |
 | `BOOTSTRAP_MANAGER_EMAIL` | Email of the seeded first manager (e.g. `admin@ams.example.com`) |

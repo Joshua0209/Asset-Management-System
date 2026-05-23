@@ -645,9 +645,81 @@ jobs:
           check_findings "$BACKEND_REPO"
           check_findings "$FRONTEND_REPO"
 
+  migrate-database:
+    name: Run migrations (Alembic upgrade)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Fill placeholders in backend task definition
+        uses: ./.github/actions/render-task-def
+        with:
+          task-def-path: infra/ecs/backend-task-def.json
+          required-vars: |
+            ACCOUNT_ID
+            REGION
+            REPAIR_S3_BUCKET
+            DATABASE_URL_SECRET_NAME
+            APP_SECRET_NAME
+            BOOTSTRAP_MANAGER_EMAIL
+            GC_OTLP_ENDPOINT
+            GC_PYROSCOPE_ENDPOINT
+            GC_SECRET_NAME
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          REGION: ${{ vars.AWS_REGION }}
+          REPAIR_S3_BUCKET: ${{ vars.REPAIR_S3_BUCKET }}
+          DATABASE_URL_SECRET_NAME: ${{ vars.DATABASE_URL_SECRET_NAME }}
+          APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
+          BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
+          GC_OTLP_ENDPOINT: ${{ secrets.GC_OTLP_ENDPOINT }}
+          GC_PYROSCOPE_ENDPOINT: ${{ secrets.GC_PYROSCOPE_ENDPOINT }}
+          GC_SECRET_NAME: ${{ vars.GC_SECRET_NAME }}
+
+      - name: Render migration task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/backend-task-def.json
+          container-name: backend
+          image: ${{ needs.build-and-push.outputs.backend-image }}
+
+      - name: Run migration task
+        # Executes `alembic upgrade head` as a one-off task using the new
+        # image. Blocks until the task stops. If it fails (exit code != 0),
+        # this job fails and `deploy-backend` is skipped — preventing
+        # the app from booting against an old schema.
+        run: |
+          task_arn=$(aws ecs run-task \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --task-definition ${{ steps.render.outputs.task-definition }} \
+            --launch-type FARGATE \
+            --network-configuration '{"awsvpcConfiguration":{"subnets":${{ vars.ECS_MIGRATION_SUBNETS || '["subnet-012ee50b4bcc6f025", "subnet-03671ffdc6d6b7dfc"]' }},"securityGroups":${{ vars.ECS_MIGRATION_SECURITY_GROUPS || '["sg-06c4f6205c2295403"]' }},"assignPublicIp":"DISABLED"}}' \
+            --overrides '{"containerOverrides":[{"name":"backend","command":["alembic","upgrade","head"]}]}' \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          echo "Migration task ARN: $task_arn"
+          aws ecs wait tasks-stopped --cluster ${{ vars.ECS_CLUSTER }} --tasks "$task_arn"
+          exit_code=$(aws ecs describe-tasks --cluster ${{ vars.ECS_CLUSTER }} --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::Migration failed with exit code $exit_code. Check CloudWatch logs for task $task_arn."
+            exit 1
+          fi
+
   deploy-backend:
     name: Deploy backend (ECS rolling update)
-    needs: [changes, build-and-push]
+    needs: [changes, build-and-push, migrate-database]
     runs-on: ubuntu-latest
     # Per-side gate: only roll the backend task when backend code actually
     # changed in this run (or on a manual hot-fix dispatch, which forces
