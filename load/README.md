@@ -102,10 +102,10 @@ invocation.
 
 `lib/auth.js` defaults to:
 
-- `MANAGER_EMAIL = manager@example.com` / `MANAGER_PASSWORD = ChangeMe123!`
+- `MANAGER_EMAIL = admin@example.com` / `MANAGER_PASSWORD = ChangeMe123`
   — matches `BOOTSTRAP_MANAGER_EMAIL` / `BOOTSTRAP_MANAGER_PASSWORD` in
-  `.env.example`. Override via `MANAGER_EMAIL` / `MANAGER_PASSWORD` env
-  when your seed used different bootstrap creds.
+  `backend/.env.example`. Override via `MANAGER_EMAIL` / `MANAGER_PASSWORD`
+  env when your seed used different bootstrap creds.
 - `HOLDER_EMAIL = holder1@example.com` / `HOLDER_PASSWORD = Password123`
   — matches `scripts/seed_demo_data.py`'s first holder.
 
