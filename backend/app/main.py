@@ -216,18 +216,21 @@ app.add_middleware(
 #   * setup_tracing is a no-op when OTEL_ENABLED is false (pytest
 #     default); the SQLAlchemy instrumentor would otherwise hook the
 #     SQLite test engine's event listeners and add per-statement overhead
-#     the suite doesn't budget for.
+#     the suite doesn't budget for. When enabled, OTel's FastAPI
+#     instrumentor wraps the entire stack via a build_middleware_stack
+#     monkey-patch (not app.add_middleware), so OpenTelemetryMiddleware
+#     ends up OUTSIDE every user middleware regardless of call order —
+#     AccessLogMiddleware therefore always fires its log inside an active
+#     OTel span. Pinned by
+#     ``tests/test_observability.py::test_access_log_runs_inside_otel_layer``.
 #   * maybe_setup_profiling stays off in prod gunicorn (locked decision
 #     5) and on for the single-process dev / demo image.
 setup_metrics(app)
 setup_tracing(app, settings)
 maybe_setup_profiling(settings)
-# setup_access_log MUST run after setup_tracing so the AccessLogMiddleware
-# sits inside the OTel span context — otherwise trace_id is not stamped on
-# the access record and dashboards 03 / 04 lose the log → trace correlation.
-# It is the last middleware registration, making it the innermost layer
-# (closest to the endpoint) — the log fires after the endpoint returns,
-# while OTel's span is still active.
+# setup_access_log runs last for clarity: dashboards 03 / 04 need the
+# JSON access record stamped with trace_id, and the order is documented
+# by the structural pin above rather than by a stack-ordering side-effect.
 setup_access_log(app)
 
 # Map HTTP status → machine-readable error code per docs/system-design/12-api-design.md

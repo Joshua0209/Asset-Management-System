@@ -381,11 +381,15 @@ class AccessLogMiddleware:
     Lifts the per-request observability gap noted in ``setup_logging``'s
     docstring (W6 Phase 1 deferred the access log; the Repair Request Logs
     and Backend Logs With trace_id panels in dashboards 03 / 04 depend on
-    it). The middleware MUST be registered AFTER ``setup_tracing`` so it
-    sits inside the OTel span context — that's what lets
-    ``_structlog_processor_trace_context`` stamp ``trace_id`` / ``span_id``
-    onto the record, which in turn drives the Loki → Tempo derived-field
-    link in Grafana.
+    it). OTel's FastAPI instrumentor wraps the entire middleware stack via
+    a ``build_middleware_stack`` monkey-patch (not ``app.add_middleware``),
+    so ``OpenTelemetryMiddleware`` ends up OUTSIDE every user middleware
+    regardless of ``setup_*`` call order. The access log's ``finally``
+    block therefore fires while the OTel span context is still attached,
+    letting ``_structlog_processor_trace_context`` stamp ``trace_id`` /
+    ``span_id`` onto the record — which in turn drives the Loki → Tempo
+    derived-field link in Grafana. The invariant is pinned by
+    ``tests/test_observability.py::test_access_log_runs_inside_otel_layer``.
 
     Logs flow through ``logging.getLogger("app.access")`` so structlog's
     stdlib bridge (configured in ``setup_logging``) renders them as JSON
@@ -454,11 +458,11 @@ class AccessLogMiddleware:
 
 
 def setup_access_log(app: FastAPI) -> None:
-    """Attach :class:`AccessLogMiddleware` as the innermost middleware.
+    """Attach :class:`AccessLogMiddleware`.
 
-    Call this AFTER ``setup_tracing`` so the OTel span is active when the
-    middleware emits its log record — otherwise ``trace_id`` is absent and
-    the Loki → Tempo derived-field link in Grafana goes dark. See the
-    class docstring for the full rationale.
+    OTel's FastAPI instrumentor wraps the entire stack via a
+    ``build_middleware_stack`` monkey-patch, so this middleware's relative
+    position vs ``setup_tracing`` is not load-bearing for ``trace_id``
+    propagation. See the class docstring for the full rationale.
     """
     app.add_middleware(AccessLogMiddleware)

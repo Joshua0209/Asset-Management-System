@@ -425,3 +425,46 @@ def test_access_log_middleware_path_constants() -> None:
     )
 
 
+def test_access_log_runs_inside_otel_layer() -> None:
+    """Pin: in the built middleware stack, OpenTelemetryMiddleware is
+    OUTSIDE AccessLogMiddleware, so the OTel span context is still
+    attached when the access log's ``finally`` block emits its record.
+
+    OTel's FastAPI instrumentor wraps the stack via a
+    ``build_middleware_stack`` monkey-patch (not ``app.add_middleware``),
+    so the order in which ``setup_access_log`` and ``setup_tracing`` are
+    called in ``app/main.py`` does NOT affect this — OTel always ends up
+    outermost. If a future OTel release switches to ``add_middleware``,
+    or reorders its wrap, the dashboard 03 / 04 Loki → Tempo drill goes
+    dark and this test catches it before the regression ships.
+    """
+    from fastapi import FastAPI
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    from app.core.observability import setup_access_log
+
+    fresh_app = FastAPI()
+    setup_access_log(fresh_app)
+    FastAPIInstrumentor.instrument_app(fresh_app)
+    try:
+        layers: list[str] = []
+        node = fresh_app.build_middleware_stack()
+        for _ in range(20):
+            layers.append(type(node).__name__)
+            inner = getattr(node, "app", None)
+            if inner is None or inner is node:
+                break
+            node = inner
+        assert "OpenTelemetryMiddleware" in layers, layers
+        assert "AccessLogMiddleware" in layers, layers
+        otel_idx = layers.index("OpenTelemetryMiddleware")
+        access_idx = layers.index("AccessLogMiddleware")
+        assert otel_idx < access_idx, (
+            f"OpenTelemetryMiddleware ({otel_idx}) must wrap "
+            f"AccessLogMiddleware ({access_idx}) in the built stack; "
+            f"current outer-to-inner: {layers}"
+        )
+    finally:
+        FastAPIInstrumentor.uninstrument_app(fresh_app)
+
+
