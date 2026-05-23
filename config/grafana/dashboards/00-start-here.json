@@ -1,0 +1,35 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [
+    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Operations Overview", "tooltip": "Open operations overview", "type": "link", "url": "/d/ams-obs-operations-overview/01-operations-overview"},
+    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Service Drilldown", "tooltip": "Open service drilldown", "type": "link", "url": "/d/ams-obs-service-drilldown/02-service-drilldown"},
+    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Repair Journey", "tooltip": "Open repair journey", "type": "link", "url": "/d/ams-obs-repair-journey/03-repair-journey"},
+    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Logs/Traces/Profiles", "tooltip": "Open correlation dashboard", "type": "link", "url": "/d/ams-obs-logs-traces-profiles/04-logs-traces-profiles"},
+    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "MySQL", "tooltip": "Open MySQL dashboard", "type": "link", "url": "/d/ams-obs-mysql/05-mysql"}
+  ],
+  "panels": [
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "mode": "markdown",
+        "content": "# AMS Observability — Start Here\n\nThis stack instruments the Asset Management System with the four pillars: **metrics** (Prometheus), **logs** (Loki), **traces** (Tempo), and **profiles** (Pyroscope), with **Alloy** as the single collector.\n\n## Suggested investigation flow\n\n1. **[01 Operations Overview](/d/ams-obs-operations-overview/01-operations-overview)** — RED + Golden Signals. Use to decide whether the symptom is latency, errors, traffic, or saturation. Two slots reserved for AWS ECS / ALB (filled by Phase 6 CloudWatch).\n2. **[02 Service Drilldown](/d/ams-obs-service-drilldown/02-service-drilldown)** — pick a `service` + `replica` template variable. Per-route latency histograms, error counts, CPU/mem from cAdvisor, plus a Loki logs panel scoped to the selection.\n3. **[03 Repair Journey](/d/ams-obs-repair-journey/03-repair-journey)** — AMS-specific. FSM transitions, optimistic-locking conflicts, p95 latency for the seven critical user flows (login, submit/approve/reject/complete repair, register/list asset).\n4. **[04 Logs/Traces/Profiles](/d/ams-obs-logs-traces-profiles/04-logs-traces-profiles)** — the single-pane correlation demo. Click a `trace_id` in a Loki log line → Tempo trace → Pyroscope flamegraph, all without leaving Grafana.\n5. **[05 MySQL](/d/ams-obs-mysql/05-mysql)** — InnoDB buffer pool, query throughput, slow queries, connections, lock waits from the `mysqld-exporter` sidecar.\n\n## Conventions\n\n- The `service` label on every metric, log line, and trace comes from `com.docker.compose.service` (set by Alloy's docker discovery relabel). Same value across the four pillars so dashboards join cleanly.\n- The `replica` label is the container name (`ams-backend`, `ams-mysql`, ...).\n- Backend logs are JSON; `trace_id` is exposed as a Loki derived field, so it becomes a clickable link to Tempo straight from the logs panel.\n- The backend stays single-worker (`gunicorn --workers 1`) because slowapi's in-memory rate limiter cannot share state across workers; aggregate across tasks at scrape time instead.\n- Rate windows are deliberately asymmetric across these dashboards: **stat panels use `[5m]`** (smoothed headline number) and **timeseries panels use `[1m]`** (regression visible within a refresh cycle). The asymmetry is intentional — match the window to the question, don't normalise.\n\n## Demo prep checklist\n\n- `make obs-pull` to warm the image cache.\n- `make obs-up`.\n- Visit the frontend (`http://localhost:8080`) and log in once to seed traces.\n- (Phase 7) Run `k6-load.js` for 2 minutes to populate the time range visible in the dashboards.\n- Open this dashboard, click through the order above."
+      },
+      "title": "Investigation Menu",
+      "type": "text"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["ams-observability", "start", "demo"],
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "00 Start Here",
+  "uid": "ams-obs-start-here",
+  "version": 1,
+  "weekStart": ""
+}

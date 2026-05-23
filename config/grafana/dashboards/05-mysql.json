@@ -1,0 +1,154 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [
+    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Start Here", "tooltip": "Back to start", "type": "link", "url": "/d/ams-obs-start-here/00-start-here"},
+    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Service Drilldown", "tooltip": "Open service drilldown for backend", "type": "link", "url": "/d/ams-obs-service-drilldown/02-service-drilldown?var-service=backend"}
+  ],
+  "panels": [
+    {
+      "datasource": {"type": "datasource", "uid": "grafana"},
+      "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "mode": "markdown",
+        "content": "MySQL health from the `prom/mysqld-exporter:v0.15.1` sidecar. The exporter connects to `mysql:3306` as the read-only `exporter` user seeded by `db/init/01-exporter-grant.sql`. Panels are a trimmed subset of Grafana Labs community dashboard 7362, scoped to the AMS demo: buffer-pool hit rate, query throughput, slow queries, connections, lock waits."
+      },
+      "title": "MySQL Server Health",
+      "type": "text"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}, "mappings": [{"options": {"0": {"color": "red", "text": "DOWN"}, "1": {"color": "green", "text": "UP"}}, "type": "value"}]}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 3},
+      "id": 2,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["last"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_up{service=\"mysqld-exporter\"}", "legendFormat": "up", "refId": "A"}],
+      "title": "Up",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "dtdurations"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 3},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_status_uptime{service=\"mysqld-exporter\"}", "legendFormat": "uptime", "refId": "A"}],
+      "title": "Uptime",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 3},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_status_threads_connected{service=\"mysqld-exporter\"}", "legendFormat": "connected", "refId": "A"}],
+      "title": "Connections (Current)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "qps"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 3},
+      "id": 5,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_questions{service=\"mysqld-exporter\"}[1m])", "legendFormat": "qps", "refId": "A"}],
+      "title": "Queries / sec",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.95}, {"color": "green", "value": 0.99}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 3},
+      "id": 6,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "1 - (rate(mysql_global_status_innodb_buffer_pool_reads{service=\"mysqld-exporter\"}[5m]) / clamp_min(rate(mysql_global_status_innodb_buffer_pool_read_requests{service=\"mysqld-exporter\"}[5m]), 1))", "legendFormat": "hit ratio", "refId": "A"}],
+      "title": "Buffer Pool Hit Ratio",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 3},
+      "id": 7,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_slow_queries{service=\"mysqld-exporter\"}[5m])", "legendFormat": "slow/sec", "refId": "A"}],
+      "title": "Slow Queries / sec",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "qps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+      "id": 8,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_questions{service=\"mysqld-exporter\"}[1m])", "legendFormat": "questions/sec", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_com_select{service=\"mysqld-exporter\"}[1m])", "legendFormat": "select/sec", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_com_insert{service=\"mysqld-exporter\"}[1m])", "legendFormat": "insert/sec", "refId": "C"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_com_update{service=\"mysqld-exporter\"}[1m])", "legendFormat": "update/sec", "refId": "D"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_com_delete{service=\"mysqld-exporter\"}[1m])", "legendFormat": "delete/sec", "refId": "E"}
+      ],
+      "title": "Query Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
+      "id": 9,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_status_threads_connected{service=\"mysqld-exporter\"}", "legendFormat": "connected", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_status_threads_running{service=\"mysqld-exporter\"}", "legendFormat": "running", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_variables_max_connections{service=\"mysqld-exporter\"}", "legendFormat": "max_connections", "refId": "C"}
+      ],
+      "title": "Threads / Connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
+      "id": 10,
+      "options": {"legend": {"calcs": ["mean", "min"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "1 - (rate(mysql_global_status_innodb_buffer_pool_reads{service=\"mysqld-exporter\"}[5m]) / clamp_min(rate(mysql_global_status_innodb_buffer_pool_read_requests{service=\"mysqld-exporter\"}[5m]), 1))", "legendFormat": "buffer-pool hit ratio", "refId": "A"}],
+      "title": "InnoDB Buffer Pool Hit Ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
+      "id": 11,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_innodb_row_lock_waits{service=\"mysqld-exporter\"}[1m])", "legendFormat": "row-lock waits/sec", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_innodb_row_lock_time{service=\"mysqld-exporter\"}[1m]) / 1000", "legendFormat": "row-lock time (s/sec)", "refId": "B"}
+      ],
+      "title": "InnoDB Row Lock Activity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 23},
+      "id": 12,
+      "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=~\"mysql|mysqld-exporter\"} |~ \"(?i)error|warning|slow\"", "refId": "A"}],
+      "title": "MySQL + Exporter Logs (filtered: error / warning / slow)",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["ams-observability", "mysql", "database"],
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "05 MySQL",
+  "uid": "ams-obs-mysql",
+  "version": 1,
+  "weekStart": ""
+}

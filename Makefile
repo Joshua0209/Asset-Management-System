@@ -48,6 +48,7 @@ obs-clean: ## Stop overlayed stack AND wipe its data volumes
 
 obs-test: ## Parse-time regression test for the overlay (offline, no images)
 	./scripts/test_obs_compose.sh
+	python3 scripts/test_obs_dashboards.py
 
 obs-alloy-fmt: ## Validate config/alloy/config.alloy with `alloy fmt` (pulls v1.5.1)
 	docker run --rm \
