@@ -24,6 +24,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+import structlog
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -379,8 +380,6 @@ def test_access_log_emits_one_record_per_request(client: TestClient) -> None:
     natively). caplog would only see the post-render stdlib LogRecord
     whose attributes do not include the structured kwargs.
     """
-    import structlog
-
     with structlog.testing.capture_logs() as captured:
         resp = client.get(
             "/api/v1/assets/mine", headers={"Authorization": "Bearer bogus"}
@@ -406,8 +405,6 @@ def test_access_log_skips_metrics_health_ready(client: TestClient) -> None:
     """Scrape / probe paths are excluded — their volume would dominate
     the log stream without surfacing user-facing flow signal.
     """
-    import structlog
-
     with structlog.testing.capture_logs() as captured:
         for path in ("/metrics", "/health", "/ready"):
             client.get(path)
@@ -468,25 +465,31 @@ def test_access_log_defaults_status_to_500_when_no_response_start() -> None:
     same shape an exception escaping ServerErrorMiddleware would take.
     """
     import asyncio
+    from collections.abc import MutableMapping
+    from typing import Any
 
-    import structlog
+    from starlette.types import Receive, Scope, Send
 
     from app.core.observability import AccessLogMiddleware
 
-    async def broken_inner(scope, receive, send):  # type: ignore[no-untyped-def]
+    async def broken_inner(
+        _scope: Scope, _receive: Receive, _send: Send
+    ) -> None:
         # Raise before emitting http.response.start so send_wrapper's
         # status capture never runs and the default kicks in.
         raise RuntimeError("simulated catastrophic failure")
 
     middleware = AccessLogMiddleware(broken_inner)
 
-    async def fake_receive() -> dict[str, str]:
+    async def fake_receive() -> MutableMapping[str, Any]:
         return {"type": "http.request"}
 
-    async def fake_send(_message: dict[str, object]) -> None:  # pragma: no cover
+    async def fake_send(
+        _message: MutableMapping[str, Any],
+    ) -> None:  # pragma: no cover
         raise AssertionError("send must not be called when inner raises")
 
-    scope: dict[str, object] = {
+    scope: MutableMapping[str, Any] = {
         "type": "http",
         "method": "POST",
         "path": "/api/v1/something",

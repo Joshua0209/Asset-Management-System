@@ -27,26 +27,18 @@ import logging
 import logging.config
 import sys
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 from prometheus_client import Counter
 from prometheus_fastapi_instrumentator import Instrumentator
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
     from app.core.config import Settings
-
-# ASGI primitives (kept inside a local alias block so the module stays
-# importable from non-FastAPI contexts such as alembic env — Starlette's
-# typing module is a hard dep here, fine since FastAPI already pulls it).
-Scope = dict[str, Any]
-Message = dict[str, Any]
-Receive = Callable[[], Awaitable[Message]]
-Send = Callable[[Message], Awaitable[None]]
-ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
@@ -460,7 +452,10 @@ class AccessLogMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             duration_ms = (time.perf_counter() - start) * 1000.0
-            client = scope.get("client") or ("", 0)
+            # ``scope["client"]`` is ``tuple[str, int] | None`` per the
+            # ASGI spec — the ``or`` substitutes a typed default so we
+            # can index without an inline guard.
+            client_host, _client_port = scope.get("client") or ("", 0)
             # Resolve the FastAPI route template (e.g.
             # ``/api/v1/repair-requests/{repair_request_id}/approve``) so
             # dashboards can group by handler without exploding cardinality
@@ -475,7 +470,7 @@ class AccessLogMiddleware:
                 route=route_template,
                 status_code=status_code,
                 duration_ms=round(duration_ms, 2),
-                client_ip=client[0] if client else "",
+                client_ip=client_host,
             )
 
 

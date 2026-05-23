@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn, TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LOAD_DIR = REPO_ROOT / "load"
@@ -27,10 +28,23 @@ COMPOSE_BASE = REPO_ROOT / "docker-compose.yml"
 MAKEFILE = REPO_ROOT / "Makefile"
 README_LOAD = LOAD_DIR / "README.md"
 
+
+class ScriptSpec(TypedDict):
+    """Structural-marker spec for a Phase 7 k6 script.
+
+    ``must_contain`` is a list of substrings the script source MUST contain
+    for the regression gate to pass — they pin the script's intent (scenario
+    shape, threshold metrics, env-driven duration) so a future edit can't
+    silently strip them.
+    """
+
+    must_contain: list[str]
+
+
 # Phase 7 ships two AMS-specific scenario shapes (k6-load.js, k6-stress.js) plus
 # the four mirrored from the reference lab (smoke, steady, spike, consistent).
 # Each lives in load/ at the root so the compose k6 service mounts a single dir.
-REQUIRED_SCRIPTS = {
+REQUIRED_SCRIPTS: dict[str, ScriptSpec] = {
     "k6-load.js": {
         # constant-arrival-rate scenarios + per-flow weighting
         "must_contain": [
@@ -92,7 +106,7 @@ REQUIRED_MAKE_TARGETS = [
 ]
 
 
-def fail(msg: str) -> None:
+def fail(msg: str) -> NoReturn:
     print(f"FAIL: {msg}", file=sys.stderr)
     sys.exit(1)
 
