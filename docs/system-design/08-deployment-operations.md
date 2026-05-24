@@ -74,7 +74,7 @@ The limiter (`backend/app/core/rate_limit.py`) is in-process via slowapi. Per `0
 
 **ECS task command:** keep `--workers 1` until rate limits are backed by Redis. Auto-scaling at the *task* level (not the worker level) is the supported scaling axis.
 
-The W6 observability work (`docs/roadmap.md` §"Week 6") reinforces this from a second angle: `prometheus_client`'s default in-process registry is per-worker, so multi-worker tasks would return inconsistent `/metrics` snapshots depending on which worker handled the scrape. With `--workers 1` per task, `/metrics` is consistent and Prometheus aggregates across tasks via the `instance` label (`sum() by (service)`). If `WEB_CONCURRENCY` is ever bumped above 1, `prometheus-fastapi-instrumentator` must be configured with `PROMETHEUS_MULTIPROC_DIR` and a `multiproc_mode`. Do not silently raise the worker count without that wiring.
+The Grafana Cloud observability work reinforces this from a second angle: the OTel SDK's `MeterProvider`, `TracerProvider`, and `LoggerProvider` are process-wide singletons installed once at startup, and `pyroscope-io`'s sampling thread is started in the main process. With `--workers 1` per task, those singletons line up one-to-one with the task and Pyroscope's thread survives without a `gunicorn --preload` / `post_fork` dance. If `WEB_CONCURRENCY` is ever bumped above 1, both the OTel exporters and `pyroscope-io` need an explicit post-fork re-init (see `infra/ecs/README.md` on the `WEB_CONCURRENCY=1` invariant). Do not silently raise the worker count without that wiring.
 
 ### Behind the ALB: client-IP resolution (CRITICAL)
 
