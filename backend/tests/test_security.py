@@ -122,7 +122,11 @@ class TestDecodeAccessTokenMalformedClaims:
         """Sign a JWT with the project's secret/algorithm so the signature
         verifies; the body lets us mutate claim shape independently."""
         settings = get_settings()
-        return jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+        return jwt.encode(
+            claims,
+            settings.jwt_secret.get_secret_value(),
+            algorithm=settings.jwt_algorithm,
+        )
 
     @staticmethod
     def _future_exp_ts() -> int:

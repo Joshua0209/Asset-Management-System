@@ -236,7 +236,7 @@ describe("initObservability", () => {
     // increments the backend's ams_frontend_observability_init_failures_total
     // counter so an alert rule catches the regression in the next deploy.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const sendBeacon = vi.fn(() => true);
+    const sendBeacon = vi.fn<(url: string, body: string) => boolean>(() => true);
     vi.stubGlobal("navigator", { sendBeacon });
     providerRegister.mockImplementationOnce(() => {
       throw new Error("VITE_OTEL_ENDPOINT typo'd");
@@ -246,7 +246,7 @@ describe("initObservability", () => {
     const result = await initObservability({ enabled: true });
     expect(result).toBe(false);
     expect(sendBeacon).toHaveBeenCalledTimes(1);
-    const [url, body] = sendBeacon.mock.calls[0] as [string, string];
+    const [url, body] = sendBeacon.mock.calls[0];
     expect(url).toBe("/api/v1/observability/client-error");
     // Passing a string makes the browser set Content-Type to
     // `text/plain;charset=UTF-8` automatically — in the simple-CORS
