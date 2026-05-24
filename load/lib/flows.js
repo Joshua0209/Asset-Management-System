@@ -2,9 +2,9 @@
 //
 // Why one shared module:
 //   - The smoke, steady, spike, load, stress, and consistent scenarios all hit
-//     the same six critical flows the Phase 7 plan calls out (login, search,
-//     submit_repair, approve_repair, complete_repair, register_asset). Sharing
-//     them keeps dashboard labels coherent across runs.
+//     the same six critical flows (login, search, submit_repair,
+//     approve_repair, complete_repair, register_asset). Sharing them keeps
+//     dashboard labels coherent across runs.
 //   - `tags.name` on every request standardises the route template Prometheus
 //     stores (`POST /repair-requests`, not `POST /repair-requests/<uuid>/...`),
 //     so dashboards keep low cardinality.
@@ -20,6 +20,7 @@
 
 import http from "k6/http";
 import { check } from "k6";
+import { Counter } from "k6/metrics";
 
 import {
   BASE_URL,
@@ -37,6 +38,35 @@ import { JPEG, JPEG_CONTENT_TYPE, JPEG_FILENAME } from "./fixtures.js";
 
 const HOLDER_TAG = { actor: "holder" };
 const MANAGER_TAG = { actor: "manager" };
+
+// Pivotable failure-mode Counters. Each Counter surfaces a distinct
+// reason a flow short-circuited without doing user-facing work; they
+// stream to GC via k6-prometheus-rw and let dashboards / alerts tell
+// "rare fixture state" apart from "upstream regression".
+//
+// Why Counters, not k6 `check()`s with literal-false predicates: a
+// `check(true, { "...": () => false })` shows up in the summary as a
+// failed check but the iteration continues normally, so a 5xx from the
+// API masquerades as "no candidate available". Counters make each
+// failure mode addressable in PromQL and threshold-alertable.
+export const submitRepairNoTarget = new Counter(
+  "ams_load_submit_repair_no_target_total",
+);
+export const submitRepairPreconditionFail = new Counter(
+  "ams_load_submit_repair_precondition_fail_total",
+);
+export const approveRepairNoCandidate = new Counter(
+  "ams_load_approve_repair_no_candidate_total",
+);
+export const completeRepairNoCandidate = new Counter(
+  "ams_load_complete_repair_no_candidate_total",
+);
+export const listRepairsUpstreamError = new Counter(
+  "ams_load_list_repairs_upstream_error_total",
+);
+export const malformedEnvelope = new Counter(
+  "ams_load_malformed_envelope_total",
+);
 
 // ── login (flow #1) ─────────────────────────────────────────────────────────
 // Re-runs login so the test exercises the bcrypt cost and the limiter even
@@ -125,11 +155,22 @@ function listRepairs(token, statusFilter, asActor, email, password) {
     "list_repairs prereq 200": (r) => r.status === 200,
   });
   if (res.status !== 200) {
+    // Non-200/non-401: upstream regression masquerading as "no work".
+    // Increment the dedicated Counter so PromQL can pivot on it (the
+    // check rate alone can't separate this from legitimate empty-result
+    // states, since both leave `items` empty).
+    listRepairsUpstreamError.add(1, { status: String(res.status) });
     return { token: activeToken, items: [] };
   }
   const body = res.json();
-  const items = (body && body.data) || [];
-  return { token: activeToken, items };
+  if (!body || !Array.isArray(body.data)) {
+    // 200 with an unexpected envelope shape (server-side regression
+    // renaming `data` -> `items`, dropping the field, etc.). Without
+    // this guard the flow would silently treat it as empty work.
+    malformedEnvelope.add(1, { endpoint: "list_repairs" });
+    return { token: activeToken, items: [] };
+  }
+  return { token: activeToken, items: body.data };
 }
 
 export function listRepairsFlow() {
@@ -172,16 +213,26 @@ export function submitRepairFlow() {
       { ...listParams, headers: authHeaders(token) },
     );
   }
-  if (assets.status !== 200) {
-    check(assets, { "assets/mine 200 (precondition)": (r) => false });
+  if (
+    !check(assets, {
+      "assets/mine 200 (precondition)": (r) => r.status === 200,
+    })
+  ) {
+    // Real upstream failure: pivot on the actual status so a 5xx is
+    // visible in dashboards instead of confused with "no target".
+    submitRepairPreconditionFail.add(1, { status: String(assets.status) });
     return;
   }
   const body = assets.json();
-  const items = (body && body.data) || [];
+  if (!body || !Array.isArray(body.data)) {
+    malformedEnvelope.add(1, { endpoint: "assets_mine" });
+    return;
+  }
+  const items = body.data;
   if (items.length === 0) {
-    // No assignable target — record a soft failure and bail. Dashboards
-    // will show this via `submit_repair_no_target` rate.
-    check(true, { "submit_repair has no target": () => false });
+    // No assignable target — emit on the dedicated Counter so dashboards
+    // distinguish "fixture-empty" from upstream errors handled above.
+    submitRepairNoTarget.add(1);
     return;
   }
   const target = items[__VU % items.length];
@@ -212,7 +263,7 @@ export function approveRepairFlow() {
   );
   token = refreshedToken;
   if (candidates.length === 0) {
-    check(true, { "approve_repair has no candidate": () => false });
+    approveRepairNoCandidate.add(1);
     return;
   }
   const target = candidates[__VU % candidates.length];
@@ -243,7 +294,7 @@ export function completeRepairFlow() {
   );
   token = refreshedToken;
   if (candidates.length === 0) {
-    check(true, { "complete_repair has no candidate": () => false });
+    completeRepairNoCandidate.add(1);
     return;
   }
   const target = candidates[__VU % candidates.length];

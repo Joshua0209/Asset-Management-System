@@ -6,8 +6,10 @@
 //      the app.
 //   2. The JWT lifetime in dev is generous (settings default), so caching the
 //      token for the run is safe.
-//   3. The manager + holder seeds use deterministic credentials
-//      (scripts/seed_demo_data.py); we want one place that knows them.
+//   3. The manager + holder seeds use deterministic credentials (managed by
+//      backend/scripts/seed_demo_data.py on the host, mounted into the
+//      backend container as /app/scripts/seed_demo_data.py); we want one
+//      place that knows them.
 //
 // Anti-enumeration in /auth/login means a wrong email/password returns a
 // 401 with the same body, so the script logs and bails if the seed creds
@@ -19,9 +21,7 @@ import { check, fail, Counter } from "k6";
 // Default targets the host-network backend (developer runs `k6` on their
 // laptop against `docker compose up backend`). For a container-run k6 use
 // `-e BASE_URL=http://host.docker.internal:8000` on Docker Desktop / OrbStack
-// or `--network host` plus the default URL on Linux. The compose-overlay
-// `k6` service from W6 Phase 7 was removed when the local observability
-// stack was pruned (Phase 2 of the prod migration plan).
+// or `--network host` plus the default URL on Linux.
 export const BASE_URL = (__ENV.BASE_URL || "http://localhost:8000").replace(
   /\/$/,
   "",

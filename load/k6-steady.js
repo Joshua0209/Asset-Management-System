@@ -1,11 +1,10 @@
-// Phase 7 — steady test.
+// Steady test.
 //
 // Sustained moderate load to fill dashboards with realistic data for the
 // correlation demo. 10 VUs for 5 minutes, with the read-heavy 80/20 mix the
 // AMS dashboards expect: search/list dominates, write paths trickle in.
 //
-// Mirrors ../2025-05-observability-demo/load/k6-steady.js scenario shape;
-// the AMS-specific flow set is what the dashboards in
+// The AMS-specific flow set is what the dashboards in
 // config/grafana/dashboards/ are pinned against.
 
 import { sleep } from "k6";

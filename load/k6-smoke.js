@@ -1,13 +1,12 @@
-// Phase 7 — smoke test.
+// Smoke test.
 //
 // Sanity check that the stack accepts traffic against every critical flow.
 // Runs for 1 minute with 3 VUs; the goal is "no 5xx", not throughput.
 //
-// Mirrors ../2025-05-observability-demo/load/k6-smoke.js but swaps in the
-// AMS-specific flow set (login, search, my-assets, list repairs, register
-// asset, submit/approve/complete repair) so a green smoke run proves the
-// observability stack sees every metric/log/trace label we ship dashboards
-// for.
+// Exercises the AMS critical flow set (login, search, my-assets, list
+// repairs, register asset, submit/approve/complete repair) so a green
+// smoke run proves the observability stack sees every metric/log/trace
+// label the dashboards depend on.
 
 import { sleep } from "k6";
 

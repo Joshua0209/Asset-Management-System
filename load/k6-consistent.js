@@ -1,10 +1,9 @@
-// Phase 7 — long-running, per-flow constant-arrival-rate traffic generator.
+// Long-running, per-flow constant-arrival-rate traffic generator.
 //
-// Mirrors ../2025-05-observability-demo/load/k6-consistent.js: each AMS
-// flow gets its own constant-arrival-rate scenario whose rate is set via
-// env, so an operator can independently knob-tweak how much search vs.
-// approve traffic the dashboards see during a demo. Setting any rate to 0
-// drops that scenario.
+// Each AMS flow gets its own constant-arrival-rate scenario whose rate is
+// set via env, so an operator can independently knob-tweak how much
+// search vs. approve traffic the dashboards see during a demo. Setting
+// any rate to 0 drops that scenario.
 //
 // Default rates per minute (override via env):
 //
@@ -17,8 +16,7 @@
 //   REGISTER_PER_MIN = 2
 //   HEALTH_PER_MIN   = 6
 //
-// Default TRAFFIC_DURATION: 30m. The compose service traffic-generator
-// uses this script as its entrypoint.
+// Default TRAFFIC_DURATION: 30m.
 
 import { BASE_URL } from "./lib/auth.js";
 import {
@@ -89,9 +87,9 @@ addScenario(scenarios, "register", "REGISTER_PER_MIN", 2, "register");
 addScenario(scenarios, "health", "HEALTH_PER_MIN", 6, "health");
 
 if (Object.keys(scenarios).length === 0) {
-  // Belt-and-suspenders: if the operator zeroed every rate the run should
-  // still tick a health probe so the compose service doesn't immediately
-  // exit and confuse `docker compose ps`.
+  // If the operator zeroed every rate, register a 1/min health probe so
+  // k6 has at least one scenario to run (k6 exits immediately with no
+  // scenarios) and the dashboards still see a heartbeat.
   scenarios.health = {
     executor: "constant-arrival-rate",
     rate: 1,

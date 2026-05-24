@@ -1,17 +1,15 @@
-// Phase 7 — stress / breakpoint test.
+// Stress / breakpoint test.
 //
 // Ramps the six AMS critical flows from a light baseline up past the point
 // the stack degrades, so the operator can read the breakpoint (the arrival
 // rate at which p(95) > 3 s or error rate > 1%).
 //
-// IMPORTANT: per Phase 7 plan, the rate limiter must be disabled while this
-// runs, or we measure slowapi rather than the app. Set
-// `RATE_LIMIT_ENABLED=false` on the backend service before invoking:
+// IMPORTANT: the rate limiter must be disabled while this runs, or we
+// measure slowapi rather than the app. Bring the backend up with the
+// override before invoking k6:
 //
-//   docker compose -f docker-compose.yml -f docker-compose.observability.yml \
-//     run --rm -e RATE_LIMIT_ENABLED=false backend ...
-//
-// (The Makefile target `make load-stress` documents the same step.)
+//   RATE_LIMIT_ENABLED=false docker compose up -d backend
+//   k6 run load/k6-stress.js
 
 import { BASE_URL } from "./lib/auth.js";
 import {

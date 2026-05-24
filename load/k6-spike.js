@@ -1,12 +1,11 @@
-// Phase 7 — spike test.
+// Spike test.
 //
 // Sudden surge to validate the stack absorbs a burst — the kind of pattern
 // the dashboards' "saturation" panel is there to surface. Ramp 5 → 50 VUs
 // in 20 s, hold 40 s, drain.
 //
-// Mirrors ../2025-05-observability-demo/load/k6-spike.js shape; AMS flow
-// set focuses on the search path because that's the one the user-facing
-// app routes the most reads through.
+// Flow set focuses on the search path because that's the one the
+// user-facing app routes the most reads through.
 
 import { sleep } from "k6";
 

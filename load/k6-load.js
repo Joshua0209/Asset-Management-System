@@ -1,7 +1,6 @@
-// Phase 7 — main load test.
+// Main load test.
 //
-// Constant-arrival-rate scenarios for the six AMS critical flows, weighted
-// per docs/plans/observability-implementation-plan.md § Phase 7:
+// Constant-arrival-rate scenarios for the six AMS critical flows, weighted:
 //
 //   search    40%   GET /api/v1/assets
 //   login     20%   POST /api/v1/auth/login (anonymous, exercises bcrypt + limiter)
@@ -13,11 +12,11 @@
 // Default total arrival rate: 60 req/min (configurable via K6_TOTAL_RPM).
 // Default duration: 10 min.
 //
-// Thresholds: p(95) < 3000 ms on requests we expect to succeed,
-// http_req_failed < 0.01 on the same. The submit/approve/complete flows
-// carry a known >0% "expected 409" rate at high arrival rates, so we tag
-// requests with `expected_response: true` only on the read paths; the writer
-// paths report status via `check()` and contribute to a softer SLO.
+// Thresholds: p(95) < 3000 ms and http_req_failed < 0.01 per scenario.
+// The writer scenarios (submit/approve/complete) carry a known >0% "expected
+// 409" rate at high arrival rates — those 409s are explicit ``check()``s in
+// the flow rather than http_req_failed contributors, so the threshold above
+// stays meaningful as a 5xx-only SLO.
 
 import { BASE_URL } from "./lib/auth.js";
 import {
