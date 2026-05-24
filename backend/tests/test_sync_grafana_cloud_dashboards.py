@@ -439,3 +439,54 @@ def test_default_dashboards_dir_is_anchored_on_file(
     assert str(sync_module.DEFAULT_DASHBOARDS_DIR).endswith(str(expected_suffix))
     # Must be absolute (would be relative if anchored on CWD).
     assert sync_module.DEFAULT_DASHBOARDS_DIR.is_absolute()
+
+
+def test_no_redirect_handler_blocks_real_3xx_on_post(
+    tmp_path: Path,
+) -> None:
+    """Integration test: a real HTTP server returning 302 on POST must
+    surface as HTTPError, NOT be silently followed.
+
+    The unit-level test for ``_NoRedirectHandler`` mocks ``opener.open``
+    and asserts the right exception type. That proves the dispatch
+    *given* a 3xx, but it doesn't prove that urllib's HTTP path
+    actually invokes ``_NoRedirectHandler.http_error_302`` for a real
+    response. This test stands up a stdlib ``http.server.HTTPServer``
+    that replies 302 to every POST, then asks ``post_dashboard`` to
+    publish against it — the only thing that can stop urllib from
+    silently following the redirect is ``_NoRedirectHandler``. A
+    regression that removed the handler would fail here even though
+    the unit test still passed.
+    """
+    import http.server
+    import threading
+
+    class RedirectingHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            self.send_response(302)
+            self.send_header("Location", "/auth/login")
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            # Silence the default per-request stderr noise.
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), RedirectingHandler)
+    host, port = server.server_address[:2]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status = sync_module.post_dashboard(
+            f"http://{host}:{port}",
+            "fake-api-key",
+            sync_module.build_payload({"uid": "ams-test", "title": "Test"}),
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    # The real 302 from the stdlib server must propagate as the
+    # response code, NOT be silently followed to a 404 / 200 / etc.
+    assert status == 302, status
+

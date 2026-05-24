@@ -511,6 +511,51 @@ def test_structlog_json_renderer_no_trace_id_when_no_span() -> None:
     assert "span_id" not in out
 
 
+def test_structlog_processor_warns_only_once_on_repeated_get_span_failures(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``_TRACE_CONTEXT_WARNED`` must silence subsequent failures.
+
+    If the active-span lookup raises one of the narrowed exceptions
+    (AttributeError, ImportError, RuntimeError), the processor logs
+    a single warning naming the first failure and then stays silent
+    for all subsequent calls in the same process. Without this guard
+    a broken install would spam the request log on every log call.
+
+    Drives ``_get_current_span`` to raise ``RuntimeError`` three
+    times in a row and asserts exactly one "structlog trace_id
+    stamping disabled" warning landed.
+    """
+    from app.core import observability as obs
+
+    # The autouse fixture resets _TRACE_CONTEXT_WARNED to False
+    # between tests; the assertion below relies on that.
+    assert obs._TRACE_CONTEXT_WARNED is False
+
+    def _broken_get_span() -> Any:
+        raise RuntimeError("simulated SDK drift")
+
+    with caplog.at_level(logging.WARNING, logger="app.core.observability"):
+        for _ in range(3):
+            out = obs._structlog_processor_trace_context(
+                None,
+                "info",
+                {"event": "test"},
+                _get_current_span=_broken_get_span,
+            )
+            assert "trace_id" not in out
+
+    # Exactly one warning, even across three failing calls.
+    matching = [
+        rec for rec in caplog.records
+        if "structlog trace_id stamping disabled" in rec.getMessage()
+    ]
+    assert len(matching) == 1, [rec.getMessage() for rec in matching]
+    assert "simulated SDK drift" in matching[0].getMessage()
+    # And the sentinel is now True so a future call stays silent.
+    assert obs._TRACE_CONTEXT_WARNED is True
+
+
 # ---------------------------------------------------------------------------
 # setup_metrics_exporter / setup_log_exporter / maybe_setup_profiling
 # ---------------------------------------------------------------------------
