@@ -949,6 +949,7 @@ class AccessLogMiddleware:
         # middleware will end up returning a 500 to the client in that
         # case, so the value matches what the user saw.
         status_code = 500
+        exc_info: BaseException | None = None
 
         async def send_wrapper(message: Message) -> None:
             nonlocal status_code
@@ -958,6 +959,14 @@ class AccessLogMiddleware:
 
         try:
             await self.app(scope, receive, send_wrapper)
+        except BaseException as exc:
+            # Capture the exception so the access log can carry the failure
+            # type / message even when ServerErrorMiddleware (or whatever
+            # consumes the 500 envelope) does not emit a structured event of
+            # its own. Re-raise so the outer ASGI layer's behavior is
+            # unchanged — OTel still records the exception on its span.
+            exc_info = exc
+            raise
         finally:
             duration_ms = (time.perf_counter() - start) * 1000.0
             # ``scope["client"]`` is ``tuple[str, int] | None`` per the
@@ -971,15 +980,23 @@ class AccessLogMiddleware:
             # the request did not match a route (404 before routing).
             route = scope.get("route")
             route_template = getattr(route, "path", scope.get("path", ""))
-            self._logger.info(
-                "request",
-                method=scope.get("method", ""),
-                path=scope.get("path", ""),
-                route=route_template,
-                status_code=status_code,
-                duration_ms=round(duration_ms, 2),
-                client_ip=client_host,
-            )
+            fields: dict[str, Any] = {
+                "method": scope.get("method", ""),
+                "path": scope.get("path", ""),
+                "route": route_template,
+                "status_code": status_code,
+                "duration_ms": round(duration_ms, 2),
+                "client_ip": client_host,
+            }
+            if exc_info is not None:
+                # Pivotable error fields so a Loki query can distinguish a
+                # real ServerErrorMiddleware 500 envelope from an exception
+                # that escaped above it.
+                fields["error"] = type(exc_info).__name__
+                fields["error_msg"] = str(exc_info)
+                self._logger.error("request", **fields)
+            else:
+                self._logger.info("request", **fields)
 
 
 def setup_access_log(app: FastAPI) -> None:

@@ -2058,6 +2058,36 @@ def test_access_log_defaults_status_to_500_when_no_response_start() -> None:
     assert entry["method"] == "POST"
     assert entry["path"] == "/api/v1/something"
     assert isinstance(entry["duration_ms"], float)
+    # Exception fields must be present so Loki queries can distinguish a
+    # real ServerErrorMiddleware 500 envelope from an exception that
+    # escaped above it.
+    assert entry["error"] == "RuntimeError", entry
+    assert "simulated catastrophic failure" in entry["error_msg"], entry
+    assert entry["log_level"] == "error", entry
+
+
+def test_access_log_omits_error_fields_on_success(client: TestClient) -> None:
+    """Pin: when the inner app completes normally, the access log entry
+    contains NO ``error`` / ``error_msg`` keys.
+
+    A dashboard query like ``| error != ""`` only works if the success
+    path leaves those keys absent (vs. emitting empty strings, which
+    would match the filter and flood the panel).
+    """
+    with structlog.testing.capture_logs() as captured:
+        response = client.get(
+            "/api/v1/assets/mine", headers={"Authorization": "Bearer bogus"}
+        )
+    # 401 from bearer reject is fine — the success path here is the
+    # MIDDLEWARE completing normally (no escaped exception), not the
+    # endpoint returning 2xx.
+    assert response.status_code in (401, 403, 422), response.text
+    access = [e for e in captured if e.get("event") == "request"]
+    assert len(access) >= 1, captured
+    entry = access[0]
+    assert "error" not in entry, entry
+    assert "error_msg" not in entry, entry
+    assert entry["log_level"] == "info", entry
 
 
 def test_access_log_runs_inside_otel_layer() -> None:
