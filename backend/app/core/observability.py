@@ -46,19 +46,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Module-level flags / caches. Reset in tests via monkeypatch if needed.
+_TRACE_CONTEXT_WARNED: bool = False
+_METRICS_EXPORTER_INSTALLED: bool = False
+_LOG_EXPORTER_INSTALLED: bool = False
+_TRACING_INSTALLED: bool = False
+_RESOURCE_CACHE: dict[tuple[str, str, str, str], Any] = {}
+
 
 # ---------------------------------------------------------------------------
 # Module-level counters (OTel native)
 #
 # Counters are created at import time so routes can do
 # ``from app.core.observability import OPTIMISTIC_CONFLICTS`` without
-# guarding on a setup-was-called check; missing instrumentation becomes a
-# startup error, not a silent miss at runtime.
+# guarding on a setup-was-called check.
 #
 # Before ``setup_metrics_exporter`` runs, ``metrics.get_meter`` returns the
-# default no-op meter, so the counters silently no-op until a real
-# MeterProvider is installed. This matches the prometheus_client default
-# registry behaviour the module used previously.
+# global ``ProxyMeter``; its ``create_counter`` returns a ``ProxyCounter``
+# that lazily rebinds to whichever MeterProvider is installed later. Every
+# ``.add(...)`` issued before installation silently no-ops, and every
+# ``.add(...)`` after installation flows into the real exporter. This
+# matches the prometheus_client default-registry behaviour the module used
+# previously — when telemetry is off (``OTEL_ENABLED=false`` is the dev
+# default), increments are invisible by design.
 # ---------------------------------------------------------------------------
 
 _meter = metrics.get_meter("ams.backend")
@@ -155,7 +165,19 @@ def _structlog_processor_trace_context(
     """
     try:
         span = _get_current_span()
-    except Exception:  # noqa: BLE001 — never let a log call raise
+    except (AttributeError, ImportError, RuntimeError) as exc:
+        # Narrow on the realistic failure modes (OTel API drift,
+        # uninstalled SDK, recursive logging during bootstrap). Surface
+        # the first failure once so a misconfig doesn't hide forever;
+        # subsequent calls stay silent so a broken install doesn't spam
+        # the log on every request.
+        global _TRACE_CONTEXT_WARNED
+        if not _TRACE_CONTEXT_WARNED:
+            _TRACE_CONTEXT_WARNED = True
+            logger.warning(
+                "structlog trace_id stamping disabled — first failure: %s",
+                exc,
+            )
         return event_dict
     ctx = getattr(span, "get_span_context", lambda: None)()
     if ctx is None or not getattr(ctx, "is_valid", False):
@@ -176,17 +198,35 @@ def _build_resource(settings: Settings) -> Any:
     ``service.instance.id``, ``service.version``, and ``environment``
     attributes — that's what makes ``$environment=production`` work as a
     single template variable across all six Grafana Cloud dashboards.
+
+    Cached by the resource-identifying tuple so the OTel SDK's host /
+    process auto-detection doesn't run four times at boot (one per
+    setup_* call site). Cache key is bounded by the number of distinct
+    Resource configurations the process sees — 1 in prod, a handful
+    across test runs.
     """
+    key = (
+        "ams-backend",
+        settings.replica_id,
+        settings.app_version,
+        settings.environment,
+    )
+    cached = _RESOURCE_CACHE.get(key)
+    if cached is not None:
+        return cached
+
     from opentelemetry.sdk.resources import Resource
 
-    return Resource.create(
+    resource = Resource.create(
         {
-            "service.name": "ams-backend",
-            "service.instance.id": settings.replica_id,
-            "service.version": settings.app_version,
-            "environment": settings.environment,
+            "service.name": key[0],
+            "service.instance.id": key[1],
+            "service.version": key[2],
+            "environment": key[3],
         }
     )
+    _RESOURCE_CACHE[key] = resource
+    return resource
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +304,11 @@ def setup_log_exporter(settings: Settings) -> None:
     dev stays quiet and the dev image avoids the OTLP exporter's
     background threads.
 
+    Idempotent: tracked via ``_LOG_EXPORTER_INSTALLED`` so a second call
+    inside the same process (pytest re-imports, dev reload) doesn't stack
+    a second ``LoggingHandler`` on the root logger or leak the previous
+    BatchLogRecordProcessor's background thread.
+
     Ordering: must run AFTER ``setup_logging`` (so the OTel
     ``LoggingHandler`` is added on top of the structlog ProcessorFormatter
     handler, not displaced by it) and BEFORE any further log call from
@@ -275,6 +320,11 @@ def setup_log_exporter(settings: Settings) -> None:
     Loki → Tempo "view trace" jump in Explore.
     """
     if not settings.otel_enabled:
+        return
+
+    global _LOG_EXPORTER_INSTALLED
+    if _LOG_EXPORTER_INSTALLED:
+        logger.debug("OTel log exporter already installed; skipping re-install.")
         return
 
     from opentelemetry._logs import set_logger_provider
@@ -292,6 +342,7 @@ def setup_log_exporter(settings: Settings) -> None:
 
     handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
     logging.getLogger().addHandler(handler)
+    _LOG_EXPORTER_INSTALLED = True
 
 
 def setup_metrics(app: FastAPI, settings: Settings) -> None:
@@ -320,9 +371,10 @@ def setup_metrics_exporter(settings: Settings) -> None:
     """Install the OTel MeterProvider that pushes metrics to Grafana Cloud.
 
     No-op when ``settings.otel_enabled`` is False. Idempotent across pytest
-    re-imports because we only install when no real provider has been
-    configured yet — repeated calls would otherwise leak background
-    exporter threads.
+    re-imports — tracked via ``_METRICS_EXPORTER_INSTALLED`` because
+    ``metrics.set_meter_provider`` is process-wide set-once and silently
+    no-ops the second call; without this guard, a re-import would leak
+    the previous ``PeriodicExportingMetricReader``'s background thread.
 
     Views rename the OTel HTTP server instruments to the Prom-style names
     the existing Grafana dashboards already query. The SDK's internal
@@ -330,6 +382,11 @@ def setup_metrics_exporter(settings: Settings) -> None:
     renamed.
     """
     if not settings.otel_enabled:
+        return
+
+    global _METRICS_EXPORTER_INSTALLED
+    if _METRICS_EXPORTER_INSTALLED:
+        logger.debug("MeterProvider already installed; skipping re-install.")
         return
 
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -363,6 +420,7 @@ def setup_metrics_exporter(settings: Settings) -> None:
         views=views,
     )
     metrics.set_meter_provider(provider)
+    _METRICS_EXPORTER_INSTALLED = True
 
 
 def setup_tracing(app: FastAPI, settings: Settings) -> None:
@@ -372,8 +430,17 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     free of the OTLP exporter's background threads and the SQLAlchemy
     instrumentor's per-query overhead. The dev test suite runs with the
     flag off so SQLite event hooks don't trip.
+
+    Idempotent: tracked via ``_TRACING_INSTALLED`` because
+    ``trace.set_tracer_provider`` is process-wide set-once and the
+    SQLAlchemy instrumentor double-instruments engines on a second call.
     """
     if not settings.otel_enabled:
+        return
+
+    global _TRACING_INSTALLED
+    if _TRACING_INSTALLED:
+        logger.debug("TracerProvider already installed; skipping re-install.")
         return
 
     from opentelemetry import trace as otel_trace
@@ -398,6 +465,7 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     from app.db.session import engine
 
     SQLAlchemyInstrumentor().instrument(engine=engine)
+    _TRACING_INSTALLED = True
 
 
 def maybe_setup_profiling(settings: Settings) -> None:
@@ -405,7 +473,9 @@ def maybe_setup_profiling(settings: Settings) -> None:
 
     Wrapped in try/except so the dev image (which doesn't ship the
     optional ``pyroscope-io`` extra) only logs a warning instead of
-    crashing on import.
+    crashing on import. Configure failures (bad token, unreachable
+    server) are also caught and logged so a profiling misconfig never
+    crashes the request-serving path.
 
     Enabled in production as of Phase 3 of the prod migration plan
     (reverses the original W6 "off in prod" locked decision). The
@@ -414,6 +484,11 @@ def maybe_setup_profiling(settings: Settings) -> None:
     the worker post-fork. If samples don't appear in production within
     60s of first request, the fallback is the ``gunicorn.conf.py``
     ``post_fork`` hook documented in the Phase 4 plan.
+
+    TODO: before relaxing ``WEB_CONCURRENCY=1`` to enable multi-worker
+    gunicorn, add the ``post_fork`` hook (see Phase 4 migration plan
+    §"Pyroscope post-fork"). Without it, the sampling thread dies in
+    every worker after fork and profiling silently goes dark.
     """
     if not settings.pyroscope_enabled:
         return
@@ -425,33 +500,46 @@ def maybe_setup_profiling(settings: Settings) -> None:
             "Install the `prod` extra to enable continuous profiling."
         )
         return
-    pyroscope.configure(
-        application_name=f"ams-backend.{settings.replica_id}",
-        server_address=settings.pyroscope_server,
-        basic_auth_username=settings.pyroscope_basic_auth_username,
-        auth_token=settings.pyroscope_auth_token.get_secret_value(),
-    )
+    try:
+        pyroscope.configure(
+            application_name=f"ams-backend.{settings.replica_id}",
+            server_address=settings.pyroscope_server,
+            basic_auth_username=settings.pyroscope_basic_auth_username,
+            auth_token=settings.pyroscope_auth_token.get_secret_value(),
+        )
+    except Exception as exc:  # pyroscope-io raises various RuntimeError shapes
+        logger.warning(
+            "Pyroscope configure failed; continuous profiling disabled: %s",
+            exc,
+        )
 
 
 def verify_observability_exports(settings: Settings) -> None:
     """Smoke-test the OTLP exporters at startup; fail-loud on failure.
 
     Runs only when ``settings.otel_enabled`` is true and
-    ``settings.environment != "local"``. Calls ``force_flush`` on every
-    installed provider (metrics, traces, logs) with a 5-second timeout;
-    any ``False`` return raises ``RuntimeError`` so the ECS task crashes
-    before the rolling-deploy gate marks it healthy.
+    ``settings.environment != "local"``. Emits one synthetic span,
+    metric, and log record per signal first (so the BatchProcessors and
+    PeriodicExportingMetricReader actually have data to push to Grafana
+    Cloud), then calls ``force_flush(5_000)`` on every installed
+    provider. Any ``False`` return raises ``RuntimeError`` so the ECS
+    task crashes before the rolling-deploy gate marks it healthy.
 
-    Closes the silent-export-failure gap: previously a misconfigured
-    secret (wrong API key, unreachable endpoint) would let the OTLP
-    BatchProcessor swallow every export error on its background thread,
-    shipping zero telemetry while the application reported healthy to
-    the ALB. With this probe, an ECS deploy with bad creds rolls back
-    automatically.
+    Why the synthetic emit matters: ``force_flush`` on an empty buffer
+    returns ``True`` trivially — the SDK has nothing to send, so a
+    completely wrong API key still produces a "passing" probe. The
+    real export error surfaces only on the first actual push. Emitting
+    first means a wrong API key produces a real export attempt, which
+    fails, which makes ``force_flush`` return ``False``, which crashes
+    the task. This is what closes the silent-export-failure gap.
+
+    The synthetic signals carry attribute ``ams.probe="startup"`` so
+    they're trivially filterable in Grafana Cloud (e.g. exclude from
+    dashboards with ``{ams.probe!="startup"}``).
 
     Local-with-otel-on is exempt so a developer pointing at a
     self-hosted Tempo without strict creds keeps an interactive boot.
-    Idempotent — safe to call from main.py after ``setup_*_exporter``.
+    Safe to call from main.py after ``setup_*_exporter``.
     """
     if not settings.otel_enabled or settings.environment == "local":
         return
@@ -462,6 +550,36 @@ def verify_observability_exports(settings: Settings) -> None:
     from opentelemetry import trace as otel_trace
     from opentelemetry._logs import get_logger_provider
 
+    # --- Synthetic emit: one signal of each kind. ----------------------
+    probe_attrs = {"ams.probe": "startup"}
+
+    # Metric: bump a counter created off the same ProxyMeter as the
+    # call-site counters so this exercises the same resolution path.
+    probe_counter = _meter.create_counter(
+        "ams_observability_probe_total",
+        description=(
+            "Synthetic increment from verify_observability_exports. "
+            "Always 1 per process start when OTEL is enabled in non-local "
+            "environments. Filter out of dashboards with ams.probe!=startup."
+        ),
+    )
+    probe_counter.add(1, attributes=probe_attrs)
+
+    # Trace: open and close one span. BatchSpanProcessor enqueues on
+    # ``on_end``, so the span lands in the buffer before force_flush.
+    tracer = otel_trace.get_tracer("ams.backend.probe")
+    with tracer.start_as_current_span("observability_probe") as span:
+        for key, value in probe_attrs.items():
+            span.set_attribute(key, value)
+
+    # Log: emit through the stdlib bridge so the OTel LoggingHandler
+    # installed by setup_log_exporter picks it up.
+    logger.info(
+        "Observability startup probe — synthetic signal for OTLP export check.",
+        extra=probe_attrs,
+    )
+
+    # --- Flush and fail loudly if any signal failed to push. -----------
     failures: list[str] = []
 
     # `getattr(..., None)` because the no-op providers do not implement

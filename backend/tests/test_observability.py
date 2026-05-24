@@ -94,6 +94,56 @@ def metric_reader() -> Iterable[InMemoryMetricReader]:
         _PROXY_METER_PROVIDER.on_set_meter_provider(otel_metrics.NoOpMeterProvider())
 
 
+@pytest.fixture(autouse=True)
+def _reset_observability_module_state() -> Iterable[None]:
+    """Reset observability.py + OTel global state per test.
+
+    Two layers of state get cleared:
+
+    1. **observability.py module state.** The setup_log_exporter /
+       setup_metrics_exporter / setup_tracing installers flip one-shot
+       module flags so a second call inside the same process is a no-op
+       (production runs each exactly once; without the guard a re-import
+       would leak background exporter threads). Tests need to re-enter
+       the install path each time, so the flags reset around every test.
+       Also clears ``_TRACE_CONTEXT_WARNED`` so a per-test span misconfig
+       surfaces fresh, and ``_RESOURCE_CACHE`` so each test sees a Resource
+       computed against its own monkeypatched settings.
+
+    2. **OTel global tracer/logger set-once.** ``trace.set_tracer_provider``
+       and ``_logs.set_logger_provider`` are process-wide set-once via an
+       internal ``Once`` flag. The first test that calls them succeeds;
+       subsequent tests get a warning and the install no-ops, so their
+       spans/logs end up routed to the *prior* test's provider. Resetting
+       the ``_done`` flag (and the ``_TRACER_PROVIDER`` / ``_LOGGER_PROVIDER``
+       globals) per test lets each test install its own in-memory
+       exporters cleanly. Reaching into private attributes is the only
+       path — there is no public reset API.
+    """
+    from opentelemetry import _logs as otel_logs_api
+    from opentelemetry import trace as otel_trace
+
+    from app.core import observability as obs
+
+    def _reset() -> None:
+        obs._TRACE_CONTEXT_WARNED = False
+        obs._METRICS_EXPORTER_INSTALLED = False
+        obs._LOG_EXPORTER_INSTALLED = False
+        obs._TRACING_INSTALLED = False
+        obs._RESOURCE_CACHE.clear()
+        # OTel internals: clear the Once flag + the global slot so the
+        # next set_tracer_provider / set_logger_provider call takes
+        # effect instead of warning + no-op.
+        otel_trace._TRACER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
+        otel_trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
+        otel_logs_api._internal._LOGGER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
+        otel_logs_api._internal._LOGGER_PROVIDER = None  # type: ignore[attr-defined]
+
+    _reset()
+    yield
+    _reset()
+
+
 def _counter_value(
     reader: InMemoryMetricReader, name: str, attrs: dict[str, str]
 ) -> float:
@@ -923,3 +973,290 @@ def test_verify_observability_exports_passes_on_successful_flush(
     # Must not raise.
     obs.verify_observability_exports(settings)
     fake_provider.force_flush.assert_called_once_with(5_000)
+def test_proxy_counter_increments_after_late_provider_install() -> None:
+    """Counters created at import time must record into a MeterProvider
+    installed AFTER the create_counter call.
+    Load-bearing invariant: FSM_TRANSITIONS and OPTIMISTIC_CONFLICTS are
+    instantiated at module import time, well before ``setup_metrics_exporter``
+    runs in ``app/main.py``. OTel's ProxyCounter is supposed to rebind on
+    the next set_meter_provider call. The fixture used by other tests in
+    this file rebinds BEFORE incrementing — so it doesn't directly prove
+    the cross-swap. This test does:
+    1. Increment FSM_TRANSITIONS while the proxy still points at no-op.
+    2. Install a real InMemoryMetricReader-backed MeterProvider.
+    3. Increment again with a different attribute set.
+    4. Assert pre-install increment is invisible to the new reader
+       (no-op silently dropped); post-install increment is recorded.
+    A regression that moved counter creation into ``setup_metrics_exporter``
+    or that broke the proxy rebind path would fail step 4.
+    """
+    from opentelemetry.metrics._internal import _PROXY_METER_PROVIDER
+
+    from app.core import observability as obs
+    pre_attrs = {"from": "PROBE_PRE", "to": "PROBE_PRE", "asset_kind": "asset"}
+    post_attrs = {
+        "from": "PENDING_REVIEW",
+        "to": "UNDER_REPAIR",
+        "asset_kind": "repair_request",
+    }
+    obs.FSM_TRANSITIONS.add(1, attributes=pre_attrs)
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    _PROXY_METER_PROVIDER.on_set_meter_provider(provider)
+    try:
+        obs.FSM_TRANSITIONS.add(1, attributes=post_attrs)
+        pre_value = _counter_value(
+            reader, "ams_fsm_transitions_total", pre_attrs
+        )
+        post_value = _counter_value(
+            reader, "ams_fsm_transitions_total", post_attrs
+        )
+        assert pre_value == 0.0, (
+            "pre-install increment must not appear in the post-install reader"
+        )
+        assert post_value == 1.0, (
+            f"post-install increment must be recorded: got {post_value}"
+        )
+    finally:
+        _PROXY_METER_PROVIDER.on_set_meter_provider(otel_metrics.NoOpMeterProvider())
+def test_setup_log_exporter_bridges_trace_id_via_structlog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A structlog log call inside a span must reach the OTel LogRecord
+    with the active trace_id stamped on it.
+    The existing ``test_setup_log_exporter_bridges_trace_id_onto_log_records``
+    drives the bridge via ``logging.getLogger(...).info(...)`` — that proves
+    ``stdlib -> OTel``. This test drives it via ``structlog.get_logger(...)
+    .info(...)``, which exercises the full chain ``structlog ->
+    ProcessorFormatter -> stdlib -> OTel LoggingHandler`` that's actually
+    in use everywhere in the app. A regression in any of those seams (e.g.
+    structlog's processor chain dropping the trace context, or the
+    ProcessorFormatter swallowing the underlying LogRecord) fails here but
+    not in the stdlib-only test.
+    """
+    import structlog
+    from opentelemetry import _logs as otel_logs_api
+    from opentelemetry import trace as otel_trace
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import (
+        InMemoryLogExporter,
+        SimpleLogRecordProcessor,
+    )
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.core import observability as obs
+    settings = _settings_with_otel(monkeypatch)
+    obs.setup_logging(settings)
+    log_exp = InMemoryLogExporter()
+    logger_provider = LoggerProvider()
+    logger_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exp))
+    otel_logs_api.set_logger_provider(logger_provider)
+    handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+    span_exp = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(span_exp))
+    otel_trace.set_tracer_provider(tracer_provider)
+    tracer = otel_trace.get_tracer("test")
+    saved_handlers = list(logging.getLogger().handlers)
+    logging.getLogger().addHandler(handler)
+    try:
+        with tracer.start_as_current_span("structlog-span") as span:
+            expected_trace_id = span.get_span_context().trace_id
+            structlog.get_logger("app.test.structlog.bridge").info(
+                "hello-from-structlog"
+            )
+        logger_provider.force_flush()
+        records = log_exp.get_finished_logs()
+        matched = [
+            r
+            for r in records
+            if r.log_record.body is not None
+            and "hello-from-structlog" in str(r.log_record.body)
+        ]
+        assert matched, (
+            "no log records flowed structlog -> OTel: "
+            f"captured bodies={[str(r.log_record.body) for r in records]}"
+        )
+        assert matched[0].log_record.trace_id == expected_trace_id, (
+            f"trace_id mismatch: record={matched[0].log_record.trace_id:032x} "
+            f"expected={expected_trace_id:032x}"
+        )
+    finally:
+        logging.getLogger().handlers = saved_handlers
+def test_maybe_setup_profiling_is_noop_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PYROSCOPE_ENABLED=false (the default) -> no import, no configure call.
+    The Pyroscope-in-prod reversal is one half of the contract; the other
+    half is that the flag still cleanly turns it off. Without this test,
+    a regression that removed the early return at the top of
+    ``maybe_setup_profiling`` would pass CI silently.
+    """
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+    fake_pyroscope = types.ModuleType("pyroscope")
+    fake_pyroscope.configure = MagicMock()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pyroscope", fake_pyroscope)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.delenv("PYROSCOPE_ENABLED", raising=False)
+    settings = Settings()  # type: ignore[call-arg]
+    obs.maybe_setup_profiling(settings)
+    fake_pyroscope.configure.assert_not_called()  # type: ignore[attr-defined]
+def test_maybe_setup_profiling_logs_warning_on_missing_pyroscope(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """PYROSCOPE_ENABLED=true + pyroscope-io not installed -> warn, do not crash.
+    The dev image deliberately omits the ``prod`` extra to keep the local
+    venv slim. A developer flipping PYROSCOPE_ENABLED=true without
+    installing pyroscope-io must still boot, with a clear warning in the
+    logs. Setting ``sys.modules['pyroscope'] = None`` is the documented
+    way to make ``import pyroscope`` raise ImportError.
+    """
+    import sys
+
+    from app.core import observability as obs
+    monkeypatch.setitem(sys.modules, "pyroscope", None)
+    settings = _settings_with_otel(
+        monkeypatch,
+        PYROSCOPE_ENABLED="true",
+        PYROSCOPE_SERVER="https://profiles.example",
+        PYROSCOPE_AUTH_TOKEN="tok-xyz",
+        PYROSCOPE_BASIC_AUTH_USERNAME="123456",
+        ENVIRONMENT="production",
+    )
+    with caplog.at_level(logging.WARNING, logger="app.core.observability"):
+        obs.maybe_setup_profiling(settings)
+    assert any(
+        "pyroscope-io is not installed" in rec.message for rec in caplog.records
+    ), [rec.message for rec in caplog.records]
+def test_maybe_setup_profiling_logs_warning_on_configure_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """pyroscope.configure raising must be logged, not propagated.
+    Pyroscope misconfig (bad token, unreachable profiles endpoint, dep
+    version mismatch) is not worth crashing the app over. The fix wraps
+    configure() in try/except; this test holds the line.
+    """
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+    fake_pyroscope = types.ModuleType("pyroscope")
+    fake_pyroscope.configure = MagicMock(  # type: ignore[attr-defined]
+        side_effect=RuntimeError("auth: invalid token")
+    )
+    monkeypatch.setitem(sys.modules, "pyroscope", fake_pyroscope)
+    settings = _settings_with_otel(
+        monkeypatch,
+        PYROSCOPE_ENABLED="true",
+        PYROSCOPE_SERVER="https://profiles.example",
+        PYROSCOPE_AUTH_TOKEN="tok-bad",
+        PYROSCOPE_BASIC_AUTH_USERNAME="123456",
+        ENVIRONMENT="production",
+    )
+    with caplog.at_level(logging.WARNING, logger="app.core.observability"):
+        obs.maybe_setup_profiling(settings)
+    assert any(
+        "Pyroscope configure failed" in rec.message for rec in caplog.records
+    ), [rec.message for rec in caplog.records]
+def test_verify_observability_exports_emits_synthetic_signals_before_flush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe emits one synthetic span/metric/log BEFORE flushing.
+    force_flush on an empty buffer returns True trivially. Without a
+    synthetic emit, the probe gives false confidence: a completely
+    wrong API key would pass the probe and only fail on the first
+    real request's export attempt. The fix emits a synthetic counter
+    increment, span, and log line tagged with ``ams.probe=startup`` so
+    the BatchProcessors and PeriodicExportingMetricReader actually push
+    something during force_flush.
+    This test asserts both synthetic artefacts land where they should.
+    """
+    from opentelemetry import trace as otel_trace
+    from opentelemetry.metrics._internal import _PROXY_METER_PROVIDER
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from app.core import observability as obs
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+    reader = InMemoryMetricReader()
+    meter_provider = MeterProvider(metric_readers=[reader])
+    _PROXY_METER_PROVIDER.on_set_meter_provider(meter_provider)
+    span_exp = InMemorySpanExporter()
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(SimpleSpanProcessor(span_exp))
+    otel_trace.set_tracer_provider(tracer_provider)
+    try:
+        obs.verify_observability_exports(settings)
+    finally:
+        _PROXY_METER_PROVIDER.on_set_meter_provider(otel_metrics.NoOpMeterProvider())
+    probe_value = _counter_value(
+        reader,
+        "ams_observability_probe_total",
+        {"ams.probe": "startup"},
+    )
+    assert probe_value == 1.0, (
+        f"synthetic counter increment missing: got {probe_value}"
+    )
+    spans = span_exp.get_finished_spans()
+    probe_spans = [s for s in spans if s.name == "observability_probe"]
+    assert probe_spans, (
+        f"synthetic span not recorded; saw {[s.name for s in spans]}"
+    )
+    attrs = probe_spans[0].attributes or {}
+    assert attrs.get("ams.probe") == "startup", attrs
+def test_setup_metrics_exporter_is_idempotent_within_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second call to setup_metrics_exporter must NOT install a second
+    PeriodicExportingMetricReader.
+    OTel's ``metrics.set_meter_provider`` is process-wide set-once and
+    silently no-ops a second call — but the per-call build of
+    OTLPMetricExporter + PeriodicExportingMetricReader still happens,
+    leaking a background ticker thread. The fix flips
+    ``_METRICS_EXPORTER_INSTALLED`` to True after the first install so
+    subsequent calls early-return.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from app.core import observability as obs
+    settings = _settings_with_otel(monkeypatch)
+    fake_exporter = MagicMock()
+    fake_exporter.export.return_value = None
+    fake_exporter.shutdown.return_value = None
+    fake_exporter._preferred_temporality = {}
+    fake_exporter._preferred_aggregation = {}
+    set_mp_calls: list[Any] = []
+    def _capture(provider: Any) -> None:
+        set_mp_calls.append(provider)
+        provider.shutdown()
+    with (
+        patch(
+            "opentelemetry.exporter.otlp.proto.grpc.metric_exporter.OTLPMetricExporter",
+            return_value=fake_exporter,
+        ),
+        patch.object(otel_metrics, "set_meter_provider", _capture),
+    ):
+        obs.setup_metrics_exporter(settings)
+        obs.setup_metrics_exporter(settings)
+        obs.setup_metrics_exporter(settings)
+    assert len(set_mp_calls) == 1, (
+        f"setup_metrics_exporter installed the provider {len(set_mp_calls)} "
+        "times; expected 1"
+    )
