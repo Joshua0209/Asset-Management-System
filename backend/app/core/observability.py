@@ -1,24 +1,32 @@
-"""Observability wiring for the FastAPI backend (W6 Phase 1).
+"""Observability wiring for the FastAPI backend (W6 Phase 3, OTLP-native).
 
 This module is the only place observability libraries are imported. Routes
 talk to counters via the module-level singletons; ``app/main.py`` calls the
-``setup_*`` functions in a fixed order (logging → metrics → tracing →
-profiling). Splitting the four concerns into separate functions lets the
-middleware-order regression test pin them down without touching the
+``setup_*`` functions in a fixed order (logging → log_exporter → metrics →
+metrics_exporter → tracing → profiling). Splitting the concerns into
+separate functions lets unit tests pin each piece without touching the
 prod-image hot path.
 
-Locked decisions from ``docs/plans/observability-implementation-plan.md``:
+Locked decisions from ``docs/plans/observability-prod-migration-plan.md``:
 
-* Backend stays single-worker; aggregate at scrape time. Counters live in
-  a per-process Prometheus registry — multi-worker would silently
-  fragment them, same hazard as slowapi's MemoryStorage.
-* ``/metrics`` is mounted but explicitly exempt from the slowapi limiter
-  via ``@limiter.exempt``. Prometheus scrapes the endpoint every 15s by
-  default; a 30-rpm anonymous tier would self-DoS the scrape inside two
-  minutes.
-* OTLP tracing and Pyroscope profiling are *both* opt-in. Lazy import +
-  try/except so a missing extra in the dev image is a logged warning,
-  not a crash.
+* **OTLP-native, single backend.** Traces, metrics, logs, and profiles
+  push direct to Grafana Cloud from both local dev and production ECS.
+  There is no ``/metrics`` route and no Alloy collector. Same exporter
+  config in both environments; only the ``environment`` resource
+  attribute and credentials differ.
+* **Backend stays single-worker.** The ``WEB_CONCURRENCY=1`` invariant in
+  ``app/main.py`` still holds — slowapi's MemoryStorage needs it, and so
+  does Pyroscope's sampling thread (it would die in each worker fork
+  otherwise).
+* **All exporters are opt-in.** Lazy import + early return on flag-off so
+  a credential-less developer boot is silent. ``OTEL_ENABLED=false`` is
+  the dev default.
+
+Metric naming: OTel instruments are created with dot-style names
+(``http.server.duration``); the metrics exporter applies ``View`` rules
+to publish them as Prom-style underscored names
+(``http_server_duration_seconds``) so dashboard queries written against
+the old prometheus-fastapi-instrumentator output keep working unchanged.
 """
 
 from __future__ import annotations
@@ -30,8 +38,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
-from prometheus_client import Counter
-from prometheus_fastapi_instrumentator import Instrumentator
+from opentelemetry import metrics
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -42,23 +49,32 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Module-level counters
+# Module-level counters (OTel native)
 #
-# Counters are created at import time so that:
+# Counters are created at import time so routes can do
+# ``from app.core.observability import OPTIMISTIC_CONFLICTS`` without
+# guarding on a setup-was-called check; missing instrumentation becomes a
+# startup error, not a silent miss at runtime.
 #
-#   1. Routes can `from app.core.observability import OPTIMISTIC_CONFLICTS`
-#      without needing a setup-was-called check; missing instrumentation
-#      becomes a startup error, not a silent miss at runtime.
-#   2. The Prometheus default registry holds a single instance per label
-#      tuple even if `setup_metrics` is invoked multiple times by tests.
+# Before ``setup_metrics_exporter`` runs, ``metrics.get_meter`` returns the
+# default no-op meter, so the counters silently no-op until a real
+# MeterProvider is installed. This matches the prometheus_client default
+# registry behaviour the module used previously.
 # ---------------------------------------------------------------------------
 
-FSM_TRANSITIONS = Counter(
+_meter = metrics.get_meter("ams.backend")
+
+FSM_TRANSITIONS = _meter.create_counter(
     "ams_fsm_transitions_total",
-    "Successful asset / repair-request FSM transitions.",
-    labelnames=("from", "to", "asset_kind"),
+    description=(
+        "Successful asset / repair-request FSM transitions. "
+        "Attributes: from, to (enum names), asset_kind ('asset' vs "
+        "'repair_request')."
+    ),
 )
-"""Labelled counter for FSM state changes.
+"""OTel counter for FSM state changes.
+
+Call sites attach attributes per ``.add(1, attributes={...})``:
 
 * ``from`` / ``to``: enum names (``PENDING_REVIEW``, ``UNDER_REPAIR``, …).
 * ``asset_kind``: ``asset`` for direct asset transitions, ``repair_request``
@@ -66,23 +82,19 @@ FSM_TRANSITIONS = Counter(
   the two streams without a regex on the metric name.
 """
 
-OPTIMISTIC_CONFLICTS = Counter(
+OPTIMISTIC_CONFLICTS = _meter.create_counter(
     "ams_optimistic_conflicts_total",
-    "409 conflicts raised by mutating endpoints (optimistic-lock losses, "
-    "duplicate-request guards, invalid FSM transitions).",
-    labelnames=("endpoint", "code"),
+    description=(
+        "409 conflicts raised by mutating endpoints (optimistic-lock losses, "
+        "duplicate-request guards, invalid FSM transitions). Attributes: "
+        "endpoint, code."
+    ),
 )
-"""Labelled counter for 409 conflicts.
+"""OTel counter for 409 conflicts.
 
 * ``endpoint``: **module-scoped today** — the value is whatever the
   per-module ``_conflict`` helper defaults to (``"assets"`` or
-  ``"repair_requests"``). This keeps the series low-cardinality and
-  lets dashboards split by surface area, but it does NOT give
-  route-template granularity (``POST /repair-requests`` vs
-  ``POST /repair-requests/{id}/approve``). Route-level breakdown is
-  a Phase-1-follow-up: helpers already accept an ``endpoint=...``
-  kwarg, so callsites can be threaded through without a schema change.
-  Until then, slice by ``code`` for granularity.
+  ``"repair_requests"``). Slice by ``code`` for granular dashboards.
 * ``code``: the granular error code from the project envelope
   (``duplicate_request``, ``invalid_transition``, ``version_conflict``,
   …). Matches ``docs/system-design/12-api-design.md`` §"409 Conflict".
@@ -130,8 +142,12 @@ def _structlog_processor_trace_context(
     so that pre-startup boot logs (which run before ``setup_tracing``)
     aren't decorated with a bogus all-zeros trace.
 
-    The ``_get_current_span`` seam exists for unit testing only — production
-    callers always take the default.
+    Runs BEFORE the OTel ``LoggingHandler`` picks up the formatted record,
+    so ``trace_id`` is on the ``LogRecord``'s ``extra`` payload when the
+    bridge forwards it to Grafana Cloud Loki. If you move this processor
+    out of the chain, the bridge still works (the OTel SDK reads the
+    active span itself via ``LogRecord.trace_id``), but human-readable
+    text logs lose the trace correlation field.
     """
     try:
         span = _get_current_span()
@@ -149,6 +165,26 @@ def _structlog_processor_trace_context(
     return event_dict
 
 
+def _build_resource(settings: Settings) -> Any:
+    """Common Resource for traces, metrics, and logs.
+
+    Centralised so every signal carries the same ``service.name``,
+    ``service.instance.id``, ``service.version``, and ``environment``
+    attributes — that's what makes ``$environment=production`` work as a
+    single template variable across all six Grafana Cloud dashboards.
+    """
+    from opentelemetry.sdk.resources import Resource
+
+    return Resource.create(
+        {
+            "service.name": "ams-backend",
+            "service.instance.id": settings.replica_id,
+            "service.version": settings.app_version,
+            "environment": settings.environment,
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public setup_* API
 # ---------------------------------------------------------------------------
@@ -159,12 +195,11 @@ def setup_logging(settings: Settings) -> None:
 
     Application logs flow through structlog's stdlib bridge so every record
     that hits the root logger shares one JSON shape. Uvicorn's plaintext
-    access logger is intentionally silenced: request visibility is provided
-    by the Prometheus ``/metrics`` endpoint (rate / error / duration) plus
-    OTLP spans when ``otel_enabled`` is on, so the per-request access line
-    would be noisy duplicate signal. A structured JSON access middleware
-    can be layered back in later if dashboards need fields that ``/metrics``
-    labels can't carry (e.g. user_id), but is out of scope for Phase 1.
+    access logger is silenced: per-request observability comes from OTel
+    HTTP server metrics (rate / error / duration) plus OTLP spans when
+    ``otel_enabled`` is on. ``setup_log_exporter`` later attaches an OTel
+    ``LoggingHandler`` to the same root logger so every structlog event
+    flows to Grafana Cloud Loki without a second emit path.
     """
     shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
@@ -209,86 +244,121 @@ def setup_logging(settings: Settings) -> None:
     root.addHandler(handler)
     root.setLevel(logging.INFO)
 
-    # Drop uvicorn's plaintext access line. /metrics (RED) and OTLP spans
-    # cover per-request observability; the access line would just be
-    # noise on top. See setup_logging docstring for the JSON-access-log
-    # follow-up note.
+    # Drop uvicorn's plaintext access line. OTel HTTP server metrics +
+    # OTLP spans + Loki access logs (from the FE nginx side) cover
+    # per-request observability; the access line would be duplicate noise.
     for noisy in ("uvicorn.access",):
         access_logger = logging.getLogger(noisy)
         access_logger.handlers.clear()
         access_logger.propagate = False
 
 
-def setup_metrics(app: FastAPI) -> None:
-    """Mount the Prometheus ``/metrics`` exposition.
+def setup_log_exporter(settings: Settings) -> None:
+    """Bridge stdlib logging → OTel logs → Grafana Cloud Loki via OTLP.
 
-    Called *after* ``SlowAPIMiddleware`` is registered so that scrape
-    requests pass through the same middleware stack as user traffic —
-    `@limiter.exempt` is then the one place the limiter is bypassed,
-    matching the existing ``/health`` and ``/ready`` posture.
+    No-op when ``settings.otel_enabled`` is False so credential-less local
+    dev stays quiet and the dev image avoids the OTLP exporter's
+    background threads.
+
+    Ordering: must run AFTER ``setup_logging`` (so the OTel
+    ``LoggingHandler`` is added on top of the structlog ProcessorFormatter
+    handler, not displaced by it) and BEFORE any further log call from
+    application code (so early events still reach Loki). Structlog's
+    ``_structlog_processor_trace_context`` already stamps ``trace_id`` on
+    the formatted record, so the bridge forwards it to Loki labels
+    automatically. The OTel ``LogRecord`` also carries ``trace_id`` /
+    ``span_id`` natively when a span is active, which is what powers the
+    Loki → Tempo "view trace" jump in Explore.
     """
-    instrumentator = Instrumentator(
-        should_group_status_codes=True,
-        should_ignore_untemplated=True,
-        should_respect_env_var=False,
-        should_instrument_requests_inprogress=True,
-        excluded_handlers=["/metrics", "/health", "/ready"],
-        inprogress_name="ams_http_requests_inprogress",
-        inprogress_labels=True,
+    if not settings.otel_enabled:
+        return
+
+    from opentelemetry._logs import set_logger_provider
+    from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+
+    provider = LoggerProvider(resource=_build_resource(settings))
+    exporter = OTLPLogExporter(
+        endpoint=settings.otel_endpoint,
+        headers=settings.otel_exporter_otlp_headers or None,
     )
-    # Opt into the latency + request-count metrics explicitly and skip the
-    # request/response size collectors. The bundled `metrics.default()` calls
-    # ``int(Content-Length, 0)`` unguarded, so any caller that sends a
-    # malformed header (the existing
-    # tests/test_repair_requests::test_invalid_content_length_returns_422
-    # regression test does exactly that) crashes the instrumentator
-    # middleware with a ValueError and the 422 path never returns.
-    # Dashboards rely on RED (rate / error / duration), so latency +
-    # request count are the load-bearing metrics; payload size is a nice
-    # to have that we can layer back in once a safe collector exists.
-    from prometheus_fastapi_instrumentator import metrics
+    provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
+    set_logger_provider(provider)
 
-    instrumentator.add(metrics.latency())
-    instrumentator.add(metrics.requests())
-    instrumentator.instrument(app)
+    handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
+    logging.getLogger().addHandler(handler)
 
-    # Lazy import so the slowapi dependency stays in app.main and this
-    # module is importable from non-FastAPI contexts (e.g. alembic env).
-    # Expose with a route function we own, then attach `@limiter.exempt`
-    # to it. The instrumentator's own `.expose()` registers a private
-    # handler whose object identity is hidden inside an internal
-    # attribute, which `limiter.exempt` cannot mark. Owning the handler
-    # is the only stable way to keep the exemption pinned across library
-    # upgrades.
-    #
-    # No ``request: Request`` parameter: slowapi's ``@limiter.exempt`` is a
-    # marker-only decorator (it doesn't wrap), so FastAPI inspects the raw
-    # signature. Naming a parameter ``request`` would make FastAPI treat it
-    # as a query param even when annotated as ``Request`` — slowapi's own
-    # rewriting that normally rescues that case only fires for limited
-    # routes, not exempt ones.
-    from fastapi import Response
-    from prometheus_client import (
-        CONTENT_TYPE_LATEST,
-        REGISTRY,
-        generate_latest,
+
+def setup_metrics(app: FastAPI, settings: Settings) -> None:
+    """Wire FastAPI HTTP server metrics via OTel.
+
+    No-op when ``settings.otel_enabled`` is False — the no-op MeterProvider
+    that's active by default still lets module-level counters (FSM and
+    OPTIMISTIC_CONFLICTS) be called without raising, they just record into
+    nothing. This keeps dev/pytest free of the FastAPI instrumentor's
+    per-request overhead.
+
+    The instrumentor emits dot-style names (``http.server.duration``,
+    ``http.server.active_requests``); ``setup_metrics_exporter``'s
+    ``View`` rules rename them to the Prom-style series the existing
+    dashboards query.
+    """
+    if not settings.otel_enabled:
+        return
+
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    FastAPIInstrumentor.instrument_app(app)
+
+
+def setup_metrics_exporter(settings: Settings) -> None:
+    """Install the OTel MeterProvider that pushes metrics to Grafana Cloud.
+
+    No-op when ``settings.otel_enabled`` is False. Idempotent across pytest
+    re-imports because we only install when no real provider has been
+    configured yet — repeated calls would otherwise leak background
+    exporter threads.
+
+    Views rename the OTel HTTP server instruments to the Prom-style names
+    the existing Grafana dashboards already query. The SDK's internal
+    instrument name stays dot-style; only the exposed Prom series is
+    renamed.
+    """
+    if not settings.otel_enabled:
+        return
+
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+    from opentelemetry.sdk.metrics.view import View
+
+    views = [
+        View(
+            instrument_name="http.server.duration",
+            name="http_server_duration_seconds",
+        ),
+        View(
+            instrument_name="http.server.request.duration",
+            name="http_server_duration_seconds",
+        ),
+        View(
+            instrument_name="http.server.active_requests",
+            name="ams_http_requests_inprogress",
+        ),
+    ]
+
+    exporter = OTLPMetricExporter(
+        endpoint=settings.otel_endpoint,
+        headers=settings.otel_exporter_otlp_headers or None,
     )
-
-    from app.core.rate_limit import limiter
-
-    @app.get("/metrics", include_in_schema=False)
-    @limiter.exempt  # type: ignore[untyped-decorator]
-    def metrics_endpoint() -> Response:
-        """Prometheus exposition.
-
-        Exempt from rate limiting (see module docstring) and excluded
-        from the OpenAPI schema — scrape targets aren't part of the
-        client-facing API surface.
-        """
-        return Response(
-            content=generate_latest(REGISTRY),
-            media_type=CONTENT_TYPE_LATEST,
-        )
+    reader = PeriodicExportingMetricReader(exporter)
+    provider = MeterProvider(
+        resource=_build_resource(settings),
+        metric_readers=[reader],
+        views=views,
+    )
+    metrics.set_meter_provider(provider)
 
 
 def setup_tracing(app: FastAPI, settings: Settings) -> None:
@@ -306,25 +376,17 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
         OTLPSpanExporter,
     )
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-    from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-    resource = Resource.create(
-        {
-            "service.name": "ams-backend",
-            "service.instance.id": settings.replica_id,
-            "service.version": settings.app_version,
-        }
+    provider = TracerProvider(resource=_build_resource(settings))
+    exporter = OTLPSpanExporter(
+        endpoint=settings.otel_endpoint,
+        headers=settings.otel_exporter_otlp_headers or None,
     )
-    provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=settings.otel_endpoint, insecure=True)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     otel_trace.set_tracer_provider(provider)
-
-    FastAPIInstrumentor.instrument_app(app)
 
     # SQLAlchemy instrumentation hooks into the engine; importing the
     # engine here (rather than at module top) avoids the circular
@@ -339,9 +401,15 @@ def maybe_setup_profiling(settings: Settings) -> None:
 
     Wrapped in try/except so the dev image (which doesn't ship the
     optional ``pyroscope-io`` extra) only logs a warning instead of
-    crashing on import. Per locked decision 5, this stays off in prod
-    because gunicorn forks workers *after* import — the sampling thread
-    would die in each child.
+    crashing on import.
+
+    Enabled in production as of Phase 3 of the prod migration plan
+    (reverses the original W6 "off in prod" locked decision). The
+    ``WEB_CONCURRENCY=1`` invariant in ``app/main.py`` plus the absence
+    of ``gunicorn --preload`` means the sampling thread starts inside
+    the worker post-fork. If samples don't appear in production within
+    60s of first request, the fallback is the ``gunicorn.conf.py``
+    ``post_fork`` hook documented in the Phase 4 plan.
     """
     if not settings.pyroscope_enabled:
         return
@@ -356,4 +424,6 @@ def maybe_setup_profiling(settings: Settings) -> None:
     pyroscope.configure(
         application_name=f"ams-backend.{settings.replica_id}",
         server_address=settings.pyroscope_server,
+        basic_auth_username=settings.pyroscope_basic_auth_username,
+        auth_token=settings.pyroscope_auth_token,
     )

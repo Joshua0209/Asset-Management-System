@@ -16,8 +16,10 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.observability import (
     maybe_setup_profiling,
+    setup_log_exporter,
     setup_logging,
     setup_metrics,
+    setup_metrics_exporter,
     setup_tracing,
 )
 from app.core.rate_limit import limiter
@@ -177,19 +179,10 @@ def _warn_if_proxy_trust_misconfigured(
 _warn_if_proxy_trust_misconfigured(settings, os.environ.get("FORWARDED_ALLOW_IPS"))
 
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
-# request time and emits the X-RateLimit-* headers.
-#
-# Middleware-order invariant (W6 Phase 8 regression test pinned in
-# tests/test_rate_limit.py::test_metrics_scrape_does_not_burn_rate_limit_quota,
-# alongside tests/test_observability.py): SlowAPIMiddleware is registered
-# BEFORE the prometheus-fastapi-instrumentator mounts its handler.
-# Slowapi must see every request (including /metrics scrapes) so the
-# request reaches `@limiter.exempt` on the metrics route. Reversing the
-# order would let the instrumentator's request hook fire on a request
-# the limiter then drops, double-counting in dashboards. Dropping the
-# `@limiter.exempt` mark on /metrics (e.g. by switching to the
-# instrumentator's built-in `.expose()` whose handler slowapi cannot
-# tag) would silently burn the anonymous tier on every 15s scrape.
+# request time and emits the X-RateLimit-* headers. After the Phase 3
+# observability refactor there is no scrape endpoint to exempt — OTel
+# pushes metrics direct to Grafana Cloud — so the slowapi/instrumentator
+# middleware-order constraint that previously lived here is gone.
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
@@ -201,24 +194,26 @@ app.add_middleware(
     allow_headers=settings.cors_allowed_headers,
 )
 
-# Observability (W6 Phase 1):
-#   * setup_metrics mounts /metrics and registers the request
-#     instrumentation. It must come after SlowAPIMiddleware (see comment
-#     above) so the limiter sees /metrics scrapes and `@limiter.exempt`
-#     is the single bypass point. The other ordering constraint is
-#     simply that ``instrument(app)`` installs an ASGI middleware, and
-#     FastAPI rejects middleware registration after app startup — so
-#     all middleware setup lives in this pre-router block. Note: the
-#     instrumentator resolves the route template per-request (via
-#     ``request.scope["route"]``), so route-template ``handler`` labels
-#     work even for routers added after this call.
-#   * setup_tracing is a no-op when OTEL_ENABLED is false (pytest
-#     default); the SQLAlchemy instrumentor would otherwise hook the
-#     SQLite test engine's event listeners and add per-statement overhead
-#     the suite doesn't budget for.
-#   * maybe_setup_profiling stays off in prod gunicorn (locked decision
-#     5) and on for the single-process dev / demo image.
-setup_metrics(app)
+# Observability (W6 Phase 3, OTLP-native):
+#   Ordering — log_exporter → metrics → metrics_exporter → tracing →
+#   profiling. setup_log_exporter attaches the OTel ``LoggingHandler``
+#   BEFORE any further log call so early startup events still reach
+#   Grafana Cloud Loki. setup_metrics installs the FastAPI instrumentor
+#   (an ASGI middleware) before app startup; FastAPI rejects middleware
+#   added after startup. setup_metrics_exporter then makes the
+#   ``MeterProvider`` real — module-level counters created at import
+#   time start writing into the new provider on the next ``.add()``
+#   because OTel counters resolve the provider lazily on each call.
+#   Every setup_* is a no-op when OTEL_ENABLED=false (pytest default),
+#   so the suite stays free of OTLP exporter threads.
+#
+#   maybe_setup_profiling is enabled in production as of Phase 3 (locked
+#   decision 5 reversed by the prod migration plan). The
+#   ``WEB_CONCURRENCY=1`` invariant above plus no ``gunicorn --preload``
+#   means the sampling thread starts inside the worker post-fork.
+setup_log_exporter(settings)
+setup_metrics(app, settings)
+setup_metrics_exporter(settings)
 setup_tracing(app, settings)
 maybe_setup_profiling(settings)
 

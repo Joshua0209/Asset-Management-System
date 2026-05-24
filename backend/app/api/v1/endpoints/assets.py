@@ -114,13 +114,13 @@ def _conflict(
     message: str, *, code: str = "conflict", endpoint: str = "assets"
 ) -> HTTPException:
     # See ``app/core/observability.py``: a single helper is the only place
-    # 409s are minted for this module, so the Prometheus counter is also
-    # updated here. The ``endpoint`` label is module-scoped (``"assets"``)
+    # 409s are minted for this module, so the OTel counter is also updated
+    # here. The ``endpoint`` attribute is module-scoped (``"assets"``)
     # today — keeps cardinality bounded and lets dashboards split asset
     # vs repair-request 409s. Route-template granularity is deferred;
     # the kwarg is the seam to thread it through later. Until then,
     # slice by ``code`` (invalid_transition, version_conflict, …).
-    OPTIMISTIC_CONFLICTS.labels(endpoint=endpoint, code=code).inc()
+    OPTIMISTIC_CONFLICTS.add(1, attributes={"endpoint": endpoint, "code": code})
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={"code": code, "message": message},
