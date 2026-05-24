@@ -84,10 +84,9 @@ _RESOURCE_CACHE: dict[tuple[str, str, str, str], Any] = {}
 # global ``ProxyMeter``; its ``create_counter`` returns a ``ProxyCounter``
 # that lazily rebinds to whichever MeterProvider is installed later. Every
 # ``.add(...)`` issued before installation silently no-ops, and every
-# ``.add(...)`` after installation flows into the real exporter. This
-# matches the prometheus_client default-registry behaviour the module used
-# previously — when telemetry is off (``OTEL_ENABLED=false`` is the dev
-# default), increments are invisible by design.
+# ``.add(...)`` after installation flows into the real exporter. When
+# telemetry is off (``OTEL_ENABLED=false`` is the dev default), increments
+# stay invisible by design — counters are always callable, never raise.
 # ---------------------------------------------------------------------------
 
 _meter = metrics.get_meter("ams.backend")

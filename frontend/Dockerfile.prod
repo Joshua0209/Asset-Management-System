@@ -34,8 +34,6 @@ ENV VITE_OTEL_ENABLED=${VITE_OTEL_ENABLED}
 ARG VITE_OTEL_ENDPOINT
 ENV VITE_OTEL_ENDPOINT=${VITE_OTEL_ENDPOINT}
 
-# --ignore-scripts skips the root `prepare` lifecycle (git config shim,
-# no git repo inside the build container).
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
@@ -53,8 +51,6 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# ALB target group health check hits / and expects 200; the default index
-# page is enough — no separate /health endpoint needed for static hosting.
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
