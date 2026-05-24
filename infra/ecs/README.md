@@ -93,6 +93,8 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 | `AWS_DEPLOY_ROLE_ARN`| OIDC role the workflow assumes (no long-lived keys)      |
 | `GC_OTLP_ENDPOINT`   | Grafana Cloud OTLP gateway URL (region-scoped; copy from the GC stack's "OpenTelemetry" connection page). Stored as a *secret* rather than a variable: the embedded stack slug + region narrow attacker target-identification if combined with a leaked GC API key, so defense-in-depth keeps the URL out of public-repo visibility |
 | `GC_PYROSCOPE_ENDPOINT` | Grafana Cloud Pyroscope endpoint (region-scoped; copy from the GC stack's "Pyroscope" connection page). Same secret-vs-variable rationale as `GC_OTLP_ENDPOINT` |
+| `GC_STACK_URL`       | Grafana Cloud stack URL, e.g. `https://<your-stack-slug>.grafana.net`. Consumed by the `sync-dashboards` CD job to upsert `config/grafana/dashboards/*.json` via the dashboards-DB API. **Not** the same as `GC_OTLP_ENDPOINT` — the OTLP gateway is for telemetry ingest, the stack URL is for Grafana's HTTP control plane. Same secret-vs-variable rationale as the other GC endpoints |
+| `GRAFANA_CLOUD_API_KEY` | Grafana Cloud API key with **dashboards write** scope. Create at `https://grafana.com/orgs/<org>/api-keys` (separate token from the OTLP/Pyroscope credentials in the AWS `ams-grafana-cloud` secret — those ingest telemetry; this one mutates dashboards). Consumed by `sync-dashboards` only |
 | `NVD_API_KEY`        | Optional, raises OWASP Dependency-Check rate limit       |
 | `SONAR_TOKEN`        | Already configured for the existing SonarCloud job       |
 
