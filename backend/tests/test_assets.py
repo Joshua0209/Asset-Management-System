@@ -2083,62 +2083,48 @@ class TestListAssetsFilterBranches:
     ``_build_asset_filters``. Existing tests only set ``category``; without
     these the three sibling branches stay unmeasured."""
 
-    def test_filter_by_status_only(
+    @pytest.mark.parametrize(
+        ("kept_kwargs", "other_kwargs", "query"),
+        [
+            pytest.param(
+                {"status": AssetStatus.IN_STOCK},
+                {"status": AssetStatus.DISPOSED},
+                "status=in_stock",
+                id="status",
+            ),
+            pytest.param(
+                {"department": "HR"},
+                {"department": "IT"},
+                "department=HR",
+                id="department",
+            ),
+            pytest.param(
+                {"location": "Kaohsiung Office"},
+                {"location": "Taipei HQ"},
+                "location=Kaohsiung+Office",
+                id="location",
+            ),
+        ],
+    )
+    def test_filter_returns_only_matching_assets(
         self,
         client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
+        kept_kwargs: dict[str, Any],
+        other_kwargs: dict[str, Any],
+        query: str,
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
-        _make_asset(db_session, asset_code="AST-2026-00001", status=AssetStatus.IN_STOCK)
-        _make_asset(db_session, asset_code="AST-2026-00002", status=AssetStatus.DISPOSED)
+        _make_asset(db_session, asset_code="AST-2026-00001", **kept_kwargs)
+        _make_asset(db_session, asset_code="AST-2026-00002", **other_kwargs)
 
-        response = client.get(
-            "/api/v1/assets?status=in_stock", headers=auth_headers(manager)
-        )
+        response = client.get(f"/api/v1/assets?{query}", headers=auth_headers(manager))
 
         assert response.status_code == 200
         codes = [item["asset_code"] for item in response.json()["data"]]
         assert codes == ["AST-2026-00001"]
-
-    def test_filter_by_department_only(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
-        _make_asset(db_session, asset_code="AST-2026-00001", department="IT")
-        _make_asset(db_session, asset_code="AST-2026-00002", department="HR")
-
-        response = client.get(
-            "/api/v1/assets?department=HR", headers=auth_headers(manager)
-        )
-
-        assert response.status_code == 200
-        codes = [item["asset_code"] for item in response.json()["data"]]
-        assert codes == ["AST-2026-00002"]
-
-    def test_filter_by_location_only(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
-        _make_asset(db_session, asset_code="AST-2026-00001", location="Taipei HQ")
-        _make_asset(db_session, asset_code="AST-2026-00002", location="Kaohsiung Office")
-
-        response = client.get(
-            "/api/v1/assets?location=Kaohsiung+Office", headers=auth_headers(manager)
-        )
-
-        assert response.status_code == 200
-        codes = [item["asset_code"] for item in response.json()["data"]]
-        assert codes == ["AST-2026-00002"]
 
 
 class TestGetAssetDbError:
@@ -2271,6 +2257,23 @@ class TestRegisterAssetIntegrityErrors:
         assert "violates database constraints" in body["message"]
 
 
+_STALE_DATA_CASE = pytest.param(
+    StaleDataError("row was modified"),
+    409,
+    "conflict",
+    "modified by another user",
+    id="stale-data-409",
+)
+_INTEGRITY_CASE = pytest.param(
+    IntegrityError("UPDATE assets ...", {}, Exception("constraint violated")),
+    422,
+    "validation_error",
+    "violates database constraints",
+    id="integrity-422",
+)
+_COMMIT_ERROR_CASES = [_STALE_DATA_CASE, _INTEGRITY_CASE]
+
+
 class TestAssetMutationCommitErrors:
     """``StaleDataError`` → 409 and ``IntegrityError`` → 422 on the four
     mutation endpoints (update / assign / unassign / dispose).
@@ -2281,127 +2284,85 @@ class TestAssetMutationCommitErrors:
     optimistic-locking signal that the frontend conflict UI consumes.
     """
 
-    _UPDATE_PAYLOAD = {"location": "Kaohsiung"}
-    _ASSIGN_PAYLOAD_DATE = "2026-04-15"
-
-    def test_update_stale_data_error_returns_409(
+    @pytest.mark.parametrize(
+        ("commit_error", "expected_status", "expected_code", "message_substring"),
+        _COMMIT_ERROR_CASES,
+    )
+    def test_update_commit_error(
         self,
         client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
+        commit_error: SQLAlchemyError,
+        expected_status: int,
+        expected_code: str,
+        message_substring: str,
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
         asset = _make_asset(db_session)
 
-        with patch.object(
-            db_session, "commit", side_effect=StaleDataError("row was modified")
-        ):
+        with patch.object(db_session, "commit", side_effect=commit_error):
             response = client.patch(
                 f"/api/v1/assets/{asset.id}",
-                json={**self._UPDATE_PAYLOAD, "version": asset.version},
+                json={"location": "Kaohsiung", "version": asset.version},
                 headers=auth_headers(manager),
             )
 
-        assert response.status_code == 409
+        assert response.status_code == expected_status
         body = response.json()["error"]
-        assert body["code"] == "conflict"
-        assert "modified by another user" in body["message"]
+        assert body["code"] == expected_code
+        assert message_substring in body["message"]
 
-    def test_update_integrity_error_returns_422(
+    @pytest.mark.parametrize(
+        ("commit_error", "expected_status", "expected_code", "message_substring"),
+        _COMMIT_ERROR_CASES,
+    )
+    def test_assign_commit_error(
         self,
         client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
-        asset = _make_asset(db_session)
-
-        with patch.object(
-            db_session,
-            "commit",
-            side_effect=IntegrityError("UPDATE assets ...", {}, Exception("check failed")),
-        ):
-            response = client.patch(
-                f"/api/v1/assets/{asset.id}",
-                json={**self._UPDATE_PAYLOAD, "version": asset.version},
-                headers=auth_headers(manager),
-            )
-
-        assert response.status_code == 422
-        body = response.json()["error"]
-        assert body["code"] == "validation_error"
-        assert "violates database constraints" in body["message"]
-
-    def test_assign_stale_data_error_returns_409(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
+        commit_error: SQLAlchemyError,
+        expected_status: int,
+        expected_code: str,
+        message_substring: str,
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
         target = make_user(role=UserRole.HOLDER)
         asset = _make_asset(db_session)
 
-        with patch.object(
-            db_session, "commit", side_effect=StaleDataError("row was modified")
-        ):
+        with patch.object(db_session, "commit", side_effect=commit_error):
             response = client.post(
                 f"/api/v1/assets/{asset.id}/assign",
                 json={
                     "responsible_person_id": target.id,
-                    "assignment_date": self._ASSIGN_PAYLOAD_DATE,
+                    "assignment_date": _ASSIGNMENT_DATE_ISO,
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),
             )
 
-        assert response.status_code == 409
+        assert response.status_code == expected_status
         body = response.json()["error"]
-        assert body["code"] == "conflict"
-        assert "modified by another user" in body["message"]
+        assert body["code"] == expected_code
+        assert message_substring in body["message"]
 
-    def test_assign_integrity_error_returns_422(
+    @pytest.mark.parametrize(
+        ("commit_error", "expected_status", "expected_code", "message_substring"),
+        _COMMIT_ERROR_CASES,
+    )
+    def test_unassign_commit_error(
         self,
         client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
-        target = make_user(role=UserRole.HOLDER)
-        asset = _make_asset(db_session)
-
-        with patch.object(
-            db_session,
-            "commit",
-            side_effect=IntegrityError(
-                "UPDATE assets ...", {}, Exception("foreign key violation")
-            ),
-        ):
-            response = client.post(
-                f"/api/v1/assets/{asset.id}/assign",
-                json={
-                    "responsible_person_id": target.id,
-                    "assignment_date": self._ASSIGN_PAYLOAD_DATE,
-                    "version": asset.version,
-                },
-                headers=auth_headers(manager),
-            )
-
-        assert response.status_code == 422
-        body = response.json()["error"]
-        assert body["code"] == "validation_error"
-        assert "violates database constraints" in body["message"]
-
-    def test_unassign_stale_data_error_returns_409(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
+        commit_error: SQLAlchemyError,
+        expected_status: int,
+        expected_code: str,
+        message_substring: str,
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
         holder = make_user(role=UserRole.HOLDER)
@@ -2411,9 +2372,7 @@ class TestAssetMutationCommitErrors:
             responsible_person_id=holder.id,
         )
 
-        with patch.object(
-            db_session, "commit", side_effect=StaleDataError("row was modified")
-        ):
+        with patch.object(db_session, "commit", side_effect=commit_error):
             response = client.post(
                 f"/api/v1/assets/{asset.id}/unassign",
                 json={
@@ -2424,96 +2383,37 @@ class TestAssetMutationCommitErrors:
                 headers=auth_headers(manager),
             )
 
-        assert response.status_code == 409
+        assert response.status_code == expected_status
         body = response.json()["error"]
-        assert body["code"] == "conflict"
-        assert "modified by another user" in body["message"]
+        assert body["code"] == expected_code
+        assert message_substring in body["message"]
 
-    def test_unassign_integrity_error_returns_422(
+    @pytest.mark.parametrize(
+        ("commit_error", "expected_status", "expected_code", "message_substring"),
+        _COMMIT_ERROR_CASES,
+    )
+    def test_dispose_commit_error(
         self,
         client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
-        holder = make_user(role=UserRole.HOLDER)
-        asset = _make_asset(
-            db_session,
-            status=AssetStatus.IN_USE,
-            responsible_person_id=holder.id,
-        )
-
-        with patch.object(
-            db_session,
-            "commit",
-            side_effect=IntegrityError(
-                "UPDATE assets ...", {}, Exception("constraint violated")
-            ),
-        ):
-            response = client.post(
-                f"/api/v1/assets/{asset.id}/unassign",
-                json={
-                    "reason": "transfer",
-                    "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                    "version": asset.version,
-                },
-                headers=auth_headers(manager),
-            )
-
-        assert response.status_code == 422
-        body = response.json()["error"]
-        assert body["code"] == "validation_error"
-        assert "violates database constraints" in body["message"]
-
-    def test_dispose_stale_data_error_returns_409(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
+        commit_error: SQLAlchemyError,
+        expected_status: int,
+        expected_code: str,
+        message_substring: str,
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
         asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
 
-        with patch.object(
-            db_session, "commit", side_effect=StaleDataError("row was modified")
-        ):
+        with patch.object(db_session, "commit", side_effect=commit_error):
             response = client.post(
                 f"/api/v1/assets/{asset.id}/dispose",
                 json={"disposal_reason": "EOL", "version": asset.version},
                 headers=auth_headers(manager),
             )
 
-        assert response.status_code == 409
+        assert response.status_code == expected_status
         body = response.json()["error"]
-        assert body["code"] == "conflict"
-        assert "modified by another user" in body["message"]
-
-    def test_dispose_integrity_error_returns_422(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
-        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
-
-        with patch.object(
-            db_session,
-            "commit",
-            side_effect=IntegrityError(
-                "UPDATE assets ...", {}, Exception("constraint violated")
-            ),
-        ):
-            response = client.post(
-                f"/api/v1/assets/{asset.id}/dispose",
-                json={"disposal_reason": "EOL", "version": asset.version},
-                headers=auth_headers(manager),
-            )
-
-        assert response.status_code == 422
-        body = response.json()["error"]
-        assert body["code"] == "validation_error"
-        assert "violates database constraints" in body["message"]
+        assert body["code"] == expected_code
+        assert message_substring in body["message"]
