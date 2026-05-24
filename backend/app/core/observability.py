@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -46,11 +47,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Module-level flags / caches. Reset in tests via monkeypatch if needed.
 _TRACE_CONTEXT_WARNED: bool = False
+# Lock around the check-then-set on ``_TRACE_CONTEXT_WARNED``. CPython's
+# GIL makes a bare assignment atomic, but the *check-then-set* pattern
+# (``if not _TRACE_CONTEXT_WARNED: _TRACE_CONTEXT_WARNED = True``)
+# is not — two threads can both read False and both emit "first
+# failure" warnings. The file's TODO at ``maybe_setup_profiling``
+# contemplates relaxing ``WEB_CONCURRENCY=1``, after which this
+# would matter; uvicorn also runs sync routes on a thread-pool
+# executor today, so concurrent failures are technically possible
+# even single-worker. Cheap insurance.
+_TRACE_CONTEXT_LOCK = threading.Lock()
 _METRICS_EXPORTER_INSTALLED: bool = False
 _LOG_EXPORTER_INSTALLED: bool = False
 _TRACING_INSTALLED: bool = False
+# Bounded LRU-style cache for the Resource. The cache is keyed by the
+# resource-identifying tuple; in prod the same tuple is computed three
+# times during startup (once per ``setup_*_exporter``) and the cache
+# saves three calls into OTel's host/process auto-detection. The test
+# suite cycles through a handful of (replica_id, app_version,
+# environment) combinations — the explicit upper bound keeps a
+# pathological future test that loops over many combos from growing
+# the cache unboundedly.
+_RESOURCE_CACHE_MAX = 8
 _RESOURCE_CACHE: dict[tuple[str, str, str, str], Any] = {}
 
 
@@ -197,10 +216,15 @@ def _structlog_processor_trace_context(
         # uninstalled SDK, recursive logging during bootstrap). Surface
         # the first failure once so a misconfig doesn't hide forever;
         # subsequent calls stay silent so a broken install doesn't spam
-        # the log on every request.
+        # the log on every request. Lock-protected because the check-
+        # then-set is not atomic across threads.
         global _TRACE_CONTEXT_WARNED
-        if not _TRACE_CONTEXT_WARNED:
-            _TRACE_CONTEXT_WARNED = True
+        should_warn = False
+        with _TRACE_CONTEXT_LOCK:
+            if not _TRACE_CONTEXT_WARNED:
+                _TRACE_CONTEXT_WARNED = True
+                should_warn = True
+        if should_warn:
             logger.warning(
                 "structlog trace_id stamping disabled — first failure: %s",
                 exc,
@@ -227,10 +251,12 @@ def _build_resource(settings: Settings) -> Any:
     single template variable across all six Grafana Cloud dashboards.
 
     Cached by the resource-identifying tuple so the OTel SDK's host /
-    process auto-detection doesn't run four times at boot (one per
-    setup_* call site). Cache key is bounded by the number of distinct
-    Resource configurations the process sees — 1 in prod, a handful
-    across test runs.
+    process auto-detection doesn't run three times at boot (once per
+    setup_*_exporter call site). The cache has an explicit upper
+    bound (``_RESOURCE_CACHE_MAX``); on overflow the oldest entry is
+    evicted — keeps a pathological future test that loops over many
+    (replica_id, app_version, environment) combinations from growing
+    the cache unboundedly.
     """
     key = (
         "ams-backend",
@@ -252,6 +278,10 @@ def _build_resource(settings: Settings) -> Any:
             "environment": key[3],
         }
     )
+    # Evict the oldest entry when at capacity. dict preserves insertion
+    # order in Python 3.7+, so ``next(iter(...))`` is the oldest key.
+    if len(_RESOURCE_CACHE) >= _RESOURCE_CACHE_MAX:
+        del _RESOURCE_CACHE[next(iter(_RESOURCE_CACHE))]
     _RESOURCE_CACHE[key] = resource
     return resource
 

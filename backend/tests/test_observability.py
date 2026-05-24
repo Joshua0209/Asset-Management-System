@@ -950,6 +950,58 @@ def test_settings_otel_enabled_locally_does_not_require_headers(
     Settings()  # type: ignore[call-arg]
 
 
+def test_build_resource_cache_evicts_oldest_at_capacity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_build_resource``'s cache is bounded — overflow evicts the oldest.
+
+    The cache exists so the OTel SDK's host/process auto-detection
+    doesn't re-run on every ``setup_*_exporter`` call (production
+    invokes three setup_* calls in sequence on the same Resource
+    tuple). Without an explicit bound, a long-running test session
+    that constructs many distinct ``Settings`` shapes — or a future
+    feature that recomputes the Resource per-request — would grow
+    the cache unboundedly. Lock the eviction contract.
+    """
+    from app.core import observability as obs
+
+    obs._RESOURCE_CACHE.clear()
+    cap = obs._RESOURCE_CACHE_MAX
+
+    # Fill the cache to capacity using a different ``replica_id`` per
+    # call. ``settings.replica_id`` comes from HOSTNAME env / hostname()
+    # — monkeypatching the env var per iteration drives a fresh key.
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+
+    first_key = None
+    for replica in range(cap):
+        monkeypatch.setenv("HOSTNAME", f"replica-{replica}")
+        settings = Settings()  # type: ignore[call-arg]
+        obs._build_resource(settings)
+        if replica == 0:
+            first_key = next(iter(obs._RESOURCE_CACHE))
+
+    assert len(obs._RESOURCE_CACHE) == cap, (
+        f"cache should be at capacity ({cap}); got {len(obs._RESOURCE_CACHE)}"
+    )
+    assert first_key in obs._RESOURCE_CACHE
+
+    # One more insertion should evict the oldest entry, not the newest.
+    monkeypatch.setenv("HOSTNAME", "replica-overflow")
+    settings_overflow = Settings()  # type: ignore[call-arg]
+    obs._build_resource(settings_overflow)
+
+    assert len(obs._RESOURCE_CACHE) == cap, (
+        f"cache size must stay at capacity after overflow; got {len(obs._RESOURCE_CACHE)}"
+    )
+    assert first_key not in obs._RESOURCE_CACHE, (
+        f"oldest key {first_key} should have been evicted; cache: {list(obs._RESOURCE_CACHE)}"
+    )
+
+
 @pytest.mark.parametrize(
     "missing_env",
     ["PYROSCOPE_AUTH_TOKEN", "PYROSCOPE_BASIC_AUTH_USERNAME"],
