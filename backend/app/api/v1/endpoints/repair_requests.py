@@ -225,13 +225,13 @@ def _conflict(
     message: str, *, code: str = "conflict", endpoint: str = "repair_requests"
 ) -> HTTPException:
     # Counter increment lives at the single helper so all 409s in this
-    # module are observed by Prometheus without per-callsite duplication.
-    # The ``endpoint`` label is module-scoped (``"repair_requests"``) today —
-    # see ``OPTIMISTIC_CONFLICTS`` in ``app/core/observability.py``. The
-    # kwarg is the seam for a follow-up that threads route templates
+    # module are observed by OTel metrics without per-callsite duplication.
+    # The ``endpoint`` attribute is module-scoped (``"repair_requests"``)
+    # today — see ``OPTIMISTIC_CONFLICTS`` in ``app/core/observability.py``.
+    # The kwarg is the seam for a follow-up that threads route templates
     # (e.g. ``POST /repair-requests/{id}/approve``) through to dashboards
     # without changing the metric schema. Until then, slice by ``code``.
-    OPTIMISTIC_CONFLICTS.labels(endpoint=endpoint, code=code).inc()
+    OPTIMISTIC_CONFLICTS.add(1, attributes={"endpoint": endpoint, "code": code})
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={"code": code, "message": message},
@@ -728,9 +728,14 @@ def approve_repair_request(
         result = _commit_repair_change(db, repair_request, "Repair request approval")
         # Counter only ticks after a successful commit; _commit_repair_change
         # raises on rollback so we never double-count a failed transition.
-        FSM_TRANSITIONS.labels(
-            "PENDING_REVIEW", "UNDER_REPAIR", "repair_request"
-        ).inc()
+        FSM_TRANSITIONS.add(
+            1,
+            attributes={
+                "from": "PENDING_REVIEW",
+                "to": "UNDER_REPAIR",
+                "asset_kind": "repair_request",
+            },
+        )
         return result
     except HTTPException:
         # _commit_repair_change owns rollback for the commit path; precondition
@@ -788,9 +793,14 @@ def reject_repair_request(
             },
         )
         result = _commit_repair_change(db, repair_request, "Repair request rejection")
-        FSM_TRANSITIONS.labels(
-            "PENDING_REVIEW", "REJECTED", "repair_request"
-        ).inc()
+        FSM_TRANSITIONS.add(
+            1,
+            attributes={
+                "from": "PENDING_REVIEW",
+                "to": "REJECTED",
+                "asset_kind": "repair_request",
+            },
+        )
         return result
     except HTTPException:
         raise
@@ -904,9 +914,14 @@ def complete_repair_request(
             },
         )
         result = _commit_repair_change(db, repair_request, "Repair request completion")
-        FSM_TRANSITIONS.labels(
-            "UNDER_REPAIR", "COMPLETED", "repair_request"
-        ).inc()
+        FSM_TRANSITIONS.add(
+            1,
+            attributes={
+                "from": "UNDER_REPAIR",
+                "to": "COMPLETED",
+                "asset_kind": "repair_request",
+            },
+        )
         return result
     except HTTPException:
         raise
@@ -1024,9 +1039,14 @@ def _create_repair_request_with_retry(
             # is the sentinel ``NONE`` so dashboards can count creations
             # without collapsing them into other PENDING_REVIEW-arrival
             # transitions.
-            FSM_TRANSITIONS.labels(
-                "NONE", "PENDING_REVIEW", "repair_request"
-            ).inc()
+            FSM_TRANSITIONS.add(
+                1,
+                attributes={
+                    "from": "NONE",
+                    "to": "PENDING_REVIEW",
+                    "asset_kind": "repair_request",
+                },
+            )
             return result
         except IntegrityError as exc:
             db.rollback()

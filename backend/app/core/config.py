@@ -139,19 +139,34 @@ class Settings(BaseSettings):
     cors_allowed_methods: _StringList = ["GET", "POST", "PATCH", "OPTIONS"]
     cors_allowed_headers: _StringList = ["Authorization", "Content-Type"]
 
-    # Observability (W6 Phase 1) — all opt-in so a stale ECS task without
-    # the new env vars keeps booting. The compose overlay flips these on
-    # for the local demo stack; production toggles them on the task
-    # definition once Alloy/Pyroscope endpoints exist. Endpoint defaults
-    # are empty rather than the docker-compose service names because the
-    # source must not ship a baked-in clear-text URL (SonarCloud S5332);
-    # the operator who flips the flag also sets the URL via env, and the
-    # `_require_observability_endpoints` validator fails fast otherwise.
-    # See backend/.env.example for the canonical local-stack values.
+    # Observability (W6 Phase 3 of the prod migration plan) — OTLP-native,
+    # pushes traces/metrics/logs/profiles direct to Grafana Cloud from both
+    # dev and prod. All opt-in so a credential-less local boot stays quiet;
+    # production flips OTEL_ENABLED + PYROSCOPE_ENABLED in the ECS task
+    # definition. Endpoint defaults are empty rather than baked literals
+    # (SonarCloud S5332); the `_require_observability_endpoints` validator
+    # fails fast when an operator flips a flag without pointing it at a
+    # collector. See backend/.env.example for canonical placeholders.
     otel_enabled: bool = False
     otel_endpoint: str = ""
+    # OTLP exporter authentication. Grafana Cloud expects
+    # ``Authorization=Basic <base64(instance_id:api_key)>``; the SDK splits
+    # comma-separated ``key=value`` pairs into the gRPC metadata headers.
+    otel_exporter_otlp_headers: str = ""
     pyroscope_enabled: bool = False
     pyroscope_server: str = ""
+    # Pyroscope (Grafana Cloud) basic auth: username is the per-stack
+    # numeric instance id; the token is the same Grafana Cloud API key
+    # used for OTLP. Empty defaults keep the dev image's
+    # ``pyroscope-io < 0.8.5`` historical kwargs-free configure() path
+    # available, but >=0.8.5 (now pinned) accepts both kwargs as empty
+    # strings without raising.
+    pyroscope_auth_token: str = ""
+    pyroscope_basic_auth_username: str = ""
+    # Resource attribute stamped on every signal so dashboards can filter
+    # local vs production traffic side-by-side. ``local`` matches what
+    # developers see; the ECS task definition overrides to ``production``.
+    environment: str = "local"
     # Hostname-derived per-process label. `default_factory` rather than a
     # module-import-time read so a unit test that swaps HOSTNAME via
     # `monkeypatch.setenv` and then constructs `Settings()` sees the swap.
@@ -205,12 +220,12 @@ class Settings(BaseSettings):
         if self.otel_enabled and not self.otel_endpoint:
             raise ValueError(
                 "OTEL_ENABLED=true requires OTEL_ENDPOINT to be set "
-                "(e.g. http://alloy:4317 for the local docker stack)."
+                "(e.g. https://otlp-gateway-prod-<region>.grafana.net/otlp)."
             )
         if self.pyroscope_enabled and not self.pyroscope_server:
             raise ValueError(
                 "PYROSCOPE_ENABLED=true requires PYROSCOPE_SERVER to be set "
-                "(e.g. http://pyroscope:4040 for the local docker stack)."
+                "(e.g. https://profiles-prod-<region>.grafana.net)."
             )
         return self
 
