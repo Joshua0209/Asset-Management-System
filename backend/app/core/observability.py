@@ -281,7 +281,7 @@ def setup_log_exporter(settings: Settings) -> None:
     provider = LoggerProvider(resource=_build_resource(settings))
     exporter = OTLPLogExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers or None,
+        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
     )
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
     set_logger_provider(provider)
@@ -350,7 +350,7 @@ def setup_metrics_exporter(settings: Settings) -> None:
 
     exporter = OTLPMetricExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers or None,
+        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
     )
     reader = PeriodicExportingMetricReader(exporter)
     provider = MeterProvider(
@@ -383,7 +383,7 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     provider = TracerProvider(resource=_build_resource(settings))
     exporter = OTLPSpanExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers or None,
+        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
     otel_trace.set_tracer_provider(provider)
@@ -425,5 +425,5 @@ def maybe_setup_profiling(settings: Settings) -> None:
         application_name=f"ams-backend.{settings.replica_id}",
         server_address=settings.pyroscope_server,
         basic_auth_username=settings.pyroscope_basic_auth_username,
-        auth_token=settings.pyroscope_auth_token,
+        auth_token=settings.pyroscope_auth_token.get_secret_value(),
     )

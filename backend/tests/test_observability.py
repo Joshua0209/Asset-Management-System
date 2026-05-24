@@ -587,10 +587,10 @@ def test_settings_observability_fields_defaults(monkeypatch: pytest.MonkeyPatch)
     # Endpoint defaults are empty so the source never ships a clear-text
     # URL literal; operators set the value when they flip the flag on.
     assert settings.otel_endpoint == ""
-    assert settings.otel_exporter_otlp_headers == ""
+    assert settings.otel_exporter_otlp_headers.get_secret_value() == ""
     assert settings.pyroscope_enabled is False
     assert settings.pyroscope_server == ""
-    assert settings.pyroscope_auth_token == ""
+    assert settings.pyroscope_auth_token.get_secret_value() == ""
     assert settings.pyroscope_basic_auth_username == ""
     assert settings.environment == "local"
     # Default replica id is hostname-derived; just confirm it's a non-empty str.
@@ -618,3 +618,78 @@ def test_settings_observability_flag_requires_url(
 
     with pytest.raises(ValueError, match=url_env):
         Settings()  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    ("flag_env", "url_env"),
+    [
+        ("OTEL_ENABLED", "OTEL_ENDPOINT"),
+        ("PYROSCOPE_ENABLED", "PYROSCOPE_SERVER"),
+    ],
+)
+def test_settings_observability_endpoints_must_be_https(
+    monkeypatch: pytest.MonkeyPatch, flag_env: str, url_env: str
+) -> None:
+    """An ``http://`` endpoint must be rejected at boot.
+
+    Plaintext OTLP would leak the GC API key carried in
+    ``OTEL_EXPORTER_OTLP_HEADERS``; the only legitimate GC OTLP /
+    Pyroscope targets are HTTPS.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.setenv(flag_env, "true")
+    monkeypatch.setenv(url_env, "http://attacker.example/otlp")
+    # Needed for OTLP path only — Pyroscope-only test still tolerates it.
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Basic dGVzdA==")
+
+    with pytest.raises(ValueError, match="https://"):
+        Settings()  # type: ignore[call-arg]
+
+
+def test_settings_otel_enabled_in_production_requires_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OTLP without auth headers in a non-local env must fail loud.
+
+    ``OTEL_ENABLED=true`` + ``ENVIRONMENT!=local`` + empty
+    ``OTEL_EXPORTER_OTLP_HEADERS`` means the exporter ships every
+    span/metric/log unauthenticated; GC silently 401s and observability
+    degrades to nothing with no application-visible error. We refuse to
+    boot in that shape so the misconfiguration surfaces immediately.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.setenv("OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_ENDPOINT", "https://otlp-gateway.example/otlp")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+
+    with pytest.raises(ValueError, match="OTEL_EXPORTER_OTLP_HEADERS"):
+        Settings()  # type: ignore[call-arg]
+
+
+def test_settings_otel_enabled_locally_does_not_require_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The headers check is gated on non-local environments.
+
+    Local-with-otel-on (e.g. a developer testing the exporter wire against
+    a self-hosted Tempo) must remain bootable without forcing a fake header
+    just to satisfy the validator.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.setenv("OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_ENDPOINT", "https://otlp-gateway.example/otlp")
+    monkeypatch.setenv("ENVIRONMENT", "local")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+
+    # Must not raise.
+    Settings()  # type: ignore[call-arg]
