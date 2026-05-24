@@ -116,3 +116,130 @@ def test_main_requires_api_key_when_not_dry_run(
         )
 
     assert excinfo.value.code != 0
+
+
+def test_main_requires_stack_url_when_not_dry_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing --stack-url in live mode exits non-zero with a clear error."""
+    _write_dashboard(tmp_path, "ams-x", "X")
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    with pytest.raises(SystemExit) as excinfo:
+        sync_module.main(["--dashboards-dir", str(tmp_path)])
+
+    assert excinfo.value.code != 0
+
+
+def test_main_missing_dashboards_dir_returns_2(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Pointing at a non-existent directory must surface as a clean failure.
+
+    The runbook is invoked from operator laptops; a typo in
+    ``--dashboards-dir`` should fail loud, not look like a successful
+    no-op of "zero dashboards published".
+    """
+    nonexistent = tmp_path / "does-not-exist"
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(nonexistent), "--dry-run"]
+    )
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "not found" in captured.err.lower()
+
+
+def test_main_empty_dashboards_dir_returns_1(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An empty directory exits 1 with a clear "no dashboards" message."""
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--dry-run"]
+    )
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "no dashboards" in captured.err.lower()
+
+
+def test_main_partial_publish_failure_exits_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One dashboard failing among many surfaces as a non-zero exit code.
+
+    A partial-publish failure must not be swallowed silently — the GC
+    stack would otherwise be left with a mix of new and stale dashboard
+    schemas. Two dashboards, second returns 403 (insufficient scope on
+    the API key); main() reports exit 1.
+    """
+    _write_dashboard(tmp_path, "ams-ok", "OK")
+    _write_dashboard(tmp_path, "ams-bad", "Bad")
+    mock_post = MagicMock(side_effect=[200, 403])
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--stack-url", "https://x.grafana.net"]
+    )
+
+    assert exit_code == 1
+    assert mock_post.call_count == 2
+
+
+def test_main_3xx_redirect_is_treated_as_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 302 (e.g. GC redirecting an under-scoped POST to its login page)
+    must NOT be silently counted as success."""
+    _write_dashboard(tmp_path, "ams-redirect", "Redirect")
+    mock_post = MagicMock(return_value=302)
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--stack-url", "https://x.grafana.net"]
+    )
+
+    assert exit_code == 1
+
+
+def test_post_dashboard_catches_url_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DNS/connection failure must surface as 599 (and a stderr message)
+    rather than crashing the loop.
+
+    A network blip while publishing dashboard #3 of 6 would otherwise
+    abort the loop with an uncaught URLError, leaving dashboards #4-6
+    referencing the Phase-2 metric schema.
+    """
+    import urllib.error
+    import urllib.request
+
+    def _raise_url_error(*_args: Any, **_kwargs: Any) -> Any:
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _raise_url_error)
+
+    status = sync_module.post_dashboard(
+        "https://x.grafana.net", "tok", {"dashboard": {"uid": "ams-net-fail"}}
+    )
+
+    assert status == 599
+
+
+def test_default_dashboards_dir_is_anchored_on_file(
+) -> None:
+    """``DEFAULT_DASHBOARDS_DIR`` resolves relative to the script's location,
+    not the caller's CWD — so the runbook command works from any directory."""
+    expected_suffix = Path("config") / "grafana" / "dashboards"
+    assert str(sync_module.DEFAULT_DASHBOARDS_DIR).endswith(str(expected_suffix))
+    # Must be absolute (would be relative if anchored on CWD).
+    assert sync_module.DEFAULT_DASHBOARDS_DIR.is_absolute()
