@@ -4,7 +4,7 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "links": [
-    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Start Here", "tooltip": "Back to start", "type": "link", "url": "/d/ams-obs-start-here/00-start-here"},
+    {"asDropdown": false, "icon": "dashboard", "includeVars": true, "keepTime": true, "tags": [], "targetBlank": false, "title": "Start Here", "tooltip": "Back to start", "type": "link", "url": "/d/ams-obs-start-here/00-start-here"},
     {"asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": true, "title": "Explore Profiles", "tooltip": "Open Grafana Explore on the Pyroscope datasource", "type": "link", "url": "/explore?left=%7B%22datasource%22%3A%22pyroscope%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22labelSelector%22%3A%22%7Bservice_name%3D~%5C%22ams-backend.%2A%5C%22%7D%22%2C%22profileTypeId%22%3A%22process_cpu%3Acpu%3Ananoseconds%3Acpu%3Ananoseconds%22%2C%22queryType%22%3A%22profile%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D"},
     {"asDropdown": false, "icon": "external link", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": true, "title": "Explore Traces", "tooltip": "Open Tempo Explore", "type": "link", "url": "/explore?left=%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22query%22%3A%22%7B+resource.service.name+%3D+%5C%22ams-backend%5C%22+%7D%22%2C%22queryType%22%3A%22traceql%22%2C%22refId%22%3A%22A%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D"}
   ],
@@ -15,7 +15,7 @@
       "id": 1,
       "options": {
         "mode": "markdown",
-        "content": "## Single-pane correlation demo\n\nThis is the M6 milestone outcome: in three clicks you go from **log line** → **trace** → **flamegraph**, all in one window.\n\n1. In the **Backend Logs** panel (left), expand a row. Click the `trace_id` derived field — Tempo opens with the matching trace.\n2. In the **Tempo Search** panel (right), open a trace. Inside the trace view, click **Profiles for this span** on a backend span. Pyroscope opens with the CPU flamegraph for that exact window.\n3. The bottom **p95 Latency** panel marks where the slow requests are; click the time range there to focus the upper panels on that exact window.\n\nIf no traces show up: check the backend has `OTEL_ENABLED=true` (it does in `docker-compose.observability.yml`) and that the user hit the frontend (the browser ships traces directly to Alloy's HTTP OTLP receiver on port 4318)."
+        "content": "## Single-pane correlation demo\n\nIn three clicks you go from **log line** to **trace** to **flamegraph**, all in one window.\n\n1. In the **Backend Logs** panel (left), expand a row. Click the `trace_id` derived field; Tempo opens with the matching trace.\n2. In the **Tempo Search** panel (right), open a trace. Inside the trace view, click **Profiles for this span** on a backend span. Pyroscope opens with the CPU flamegraph for that exact window.\n3. The bottom **p95 Latency** panel marks where the slow requests are; click the time range there to focus the upper panels on that exact window.\n\nIf no traces show up: check the backend has `OTEL_ENABLED=true` and valid `OTEL_EXPORTER_OTLP_HEADERS` for Grafana Cloud. Use the `$environment` template variable to switch between `local` and `production` views."
       },
       "title": "Walkthrough",
       "type": "text"
@@ -25,7 +25,7 @@
       "gridPos": {"h": 12, "w": 12, "x": 0, "y": 5},
       "id": 2,
       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"backend\"} | json | trace_id != \"\"", "refId": "A"}],
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"ams-backend\", environment=\"$environment\"} | json | trace_id != \"\"", "refId": "A"}],
       "title": "Backend Logs With trace_id (click trace_id → Tempo)",
       "type": "logs"
     },
@@ -33,7 +33,7 @@
       "datasource": {"type": "tempo", "uid": "tempo"},
       "gridPos": {"h": 12, "w": 12, "x": 12, "y": 5},
       "id": 3,
-      "targets": [{"datasource": {"type": "tempo", "uid": "tempo"}, "query": "{ resource.service.name = \"ams-backend\" } | select(duration)", "queryType": "traceql", "refId": "A", "tableType": "traces"}],
+      "targets": [{"datasource": {"type": "tempo", "uid": "tempo"}, "query": "{ resource.service.name = \"ams-backend\" && resource.environment = \"$environment\" } | select(duration)", "queryType": "traceql", "refId": "A", "tableType": "traces"}],
       "title": "Recent Backend Traces (open one → click Profiles for span)",
       "type": "table"
     },
@@ -43,7 +43,7 @@
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 17},
       "id": 4,
       "options": {"legend": {"calcs": ["max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\"}[1m])) by (le, handler))", "legendFormat": "{{handler}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\"}[1m])) by (le, http_route))", "legendFormat": "{{http_route}}", "refId": "A"}],
       "title": "Find Slow Handler (then look at logs + traces above)",
       "type": "timeseries"
     },
@@ -59,10 +59,30 @@
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": ["ams-observability", "correlation", "logs", "traces", "profiles"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": false, "text": "production", "value": "production"},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Environment",
+        "multi": false,
+        "name": "environment",
+        "options": [
+          {"selected": false, "text": "local", "value": "local"},
+          {"selected": true, "text": "production", "value": "production"}
+        ],
+        "query": "local,production",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
   "time": {"from": "now-15m", "to": "now"},
   "timezone": "browser",
   "title": "04 Logs Traces Profiles",
   "uid": "ams-obs-logs-traces-profiles",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

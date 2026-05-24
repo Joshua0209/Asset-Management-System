@@ -402,6 +402,8 @@ curl -s 'http://localhost:3200/api/search?service.name=ams-backend' | jq
 
 ## Phase 6 — CloudWatch datasource + IAM
 
+**STATUS: SUPERSEDED by [observability-prod-migration-plan.md](observability-prod-migration-plan.md) Phase 4.** The IAM-user-with-long-lived-keys pattern is replaced by a cross-account IAM role (`ams-grafana-cloud-reader`) assumed by Grafana Cloud, gated by `sts:ExternalId`. The local Grafana CloudWatch datasource is replaced by Grafana Cloud's hosted CloudWatch integration. The Phase 4 implementation lives under `infra/grafana-cloud/` with a runbook at `infra/grafana-cloud/README.md`. The content below is kept for historical context.
+
 **Session goal:** Grafana's `01 Operations Overview` shows ECS Container Insights and ALB metrics for the deployed AMS service alongside the local Prom panels.
 
 ### Prerequisites
