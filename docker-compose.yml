@@ -37,7 +37,9 @@ services:
       CORS_ALLOWED_HEADERS: '["Authorization","Content-Type"]'
       # Rate limiting — slowapi in-memory; flip RATE_LIMIT_ENABLED to false
       # only for load testing where real limits would skew the run.
-      RATE_LIMIT_ENABLED: "true"
+      # Default true; override via shell env (RATE_LIMIT_ENABLED=false docker
+      # compose up -d backend) for one-off load runs.
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
       RATE_LIMIT_AUTHENTICATED: 100/minute
       RATE_LIMIT_ANONYMOUS: 30/minute
       RATE_LIMIT_IMAGES: 300/minute
