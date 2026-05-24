@@ -218,21 +218,144 @@ def test_post_dashboard_catches_url_error(
 
     A network blip while publishing dashboard #3 of 6 would otherwise
     abort the loop with an uncaught URLError, leaving dashboards #4-6
-    referencing the Phase-2 metric schema.
+    referencing the Phase-2 metric schema. Patches the script's
+    custom no-redirect opener (not module-level urlopen) because the
+    post_dashboard refactor routes through ``_NO_REDIRECT_OPENER.open``.
     """
     import urllib.error
-    import urllib.request
 
     def _raise_url_error(*_args: Any, **_kwargs: Any) -> Any:
         raise urllib.error.URLError("connection refused")
 
-    monkeypatch.setattr(urllib.request, "urlopen", _raise_url_error)
+    mock_opener = MagicMock()
+    mock_opener.open = _raise_url_error
+    monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
 
     status = sync_module.post_dashboard(
         "https://x.grafana.net", "tok", {"dashboard": {"uid": "ams-net-fail"}}
     )
 
     assert status == 599
+
+
+def test_post_dashboard_returns_3xx_status_on_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A 3xx response from GC must be surfaced as the raw status code.
+
+    Without the no-redirect handler urllib would follow the redirect
+    (typically to an SSO login page that returns 200), masking the
+    auth-scope problem. ``_NoRedirectHandler`` converts every 3xx into
+    an ``HTTPError`` so ``post_dashboard``'s exception arm runs and
+    the operator-facing FAIL line carries both the code and the
+    "missing dashboards-write scope" hint.
+    """
+    import urllib.error
+
+    def _raise_redirect(*_args: Any, **_kwargs: Any) -> Any:
+        raise urllib.error.HTTPError(
+            url="https://x.grafana.net/api/dashboards/db",
+            code=302,
+            msg="Found",
+            hdrs={},  # type: ignore[arg-type]
+            fp=None,
+        )
+
+    mock_opener = MagicMock()
+    mock_opener.open = _raise_redirect
+    monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
+
+    status = sync_module.post_dashboard(
+        "https://x.grafana.net", "tok", {"dashboard": {"uid": "ams-3xx"}}
+    )
+
+    assert status == 302
+    captured = capsys.readouterr()
+    assert "FAIL" in captured.err
+    assert "ams-3xx" in captured.err
+    assert "302" in captured.err
+    # Hint about API-key scope must appear so operators recognise the symptom.
+    assert "dashboards-write scope" in captured.err
+
+
+def test_main_double_run_is_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Running main() twice in a row against the same dashboards must
+    both succeed: the GC dashboards-DB endpoint upserts by uid and the
+    script wraps every payload with ``overwrite: true``. A regression
+    that, say, switched to ``overwrite: false`` would surface as a 412
+    or 409 on the second run; this test would fail loud.
+    """
+    _write_dashboard(tmp_path, "ams-a", "A")
+    _write_dashboard(tmp_path, "ams-b", "B")
+    mock_post = MagicMock(return_value=200)
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    argv = [
+        "--dashboards-dir",
+        str(tmp_path),
+        "--stack-url",
+        "https://x.grafana.net",
+    ]
+
+    first_exit = sync_module.main(argv)
+    second_exit = sync_module.main(argv)
+
+    assert first_exit == 0
+    assert second_exit == 0
+    # Each run posts both dashboards; the second run still passes
+    # ``overwrite: true`` in build_payload, so the API call shape is
+    # identical and GC's upsert keeps both dashboards live.
+    assert mock_post.call_count == 4
+
+    # All four calls must carry the overwrite=True envelope so the
+    # second run is provably an upsert, not a create-only.
+    for call in mock_post.call_args_list:
+        payload = next(
+            v for v in (*call.args, *call.kwargs.values()) if isinstance(v, dict)
+        )
+        assert payload.get("overwrite") is True, payload
+
+    out = capsys.readouterr().out
+    # Final summary line appears once per run.
+    assert out.count("published successfully") == 2
+
+
+def test_main_partial_failure_prints_summary_with_uids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The final summary on partial failure lists exactly which uids
+    failed, so the operator doesn't have to scroll the CI log to count
+    individual FAIL lines. UIDs are deliberately ordered so that
+    ``load_dashboards`` (which sorts alphabetically) matches the
+    side_effect ordering on the mock: ams-1-ok → 200, ams-2-bad → 403,
+    ams-3-bad → 599.
+    """
+    _write_dashboard(tmp_path, "ams-1-ok", "OK")
+    _write_dashboard(tmp_path, "ams-2-bad", "Bad 1")
+    _write_dashboard(tmp_path, "ams-3-bad", "Bad 2")
+    mock_post = MagicMock(side_effect=[200, 403, 599])
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--stack-url", "https://x.grafana.net"]
+    )
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "2 of 3 dashboard" in err
+    assert "ams-2-bad" in err
+    assert "ams-3-bad" in err
+    # The successful uid must NOT appear in the failure summary.
+    assert "ams-1-ok" not in err
 
 
 def test_default_dashboards_dir_is_anchored_on_file(

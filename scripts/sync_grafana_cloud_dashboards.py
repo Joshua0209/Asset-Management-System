@@ -58,14 +58,52 @@ def build_payload(dashboard: dict[str, Any]) -> dict[str, Any]:
     return {"dashboard": dashboard, "overwrite": True}
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Disable urllib's automatic redirect-following.
+
+    A 3xx response to ``POST /api/dashboards/db`` is never a legitimate
+    Grafana Cloud API result — it usually means the API key is missing
+    the dashboards-write scope and GC redirected to a login/SSO page.
+    urllib's default handler would follow the redirect (often as GET),
+    fetch the final HTML, and surface a 200, masking the auth problem.
+    Returning the original 3xx via HTTPError makes the failure visible
+    to ``post_dashboard``'s exception arm.
+    """
+
+    def http_error_302(
+        self,
+        req: Any,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+    ) -> Any:
+        raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+    http_error_301 = http_error_302
+    http_error_303 = http_error_302
+    http_error_307 = http_error_302
+    http_error_308 = http_error_302
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler())
+
+
 def post_dashboard(stack_url: str, api_key: str, payload: dict[str, Any]) -> int:
     """POST one dashboard payload to the Grafana stack. Returns HTTP status.
 
-    Catches both ``urllib.error.HTTPError`` (non-2xx response from GC) and
-    ``urllib.error.URLError`` (DNS failure, connection refused, TLS error,
-    socket timeout). A URL-level failure returns ``599`` so ``main()`` can
-    treat it as a publish failure rather than aborting the loop and
-    leaving the GC stack with a partially-published dashboard set.
+    Uses an opener that refuses to follow 3xx redirects — see
+    ``_NoRedirectHandler``. Catches both ``urllib.error.HTTPError``
+    (non-2xx response from GC, including the now-visible 3xx auth-
+    redirect case) and ``urllib.error.URLError`` (DNS failure,
+    connection refused, TLS error, socket timeout). A URL-level
+    failure returns ``599`` so ``main()`` can treat it as a publish
+    failure rather than aborting the loop and leaving the GC stack
+    with a partially-published dashboard set.
+
+    On failure, writes a clear ``FAIL: <uid> -> <code> <reason>`` line
+    to stderr including the status code so the operator can recognise
+    the 3xx auth-redirect symptom without needing to grep the source.
     """
     url = stack_url.rstrip("/") + API_PATH
     body = json.dumps(payload).encode("utf-8")
@@ -80,11 +118,17 @@ def post_dashboard(stack_url: str, api_key: str, payload: dict[str, Any]) -> int
     )
     uid = payload["dashboard"].get("uid", "<unknown>")
     try:
-        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+        with _NO_REDIRECT_OPENER.open(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
             status: int = response.status
             return status
     except urllib.error.HTTPError as exc:
-        sys.stderr.write(f"FAIL: {uid} -> {exc.code} {exc.reason}\n")
+        hint = ""
+        if 300 <= exc.code < 400:
+            hint = (
+                " (3xx on POST usually means the API key is missing the "
+                "dashboards-write scope; check GC API key permissions)"
+            )
+        sys.stderr.write(f"FAIL: {uid} -> {exc.code} {exc.reason}{hint}\n")
         return exc.code
     except urllib.error.URLError as exc:
         # DNS / TCP / TLS-level failures (HTTPError is a subclass of URLError
@@ -141,17 +185,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write("--stack-url is required when not in --dry-run mode\n")
         raise SystemExit(2)
 
-    failures = 0
+    failed_uids: list[str] = []
     for dashboard in dashboards:
         status = post_dashboard(args.stack_url, api_key, build_payload(dashboard))
+        uid = str(dashboard.get("uid", "<unknown>"))
         # Strictly 2xx is success. A 3xx redirect (e.g. GC returning a
         # 302 to a login page when the token has insufficient scope) is
         # NOT success — the API never legitimately redirects on POST.
+        # _NoRedirectHandler turns 3xx into an HTTPError so post_dashboard's
+        # FAIL line is emitted with a hint pointing at API-key scope.
         if 200 <= status < 300:
-            print(f"OK  uid={dashboard['uid']} status={status}")
+            print(f"OK  uid={uid} status={status}")
         else:
-            failures += 1
-    return 0 if failures == 0 else 1
+            failed_uids.append(uid)
+
+    # Final summary so an operator scanning CI output doesn't have to
+    # grep individual FAIL lines to know how many dashboards failed and
+    # which uids need investigation.
+    total = len(dashboards)
+    if failed_uids:
+        sys.stderr.write(
+            f"\n{len(failed_uids)} of {total} dashboard(s) failed to publish: "
+            f"{', '.join(failed_uids)}\n"
+        )
+        return 1
+    print(f"\nAll {total} dashboard(s) published successfully.")
+    return 0
 
 
 if __name__ == "__main__":
