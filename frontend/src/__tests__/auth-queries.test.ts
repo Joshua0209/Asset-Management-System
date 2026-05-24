@@ -6,6 +6,7 @@
 // HTTP method/url contract and the envelope-unwrapping done by queries.ts.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/api";
 import type { LoginPayload, RegisterPayload } from "@/api/auth";
 
 // Mock base-client.request but preserve ApiError so mock-mode tests below
@@ -174,5 +175,41 @@ describe("api/auth/queries (real-API mode)", () => {
     });
     expect(user.id).toBe("u1");
     expect(user.email).toBe("alice@example.com");
+  });
+
+  // queries.ts has no try/catch around the real-API request(...) calls —
+  // ApiError instances raised by base-client must bubble untouched to the
+  // caller (auth provider, UI handlers, react-query). A regression that
+  // wraps the request in a silent-fallback try/catch would not be caught by
+  // the happy-path tests above, so each function gets a direct propagation
+  // test that asserts the exact ApiError instance survives.
+  it("login propagates an ApiError raised by the underlying request()", async () => {
+    const apiError = new ApiError(401, "unauthorized", "Invalid email or password");
+    mockRequest.mockRejectedValueOnce(apiError);
+
+    await expect(
+      mod.login({ email: "alice@example.com", password: "wrong" }),
+    ).rejects.toBe(apiError);
+  });
+
+  it("register propagates an ApiError raised by the underlying request()", async () => {
+    const apiError = new ApiError(409, "conflict", "Email is already registered");
+    mockRequest.mockRejectedValueOnce(apiError);
+
+    await expect(
+      mod.register({
+        email: "taken@example.com",
+        password: "abcd1234",
+        name: "Dup",
+        department: "IT",
+      }),
+    ).rejects.toBe(apiError);
+  });
+
+  it("fetchMe propagates an ApiError raised by the underlying request()", async () => {
+    const apiError = new ApiError(401, "unauthorized", "Invalid token");
+    mockRequest.mockRejectedValueOnce(apiError);
+
+    await expect(mod.fetchMe()).rejects.toBe(apiError);
   });
 });
