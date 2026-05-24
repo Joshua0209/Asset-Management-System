@@ -346,7 +346,7 @@ def setup_log_exporter(settings: Settings) -> None:
 
 
 def setup_metrics(app: FastAPI, settings: Settings) -> None:
-    """Wire FastAPI HTTP server metrics via OTel.
+    """Wire FastAPI HTTP server metrics + spans via OTel.
 
     No-op when ``settings.otel_enabled`` is False — the no-op MeterProvider
     that's active by default still lets module-level counters (FSM and
@@ -358,13 +358,38 @@ def setup_metrics(app: FastAPI, settings: Settings) -> None:
     ``http.server.active_requests``); ``setup_metrics_exporter``'s
     ``View`` rules rename them to the Prom-style series the existing
     dashboards query.
+
+    Configured options (security + cardinality):
+
+    * ``http_capture_headers_sanitize_fields`` redacts sensitive request /
+      response headers to ``[REDACTED]`` *if* header capture is ever
+      enabled (currently off by default but controllable via the
+      ``OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST`` env
+      var or a future SDK default flip). The regex list covers the
+      bearer-token / cookie / API-key shapes a Grafana Cloud Tempo
+      reader must never see. Hard-coded via kwarg rather than env so
+      it cannot be silently turned off in an ECS task def.
+    * ``excluded_urls`` skips the ALB liveness/readiness probes — they
+      run every few seconds, dominate span volume, and carry no
+      diagnostic value (success is the boring case; failure surfaces
+      via the existing /ready 503 path, not via spans).
     """
     if not settings.otel_enabled:
         return
 
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-    FastAPIInstrumentor.instrument_app(app)
+    FastAPIInstrumentor.instrument_app(
+        app,
+        excluded_urls="/health,/ready",
+        http_capture_headers_sanitize_fields=[
+            ".*authorization.*",
+            ".*cookie.*",
+            ".*x-api-key.*",
+            ".*proxy-authorization.*",
+            ".*set-cookie.*",
+        ],
+    )
 
 
 def setup_metrics_exporter(settings: Settings) -> None:

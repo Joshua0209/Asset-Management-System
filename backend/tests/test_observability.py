@@ -535,6 +535,56 @@ def _settings_with_otel(monkeypatch: pytest.MonkeyPatch, **overrides: str) -> Se
     return Settings()  # type: ignore[call-arg]
 
 
+def test_setup_metrics_passes_sanitize_and_excluded_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """setup_metrics MUST configure the FastAPIInstrumentor with sensitive-
+    header sanitisation and health-probe URL exclusion.
+
+    The bearer-token / cookie redaction is the defensive fix for the
+    CRITICAL "Authorization header captured into spans" finding. The
+    OTel FastAPI instrumentor's defaults today don't capture request
+    headers, but operators could flip
+    ``OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST`` in the
+    ECS task def for debugging — and once headers ARE captured, the
+    sanitize regex list is what keeps live JWTs out of Grafana Cloud
+    Tempo. Hard-coded via kwarg so an env-driven enable can't silently
+    turn it off.
+
+    The ``excluded_urls`` block is the span-cardinality fix: ALB
+    health probes hit /health and /ready every few seconds and would
+    otherwise dominate the trace volume budget with success spans of
+    zero diagnostic value.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from fastapi import FastAPI
+
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch)
+    app = FastAPI()
+    instrument_mock = MagicMock()
+    with patch(
+        "opentelemetry.instrumentation.fastapi.FastAPIInstrumentor.instrument_app",
+        instrument_mock,
+    ):
+        obs.setup_metrics(app, settings)
+
+    instrument_mock.assert_called_once()
+    kwargs = instrument_mock.call_args.kwargs
+    assert kwargs.get("excluded_urls") == "/health,/ready", kwargs
+    sanitize = kwargs.get("http_capture_headers_sanitize_fields")
+    assert sanitize is not None, "sanitize regex list must be set"
+    # All sensitive header families must be covered. Regex strings are
+    # checked as substrings against this list so a future addition that
+    # uses different anchors (e.g. ``^authorization$``) still satisfies
+    # the contract.
+    blob = " ".join(sanitize)
+    for required in ("authorization", "cookie", "x-api-key", "proxy-authorization"):
+        assert required in blob, (required, sanitize)
+
+
 def test_setup_metrics_exporter_installs_working_meter_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
