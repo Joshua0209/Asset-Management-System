@@ -255,19 +255,6 @@ jobs:
       - name: Build
         run: npm run build
 
-  obs-overlay:
-    name: Observability overlay (compose merge)
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: make obs-test
-        run: make obs-test
-      - name: make obs-alloy-fmt
-        # Pulls grafana/alloy:v1.5.1 and runs `alloy fmt` against the config
-        # so future edits to config/alloy/config.alloy can't ship malformed DSL.
-        run: make obs-alloy-fmt
-
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest

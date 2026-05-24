@@ -209,6 +209,8 @@ docker compose logs alloy | grep otlp
 
 ## Phase 3 — Observability stack compose overlay
 
+**STATUS: SUPERSEDED by [observability-prod-migration-plan.md](observability-prod-migration-plan.md).** The local docker-compose observability overlay was pruned in Phase 2 of that plan; telemetry now flows from both local dev and production directly to Grafana Cloud. The content below is kept for historical context.
+
 **Session goal:** `docker compose -f docker-compose.yml -f docker-compose.observability.yml up` brings up the full stack alongside the existing `mysql + backend + frontend`.
 
 ### Prerequisites
@@ -290,6 +292,8 @@ docker compose exec mysql mysql -uexporter -pexporter -e "SHOW DATABASES;"
 
 ## Phase 4 — Alloy + collector configs
 
+**STATUS: SUPERSEDED by [observability-prod-migration-plan.md](observability-prod-migration-plan.md).** Alloy was removed from both environments by Phase 2 of that plan; the FastAPI backend now pushes OTLP signals direct to Grafana Cloud's hosted gateways (Phase 3 of the new plan refactors the backend to OTLP-native). The content below is kept for historical context.
+
 **Session goal:** Alloy scrapes backend `/metrics`, cAdvisor, and `mysqld-exporter`; receives OTLP from backend + browser; discovers Docker container logs and relabels with low-cardinality `service` / `replica` / `log_format` labels via `com.docker.compose.service`; forwards everything to the right backend.
 
 ### Prerequisites
@@ -338,6 +342,8 @@ curl -s 'http://localhost:3200/api/search?service.name=ams-backend' | jq
 ---
 
 ## Phase 5 — Grafana dashboards
+
+**STATUS: SUPERSEDED by [observability-prod-migration-plan.md](observability-prod-migration-plan.md).** Dashboards now live in Grafana Cloud as the source of truth; Phase 4 of the new plan imports them, Phase 6 deletes the repo-side JSONs. The content below is kept for historical context.
 
 **Session goal:** Six provisioned dashboards exist and load against the live data:
 `00 Start Here`, `01 Operations Overview`, `02 Service Drilldown`, `03 Repair Journey`, `04 Logs/Traces/Profiles`, `05 MySQL`.

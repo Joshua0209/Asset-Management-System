@@ -12,6 +12,8 @@ Course project for a cloud computing / software engineering class. The repositor
 
 **Currently working on Week 6 — Observability + Demo Prep (May 19–23).** Goal: instrument backend + frontend with the **Grafana observability stack** (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor), stand it up locally via a compose overlay, provision dashboards, run k6 load + stress tests, finish the DESIGN.md theme pass, ship the Playwright E2E suite for the 6 critical flows, and run the first `workflow_dispatch` smoke test against the AWS environment now that the operator-side provisioning merged today via PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63).
 
+> **W6 follow-up (2026-05-24): the local Grafana stack is being retired.** The compose overlay, its config files, and the `make obs-*` targets are removed on `feat/observability` in favour of Grafana Cloud as the single backend for both local dev and AWS production. The narrative below documents the W6 work as it was carried out at the time. See [docs/plans/observability-prod-migration-plan.md](docs/plans/observability-prod-migration-plan.md) for the cutover plan.
+
 ### Week 5 — Infra + Testing + Polish (May 12–16) — Closed
 
 Major merges:
@@ -81,7 +83,7 @@ Resource shift this week: 5 devs → **1 dev (DESIGN.md theme + demo polish)** +
 - [ ] App reachable on public URL — pending `workflow_dispatch` smoke test + first successful rolling deploy
 - [ ] Backend instrumented: `/metrics`, OTLP traces, structured JSON logs, Pyroscope profiles
 - [ ] Frontend instrumented: browser OTLP
-- [ ] Grafana stack runs via `docker compose -f docker-compose.yml -f docker-compose.observability.yml up`
+- [ ] Telemetry flows to Grafana Cloud from both local dev and production (the original local compose overlay is being retired — see [docs/plans/observability-prod-migration-plan.md](docs/plans/observability-prod-migration-plan.md))
 - [ ] At least four dashboards provisioned (Operations Overview, Service Drilldown, Repair Journey, Logs/Traces/Profiles correlation)
 - [ ] One end-to-end correlation demo: dashboard click → Loki log line → Tempo trace → Pyroscope flamegraph for the same window
 - [ ] k6 load test report (sustained QPS for 10 min) + stress test breakpoint (P95 > 3s)
