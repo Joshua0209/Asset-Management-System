@@ -220,7 +220,7 @@ def build_bootstrap_manager() -> User:
     settings = get_settings()
     return User(
         email=settings.bootstrap_manager_email,
-        password_hash=hash_password(settings.bootstrap_manager_password),
+        password_hash=hash_password(settings.bootstrap_manager_password.get_secret_value()),
         name=settings.bootstrap_manager_name,
         role=UserRole.MANAGER,
         department=settings.bootstrap_manager_department,

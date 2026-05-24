@@ -69,9 +69,17 @@ class Settings(BaseSettings):
     # are required and validated together by ``_require_database_config``.
     # No fallback to localhost defaults — silent prod misconfiguration was
     # the regression flagged in PR #63 review.
-    database_url: str | None = None
+    # ``database_url`` and ``db_password`` are ``SecretStr`` so a
+    # ``repr(settings)`` / ``model_dump()`` / structured-log dump of
+    # ``Settings`` never leaks the production RDS password (or the
+    # password embedded in a full DATABASE_URL). Pydantic coerces a
+    # plain ``str`` env value into ``SecretStr`` at load time, and the
+    # truthy check ``if self.database_url:`` continues to work because
+    # ``SecretStr("")`` evaluates falsy (verified — pydantic-v2's
+    # ``SecretStr`` defines ``__bool__`` from the wrapped value).
+    database_url: SecretStr | None = None
     db_user: str | None = None
-    db_password: str | None = None
+    db_password: SecretStr | None = None
     db_host: str | None = None
     # MySQL default. Pinned as `int` (not `str`) so pydantic rejects a typo
     # like `DB_PORT=abc` at load time instead of letting it through into
@@ -81,13 +89,20 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_database_url(self) -> str:
+        """Render the full SQLAlchemy URL string.
+
+        Only place the raw password leaves SecretStr — at the boundary
+        SQLAlchemy needs to consume it. Callers should treat the
+        returned string itself as sensitive (do not log it; the
+        embedded password is in cleartext).
+        """
         if self.database_url:
-            return self.database_url
+            return self.database_url.get_secret_value()
         # ``_require_database_config`` guarantees these are set when we get here.
         return URL.create(
             "mysql+pymysql",
             username=self.db_user,
-            password=self.db_password,
+            password=self.db_password.get_secret_value() if self.db_password else None,
             host=self.db_host,
             port=self.db_port,
             database=self.db_name,
@@ -95,7 +110,13 @@ class Settings(BaseSettings):
 
     cors_allowed_origins: _StringList = ["http://localhost:5173"]
 
-    jwt_secret: str  # required — must be set via JWT_SECRET env var or .env
+    # ``SecretStr`` so a Settings dump never leaks the JWT signing key —
+    # a 32-byte key in cleartext logs would let any reader mint tokens.
+    # Plain str previously meant ``repr(settings)`` or ``model_dump()``
+    # in a startup-error path would ship the key to Loki via the new
+    # log exporter. Use ``.get_secret_value()`` at the JWT-encode/decode
+    # boundary in app/core/security.py.
+    jwt_secret: SecretStr  # required — must be set via JWT_SECRET env var or .env
     jwt_algorithm: str = "HS256"
     jwt_access_token_expires_minutes: int = 720  # 12h, matches api-design §1.2 example
 
@@ -105,9 +126,10 @@ class Settings(BaseSettings):
     # so a Secrets Manager injection failure surfaces at boot rather than
     # silently seeding `admin@example.com` / `ChangeMe123` into production.
     # Same posture as `jwt_secret`. `name` / `department` keep defaults
-    # since they are not credentials.
+    # since they are not credentials. Password is ``SecretStr`` so a
+    # log dump never carries the bootstrap manager's plaintext password.
     bootstrap_manager_email: str
-    bootstrap_manager_password: str
+    bootstrap_manager_password: SecretStr
     bootstrap_manager_name: str = "Bootstrap Manager"
     bootstrap_manager_department: str = "IT"
 

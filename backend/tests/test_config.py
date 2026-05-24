@@ -291,3 +291,53 @@ def test_settings_treats_empty_database_url_string_as_unset(
     msg = str(excinfo.value)
     for name in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD"):
         assert name in msg
+
+
+# ---------------------------------------------------------------------------
+# Credential redaction in dumps — locks the SecretStr posture so a future
+# refactor demoting one of these fields back to plain ``str`` shows up as a
+# test failure rather than a silent leak via structlog / startup-exception
+# dumps that now flow to Grafana Cloud Loki via the OTel log exporter.
+# ---------------------------------------------------------------------------
+
+
+def test_settings_credentials_are_redacted_in_repr_and_dump() -> None:
+    """``repr(settings)`` and ``model_dump()`` must not expose secret values.
+
+    The SecretStr wrapper renders as ``'**********'`` in repr and as the
+    SecretStr object in ``model_dump()``. With the OTel log exporter now
+    in place, any exception path that logs the settings object would
+    otherwise ship the JWT signing key + DB password + bootstrap manager
+    password to Loki in cleartext. Locks the SecretStr contract for all
+    four sensitive fields.
+    """
+    settings = Settings(
+        database_url="mysql+pymysql://u:s3cret-db@db:3306/ams",
+        jwt_secret="s3cret-jwt-key-do-not-leak",
+        bootstrap_manager_email="boot@test.example",
+        bootstrap_manager_password="s3cret-boot-password",  # noqa: S106
+        db_password="s3cret-db-component",  # noqa: S106
+    )
+    rendered = repr(settings)
+    for plaintext in (
+        "s3cret-db",
+        "s3cret-jwt-key-do-not-leak",
+        "s3cret-boot-password",
+        "s3cret-db-component",
+    ):
+        assert plaintext not in rendered, (
+            f"plaintext credential {plaintext!r} leaked into repr(settings): "
+            f"{rendered[:200]}"
+        )
+    dumped = settings.model_dump()
+    # model_dump preserves SecretStr objects (their repr is masked too).
+    for field in (
+        "database_url",
+        "jwt_secret",
+        "bootstrap_manager_password",
+        "db_password",
+    ):
+        value = dumped[field]
+        if value is None:
+            continue
+        assert "s3cret" not in repr(value), (field, repr(value))
