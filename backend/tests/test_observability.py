@@ -6,7 +6,7 @@ These verify the contract from
 * Optimistic-conflict counter increments on a 409 raised by an
   asset/repair-request endpoint, keyed by ``{endpoint, code}``.
 * FSM-transition counter increments on a successful repair-request
-  state change, keyed by ``{from, to, asset_kind}``.
+  state change, keyed by ``{state_from, state_to, asset_kind}``.
 * Structlog JSON renderer emits ``trace_id`` when a span is active.
 * ``setup_metrics_exporter`` installs a working ``MeterProvider`` and
   the module-level counters route into it.
@@ -272,7 +272,7 @@ def test_fsm_transition_counter_increments_on_review_approval(
     metric_reader: InMemoryMetricReader,
 ) -> None:
     """Approving a pending repair-request review bumps
-    ``ams_fsm_transitions_total{from,to,asset_kind}``.
+    ``ams_fsm_transitions_total{state_from,state_to,asset_kind}``.
 
     The transition under test is PENDING_REVIEW → UNDER_REPAIR on the
     repair-request, asset-side PENDING_REPAIR → UNDER_REPAIR.
@@ -298,7 +298,7 @@ def test_fsm_transition_counter_increments_on_review_approval(
     before = _counter_value(
         metric_reader,
         "ams_fsm_transitions_total",
-        {"from": "PENDING_REVIEW", "to": "UNDER_REPAIR"},
+        {"state_from": "PENDING_REVIEW", "state_to": "UNDER_REPAIR"},
     )
 
     response = client.post(
@@ -311,7 +311,7 @@ def test_fsm_transition_counter_increments_on_review_approval(
     after = _counter_value(
         metric_reader,
         "ams_fsm_transitions_total",
-        {"from": "PENDING_REVIEW", "to": "UNDER_REPAIR"},
+        {"state_from": "PENDING_REVIEW", "state_to": "UNDER_REPAIR"},
     )
     assert after == before + 1, (before, after)
 
@@ -336,7 +336,7 @@ def test_fsm_transition_counter_submit_creates_new_request(
     before = _counter_value(
         metric_reader,
         "ams_fsm_transitions_total",
-        {"from": "NONE", "to": "PENDING_REVIEW"},
+        {"state_from": "NONE", "state_to": "PENDING_REVIEW"},
     )
 
     response = client.post(
@@ -353,7 +353,7 @@ def test_fsm_transition_counter_submit_creates_new_request(
     after = _counter_value(
         metric_reader,
         "ams_fsm_transitions_total",
-        {"from": "NONE", "to": "PENDING_REVIEW"},
+        {"state_from": "NONE", "state_to": "PENDING_REVIEW"},
     )
     assert after == before + 1, (before, after)
 
@@ -387,7 +387,7 @@ def test_fsm_transition_counter_review_rejection(
     before = _counter_value(
         metric_reader,
         "ams_fsm_transitions_total",
-        {"from": "PENDING_REVIEW", "to": "REJECTED"},
+        {"state_from": "PENDING_REVIEW", "state_to": "REJECTED"},
     )
 
     response = client.post(
@@ -400,7 +400,7 @@ def test_fsm_transition_counter_review_rejection(
     after = _counter_value(
         metric_reader,
         "ams_fsm_transitions_total",
-        {"from": "PENDING_REVIEW", "to": "REJECTED"},
+        {"state_from": "PENDING_REVIEW", "state_to": "REJECTED"},
     )
     assert after == before + 1, (before, after)
 
@@ -434,7 +434,7 @@ def test_fsm_transition_counter_repair_completion(
     before = _counter_value(
         metric_reader,
         "ams_fsm_transitions_total",
-        {"from": "UNDER_REPAIR", "to": "COMPLETED"},
+        {"state_from": "UNDER_REPAIR", "state_to": "COMPLETED"},
     )
 
     response = client.post(
@@ -454,7 +454,7 @@ def test_fsm_transition_counter_repair_completion(
     after = _counter_value(
         metric_reader,
         "ams_fsm_transitions_total",
-        {"from": "UNDER_REPAIR", "to": "COMPLETED"},
+        {"state_from": "UNDER_REPAIR", "state_to": "COMPLETED"},
     )
     assert after == before + 1, (before, after)
 
@@ -1163,10 +1163,10 @@ def test_proxy_counter_increments_after_late_provider_install() -> None:
     from opentelemetry.metrics._internal import _PROXY_METER_PROVIDER
 
     from app.core import observability as obs
-    pre_attrs = {"from": "PROBE_PRE", "to": "PROBE_PRE", "asset_kind": "asset"}
+    pre_attrs = {"state_from": "PROBE_PRE", "state_to": "PROBE_PRE", "asset_kind": "asset"}
     post_attrs = {
-        "from": "PENDING_REVIEW",
-        "to": "UNDER_REPAIR",
+        "state_from": "PENDING_REVIEW",
+        "state_to": "UNDER_REPAIR",
         "asset_kind": "repair_request",
     }
     obs.FSM_TRANSITIONS.add(1, attributes=pre_attrs)

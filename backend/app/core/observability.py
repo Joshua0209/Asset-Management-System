@@ -76,24 +76,30 @@ _meter = metrics.get_meter("ams.backend")
 FSM_TRANSITIONS = _meter.create_counter(
     "ams_fsm_transitions_total",
     description=(
-        "Successful asset / repair-request FSM transitions. "
-        "Attributes: from, to (enum names), asset_kind ('asset' vs "
-        "'repair_request')."
+        "Successful repair-request FSM transitions. "
+        "Attributes: state_from, state_to (enum names), asset_kind."
     ),
 )
 """OTel counter for FSM state changes.
 
 Call sites attach attributes per ``.add(1, attributes={...})``:
 
-* ``from`` / ``to``: enum names (``PENDING_REVIEW``, ``UNDER_REPAIR``, …),
-  taken from ``RepairRequestStatus.<X>.name`` / ``AssetStatus.<X>.name``
-  so a rename in the enum surfaces here at type-check time. The submit
-  flow uses the sentinel literal ``"NONE"`` for ``from`` because the
+* ``state_from`` / ``state_to``: enum names (``PENDING_REVIEW``,
+  ``UNDER_REPAIR``, …), taken from ``RepairRequestStatus.<X>.name`` so a
+  rename in the enum surfaces here at type-check time. The submit flow
+  uses the sentinel literal ``"NONE"`` for ``state_from`` because the
   repair request did not previously exist; dashboards can count
   creations without collapsing them into other PENDING_REVIEW arrivals.
-* ``asset_kind``: ``asset`` for direct asset transitions, ``repair_request``
-  for repair-request transitions. Lets the Repair Journey dashboard slice
-  the two streams without a regex on the metric name.
+
+  Naming note: keys are ``state_from`` / ``state_to`` rather than the
+  shorter ``from`` / ``to`` because ``from`` is a Python reserved word
+  (annoying as a key inside ``.add(attributes=dict(...))`` form) and
+  both names collide with PromQL/LogQL parser keywords in some query
+  contexts. The ``state_*`` prefix also makes Grafana variable templates
+  unambiguous about which attribute they bind to.
+* ``asset_kind``: currently always ``"repair_request"`` — only repair-
+  request transitions are instrumented today. Reserved for direct
+  asset-state transitions if/when those are instrumented.
 """
 
 OPTIMISTIC_CONFLICTS = _meter.create_counter(

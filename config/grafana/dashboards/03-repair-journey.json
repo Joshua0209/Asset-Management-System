@@ -14,7 +14,7 @@
       "id": 1,
       "options": {
         "mode": "markdown",
-        "content": "**Domain-specific view of the AMS repair workflow.** The metrics here come from two custom counters in `app/core/observability.py`: `ams_fsm_transitions_total{from,to,asset_kind}` (every successful state change) and `ams_optimistic_conflicts_total{endpoint,code}` (every 409 raised when two writers raced or a transition was illegal). Latency panels pivot on the FastAPI `http_route` label so a route template (e.g. `/api/v1/repair-requests/{repair_request_id}/approve`) shows up once regardless of which id is in the URL.\n\nRate windows are deliberately asymmetric: stat panels use `[5m]` for a smoothed headline, timeseries panels use `[1m]` so a regression is visible within a refresh cycle. Do not normalise them; pick the window that matches the question.\n\nUse the `$environment` toggle at the top to switch between `local` and `production`."
+        "content": "**Domain-specific view of the AMS repair workflow.** The metrics here come from two custom counters in `app/core/observability.py`: `ams_fsm_transitions_total{state_from,state_to,asset_kind}` (every successful state change) and `ams_optimistic_conflicts_total{endpoint,code}` (every 409 raised when two writers raced or a transition was illegal). Latency panels pivot on the FastAPI `http_route` label so a route template (e.g. `/api/v1/repair-requests/{repair_request_id}/approve`) shows up once regardless of which id is in the URL.\n\nRate windows are deliberately asymmetric: stat panels use `[5m]` for a smoothed headline, timeseries panels use `[1m]` so a regression is visible within a refresh cycle. Do not normalise them; pick the window that matches the question.\n\nUse the `$environment` toggle at the top to switch between `local` and `production`."
       },
       "title": "Repair Journey",
       "type": "text"
@@ -65,7 +65,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 9},
       "id": 6,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (from, to) (rate(ams_fsm_transitions_total{service_name=\"ams-backend\", environment=\"$environment\"}[1m]))", "legendFormat": "{{from}} → {{to}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (state_from, state_to) (rate(ams_fsm_transitions_total{service_name=\"ams-backend\", environment=\"$environment\"}[1m]))", "legendFormat": "{{state_from}} → {{state_to}}", "refId": "A"}],
       "title": "FSM Transitions By (from → to)",
       "type": "timeseries"
     },
@@ -103,7 +103,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
       "id": 9,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (to) (increase(ams_fsm_transitions_total{service_name=\"ams-backend\", environment=\"$environment\", asset_kind=\"repair_request\"}[5m]))", "legendFormat": "→ {{to}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (state_to) (increase(ams_fsm_transitions_total{service_name=\"ams-backend\", environment=\"$environment\", asset_kind=\"repair_request\"}[5m]))", "legendFormat": "→ {{state_to}}", "refId": "A"}],
       "title": "Repair-Request Transitions Into Each State (5m bucket)",
       "type": "timeseries"
     },
