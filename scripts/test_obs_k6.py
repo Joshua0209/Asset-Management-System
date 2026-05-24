@@ -19,7 +19,6 @@ Run: ``python3 scripts/test_obs_k6.py`` from repo root.
 
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 import sys
@@ -185,21 +184,30 @@ def maybe_check_k6_inspect() -> None:
         passed("k6 inspect skipped (k6 binary not on PATH)")
         return
     for name in REQUIRED_SCRIPTS:
-        result = subprocess.run(
-            [k6, "inspect", "--quiet", str(LOAD_DIR / name)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                [k6, "inspect", "--quiet", str(LOAD_DIR / name)],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            # A wedged or slow k6 binary turns a structural gate into a
+            # stuck CI job; bail fast with a clear message instead of
+            # blocking the run.
+            fail(f"k6 inspect timed out (>30s) on load/{name}")
         if result.returncode != 0:
-            fail(f"k6 inspect rejected load/{name}:\n{result.stderr}")
+            # Include stdout: k6 inspect emits the parse diagnostic body
+            # on stdout (the structured report) and only the short error
+            # summary on stderr. Showing both means the operator sees the
+            # full failure context without a manual re-run.
+            fail(
+                f"k6 inspect rejected load/{name}:\n"
+                f"--- stdout ---\n{result.stdout}\n"
+                f"--- stderr ---\n{result.stderr}"
+            )
     passed("k6 inspect parses all scripts")
-
-
-# Keep ``re`` and ``subprocess`` imports live for ``maybe_check_k6_inspect``
-# even if a future refactor strips other regex usage; mypy --strict's
-# unused-import gate would otherwise fail on a transient state.
-_ = re
 
 
 def main() -> None:
