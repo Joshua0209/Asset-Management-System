@@ -151,6 +151,9 @@ class TestAdminCreateUserDbErrorPaths:
             )
 
         assert response.status_code == 409
+        body = response.json()["error"]
+        assert body["code"] == "conflict"
+        assert body["message"] == "Email is already registered"
 
     def test_non_email_integrity_error_returns_503(
         self,
@@ -172,6 +175,9 @@ class TestAdminCreateUserDbErrorPaths:
             )
 
         assert response.status_code == 503
+        body = response.json()["error"]
+        assert body["code"] == "service_unavailable"
+        assert body["message"] == "Unable to create user. Please try again later."
 
     def test_generic_sqlalchemy_error_returns_503(
         self,
@@ -189,3 +195,6 @@ class TestAdminCreateUserDbErrorPaths:
             )
 
         assert response.status_code == 503
+        body = response.json()["error"]
+        assert body["code"] == "service_unavailable"
+        assert body["message"] == "Unable to create user. Please try again later."

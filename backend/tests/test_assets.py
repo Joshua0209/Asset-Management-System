@@ -2223,6 +2223,9 @@ class TestAssetCodeSequenceCorruption:
         )
 
         assert response.status_code == 500
+        body = response.json()["error"]
+        assert body["code"] == "internal_server_error"
+        assert "corrupted" in body["message"]
 
 
 class TestRegisterAssetIntegrityErrors:
@@ -2263,6 +2266,9 @@ class TestRegisterAssetIntegrityErrors:
             )
 
         assert response.status_code == 422
+        body = response.json()["error"]
+        assert body["code"] == "validation_error"
+        assert "violates database constraints" in body["message"]
 
 
 class TestAssetMutationCommitErrors:
@@ -2298,6 +2304,9 @@ class TestAssetMutationCommitErrors:
             )
 
         assert response.status_code == 409
+        body = response.json()["error"]
+        assert body["code"] == "conflict"
+        assert "modified by another user" in body["message"]
 
     def test_update_integrity_error_returns_422(
         self,
@@ -2321,6 +2330,9 @@ class TestAssetMutationCommitErrors:
             )
 
         assert response.status_code == 422
+        body = response.json()["error"]
+        assert body["code"] == "validation_error"
+        assert "violates database constraints" in body["message"]
 
     def test_assign_stale_data_error_returns_409(
         self,
@@ -2347,6 +2359,9 @@ class TestAssetMutationCommitErrors:
             )
 
         assert response.status_code == 409
+        body = response.json()["error"]
+        assert body["code"] == "conflict"
+        assert "modified by another user" in body["message"]
 
     def test_assign_integrity_error_returns_422(
         self,
@@ -2377,6 +2392,9 @@ class TestAssetMutationCommitErrors:
             )
 
         assert response.status_code == 422
+        body = response.json()["error"]
+        assert body["code"] == "validation_error"
+        assert "violates database constraints" in body["message"]
 
     def test_unassign_stale_data_error_returns_409(
         self,
@@ -2407,6 +2425,9 @@ class TestAssetMutationCommitErrors:
             )
 
         assert response.status_code == 409
+        body = response.json()["error"]
+        assert body["code"] == "conflict"
+        assert "modified by another user" in body["message"]
 
     def test_unassign_integrity_error_returns_422(
         self,
@@ -2441,6 +2462,9 @@ class TestAssetMutationCommitErrors:
             )
 
         assert response.status_code == 422
+        body = response.json()["error"]
+        assert body["code"] == "validation_error"
+        assert "violates database constraints" in body["message"]
 
     def test_dispose_stale_data_error_returns_409(
         self,
@@ -2462,6 +2486,9 @@ class TestAssetMutationCommitErrors:
             )
 
         assert response.status_code == 409
+        body = response.json()["error"]
+        assert body["code"] == "conflict"
+        assert "modified by another user" in body["message"]
 
     def test_dispose_integrity_error_returns_422(
         self,
@@ -2487,3 +2514,6 @@ class TestAssetMutationCommitErrors:
             )
 
         assert response.status_code == 422
+        body = response.json()["error"]
+        assert body["code"] == "validation_error"
+        assert "violates database constraints" in body["message"]

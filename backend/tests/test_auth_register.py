@@ -165,6 +165,12 @@ class TestRegisterDbErrorPaths:
             response = client.post("/api/v1/auth/register", json=_payload())
 
         assert response.status_code == 503
+        body = response.json()["error"]
+        assert body["code"] == "service_unavailable"
+        # Pins the "Unable to create user" branch (line auth.py:116-119) so a
+        # regression that routes this through the generic SQLAlchemyError arm
+        # would surface as a message change here rather than passing silently.
+        assert body["message"] == "Unable to create user. Please try again later."
 
     def test_generic_sqlalchemy_error_returns_503(
         self, client: TestClient, db_session: Session
@@ -175,3 +181,6 @@ class TestRegisterDbErrorPaths:
             response = client.post("/api/v1/auth/register", json=_payload())
 
         assert response.status_code == 503
+        body = response.json()["error"]
+        assert body["code"] == "service_unavailable"
+        assert body["message"] == "Unable to register user. Please try again later."
