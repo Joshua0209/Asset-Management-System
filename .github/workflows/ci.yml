@@ -362,20 +362,8 @@ jobs:
           # (>=32 bytes random) and stored in AWS Secrets Manager.
           # Tracked in #69 - revisit when upstream publishes a fix version
           # or when PyJWT is upgraded to >=3.x.
-          #
-          # PYSEC-2026-161: starlette Host-header URL reconstruction advisory.
-          # Fix is starlette 1.0.1, but the upgrade is blocked transitively by
-          # `prometheus-fastapi-instrumentator` (latest 7.1.0 pins
-          # `starlette<1.0.0`). Not exploitable here: the app uses JWT + role
-          # deps (`app/api/deps.py`) over FastAPI's standard routing on the
-          # actual request path, never the reconstructed URL. The single
-          # `request.url.path` reference (`app/main.py` unhandled-exception
-          # handler) is for log output only, not an authorization decision.
-          # Revisit when prometheus-fastapi-instrumentator publishes a
-          # starlette-1.x compatible release.
           ignore-vulns: |
             PYSEC-2025-183
-            PYSEC-2026-161
 
   npm-audit:
     name: SCA - Node (npm audit)
