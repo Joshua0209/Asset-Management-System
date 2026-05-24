@@ -134,7 +134,9 @@ ID, and that the namespaces were selected in Step 4).
 ## Step 6: key rotation
 
 The `ams-grafana-cloud` AWS Secrets Manager secret carries the GC API
-key used by the OTLP and Pyroscope exporters. Rotation is operator-driven:
+key used by the OTLP and Pyroscope exporters. Rotate at least every
+**90 days**, or immediately on suspected compromise. Rotation is
+operator-driven:
 
 1. In the GC UI, generate a new API key with the same scopes as the old
    one (publish for `metrics`, `logs`, `traces`, `profiles`).
