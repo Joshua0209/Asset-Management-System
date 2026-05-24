@@ -358,6 +358,79 @@ def test_main_partial_failure_prints_summary_with_uids(
     assert "ams-1-ok" not in err
 
 
+def test_main_aborts_on_consecutive_transport_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two consecutive 599 (URLError) returns from post_dashboard must
+    short-circuit the loop and report the unattempted dashboards as
+    skipped.
+
+    Without this fail-fast, a network outage against GC would produce
+    ``len(dashboards) * HTTP_TIMEOUT_SECONDS`` of CI hang (6 × 30 s =
+    3 min today, scaling with the dashboard count). The operator should
+    see the failure summary immediately. HTTPError-class failures
+    (4xx/5xx) do NOT trip the abort because they imply GC is reachable
+    and the issue is request-level.
+    """
+    _write_dashboard(tmp_path, "ams-1", "First")
+    _write_dashboard(tmp_path, "ams-2", "Second")
+    _write_dashboard(tmp_path, "ams-3", "Third")
+    _write_dashboard(tmp_path, "ams-4", "Fourth")
+    # First two are 599 (transport failure); after the second the loop
+    # aborts and the remaining two are never attempted.
+    mock_post = MagicMock(side_effect=[599, 599])
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--stack-url", "https://x.grafana.net"]
+    )
+
+    assert exit_code == 1
+    # Only two posts were attempted; the rest were skipped on abort.
+    assert mock_post.call_count == 2, mock_post.call_args_list
+    err = capsys.readouterr().err
+    assert "ABORT" in err
+    assert "consecutive transport failures" in err
+    # Summary mentions all four uids — two failed, two skipped after abort.
+    assert "4 of 4 dashboard" in err
+    assert "2 skipped after abort" in err
+    for uid in ("ams-1", "ams-2", "ams-3", "ams-4"):
+        assert uid in err, uid
+
+
+def test_main_does_not_abort_on_consecutive_http_4xx_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two consecutive 4xx returns must NOT trigger the abort.
+
+    A 4xx implies the API key is reachable but lacks scope, or the
+    payload is malformed — the operator wants the full per-dashboard
+    error list, not an early abort masking some of the failures.
+    """
+    _write_dashboard(tmp_path, "ams-1", "First")
+    _write_dashboard(tmp_path, "ams-2", "Second")
+    _write_dashboard(tmp_path, "ams-3", "Third")
+    mock_post = MagicMock(side_effect=[403, 403, 403])
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--stack-url", "https://x.grafana.net"]
+    )
+
+    assert exit_code == 1
+    # All three should have been attempted.
+    assert mock_post.call_count == 3
+    err = capsys.readouterr().err
+    assert "ABORT" not in err
+    assert "3 of 3 dashboard" in err
+
+
 def test_default_dashboards_dir_is_anchored_on_file(
 ) -> None:
     """``DEFAULT_DASHBOARDS_DIR`` resolves relative to the script's location,

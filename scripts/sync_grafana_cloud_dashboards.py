@@ -38,6 +38,13 @@ DEFAULT_DASHBOARDS_DIR = (
 )
 API_PATH = "/api/dashboards/db"
 HTTP_TIMEOUT_SECONDS = 30
+# Fail-fast threshold for consecutive transport errors (URLError, not
+# HTTPError — the latter implies GC is reachable). After this many
+# in a row we assume GC is unreachable and abort the loop rather than
+# wait out ``len(dashboards) * HTTP_TIMEOUT_SECONDS`` (6 × 30 s = 3 min
+# on a network outage). Operator gets the partial-failure summary
+# immediately instead of after a long CI hang.
+_CONSECUTIVE_TRANSPORT_FAIL_LIMIT = 2
 
 
 def load_dashboards(dashboards_dir: Path) -> list[dict[str, Any]]:
@@ -189,7 +196,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(2)
 
     failed_uids: list[str] = []
+    consecutive_transport_fails = 0
+    skipped_after_abort: list[str] = []
+    aborted = False
     for dashboard in dashboards:
+        if aborted:
+            # Don't even attempt the post — GC has already shown itself
+            # unreachable. Record the uid so the summary reports the
+            # full unattempted set, not just the loop-end snapshot.
+            skipped_after_abort.append(str(dashboard.get("uid", "<unknown>")))
+            continue
         status = post_dashboard(args.stack_url, api_key, build_payload(dashboard))
         uid = str(dashboard.get("uid", "<unknown>"))
         # Strictly 2xx is success. A 3xx redirect (e.g. GC returning a
@@ -199,17 +215,39 @@ def main(argv: Sequence[str] | None = None) -> int:
         # FAIL line is emitted with a hint pointing at API-key scope.
         if 200 <= status < 300:
             print(f"OK  uid={uid} status={status}")
+            consecutive_transport_fails = 0
         else:
             failed_uids.append(uid)
+            # post_dashboard returns 599 specifically for transport-
+            # level URLError (DNS, TCP, TLS). HTTPError-class failures
+            # (4xx/5xx) come back with the real code — those mean GC
+            # *is* reachable, so don't trip the fail-fast.
+            if status == 599:
+                consecutive_transport_fails += 1
+                if consecutive_transport_fails >= _CONSECUTIVE_TRANSPORT_FAIL_LIMIT:
+                    sys.stderr.write(
+                        f"\nABORT: {consecutive_transport_fails} consecutive transport "
+                        f"failures against {args.stack_url}; assuming GC is unreachable "
+                        "and skipping the remaining dashboards.\n"
+                    )
+                    aborted = True
+            else:
+                consecutive_transport_fails = 0
 
     # Final summary so an operator scanning CI output doesn't have to
     # grep individual FAIL lines to know how many dashboards failed and
     # which uids need investigation.
     total = len(dashboards)
-    if failed_uids:
+    if failed_uids or skipped_after_abort:
+        all_failures = failed_uids + skipped_after_abort
+        skipped_note = (
+            f" ({len(skipped_after_abort)} skipped after abort)"
+            if skipped_after_abort
+            else ""
+        )
         sys.stderr.write(
-            f"\n{len(failed_uids)} of {total} dashboard(s) failed to publish: "
-            f"{', '.join(failed_uids)}\n"
+            f"\n{len(all_failures)} of {total} dashboard(s) failed to publish"
+            f"{skipped_note}: {', '.join(all_failures)}\n"
         )
         return 1
     print(f"\nAll {total} dashboard(s) published successfully.")
