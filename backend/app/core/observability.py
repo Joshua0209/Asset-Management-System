@@ -34,11 +34,13 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 from opentelemetry import metrics
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -889,3 +891,103 @@ def verify_observability_exports(settings: Settings) -> None:
             f"Verify OTEL_ENDPOINT={settings.otel_endpoint!r} is reachable "
             "and OTEL_EXPORTER_OTLP_HEADERS authenticates against Grafana Cloud."
         )
+# ---------------------------------------------------------------------------
+# Per-request JSON access log
+# ---------------------------------------------------------------------------
+
+
+class AccessLogMiddleware:
+    """ASGI middleware: emit one structured JSON log line per HTTP request.
+
+    OTel's FastAPI instrumentor wraps the entire middleware stack via a
+    ``build_middleware_stack`` monkey-patch (not ``app.add_middleware``), so
+    ``OpenTelemetryMiddleware`` ends up OUTSIDE every user middleware
+    regardless of ``setup_*`` call order. The access log's ``finally``
+    block therefore fires while the OTel span context is still attached,
+    letting ``_structlog_processor_trace_context`` stamp ``trace_id`` /
+    ``span_id`` onto the record — which in turn drives the Loki → Tempo
+    derived-field link in Grafana Cloud. The invariant is pinned by
+    ``tests/test_observability.py::test_access_log_runs_inside_otel_layer``.
+
+    The OTel ``LoggingHandler`` installed in :func:`setup_log_exporter`
+    picks the record up off the root logger and ships it to Grafana Cloud
+    Loki over OTLP, so the access log automatically flows to the same
+    backend as every other structlog event.
+
+    Logs flow through ``logging.getLogger("app.access")`` so structlog's
+    stdlib bridge (configured in ``setup_logging``) renders them as JSON
+    in prod and as key=value in dev — matching every other log line shape.
+
+    Paths in :attr:`EXCLUDED_PATHS` are intentionally not logged. They are
+    probe targets whose volume (ECS / compose healthcheck ~10s, ALB target
+    group similar) would dominate the log stream without carrying
+    user-facing signal. Each is already covered by a dedicated metric:
+    ``/health`` by the container's healthcheck state, ``/ready`` by the
+    ALB target-group health.
+    """
+
+    EXCLUDED_PATHS: frozenset[str] = frozenset({"/health", "/ready"})
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        # structlog logger (not stdlib) so kwargs land directly in the
+        # event_dict and survive the JSON renderer. stdlib ``extra={...}``
+        # is silently dropped by ProcessorFormatter's foreign-record path
+        # because no foreign_pre_chain processor lifts record attributes
+        # into the dict — using structlog skips that gap entirely.
+        self._logger = structlog.get_logger("app.access")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("path") in self.EXCLUDED_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        start = time.perf_counter()
+        # Default to 500: if the downstream app raises before sending the
+        # response start message, no http.response.start ever fires and we
+        # still want a status_code in the access log. Starlette's exception
+        # middleware will end up returning a 500 to the client in that
+        # case, so the value matches what the user saw.
+        status_code = 500
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = int(message["status"])
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            # ``scope["client"]`` is ``tuple[str, int] | None`` per the
+            # ASGI spec — the ``or`` substitutes a typed default so we
+            # can index without an inline guard.
+            client_host, _client_port = scope.get("client") or ("", 0)
+            # Resolve the FastAPI route template (e.g.
+            # ``/api/v1/repair-requests/{repair_request_id}/approve``) so
+            # dashboards can group by handler without exploding cardinality
+            # on the per-request raw path. Falls back to the raw path when
+            # the request did not match a route (404 before routing).
+            route = scope.get("route")
+            route_template = getattr(route, "path", scope.get("path", ""))
+            self._logger.info(
+                "request",
+                method=scope.get("method", ""),
+                path=scope.get("path", ""),
+                route=route_template,
+                status_code=status_code,
+                duration_ms=round(duration_ms, 2),
+                client_ip=client_host,
+            )
+
+
+def setup_access_log(app: FastAPI) -> None:
+    """Attach :class:`AccessLogMiddleware`.
+
+    OTel's FastAPI instrumentor wraps the entire stack via a
+    ``build_middleware_stack`` monkey-patch, so this middleware's relative
+    position vs ``setup_tracing`` is not load-bearing for ``trace_id``
+    propagation. See the class docstring for the full rationale.
+    """
+    app.add_middleware(AccessLogMiddleware)

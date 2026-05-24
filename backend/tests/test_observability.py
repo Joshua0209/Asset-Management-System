@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import structlog
 from fastapi.testclient import TestClient
 from opentelemetry import metrics as otel_metrics
 from opentelemetry.sdk.metrics import MeterProvider
@@ -1919,3 +1920,184 @@ def test_setup_metrics_exporter_is_idempotent_within_process(
         f"setup_metrics_exporter installed the provider {len(set_mp_calls)} "
         "times; expected 1"
     )
+
+
+# ---------------------------------------------------------------------------
+# AccessLogMiddleware — per-request JSON access log
+# ---------------------------------------------------------------------------
+
+
+def test_access_log_emits_one_record_per_request(client: TestClient) -> None:
+    """A routed request emits exactly one ``app.access`` event carrying
+    method / path / route / status_code / duration_ms / client_ip.
+
+    Uses ``structlog.testing.capture_logs`` instead of ``caplog`` because
+    the middleware logs via structlog (kwargs go into the event_dict
+    natively). caplog would only see the post-render stdlib LogRecord
+    whose attributes do not include the structured kwargs.
+    """
+    with structlog.testing.capture_logs() as captured:
+        resp = client.get(
+            "/api/v1/assets/mine", headers={"Authorization": "Bearer bogus"}
+        )
+    # 401 from the bearer reject is fine — we care that the request was
+    # observed by the middleware, not that the route succeeded.
+    assert resp.status_code in (401, 403, 422)
+
+    # ``capture_logs`` short-circuits the processor chain so
+    # ``add_logger_name`` never fires — match on the ``event`` field
+    # (unique to AccessLogMiddleware) instead of ``logger``.
+    access = [e for e in captured if e.get("event") == "request"]
+    assert len(access) == 1, captured
+    entry = access[0]
+    assert entry["method"] == "GET"
+    assert entry["path"] == "/api/v1/assets/mine"
+    assert entry["status_code"] == resp.status_code
+    assert isinstance(entry["duration_ms"], float)
+    assert entry["duration_ms"] >= 0.0
+
+
+def test_access_log_skips_health_and_ready(client: TestClient) -> None:
+    """Probe paths are excluded — their volume would dominate the log
+    stream without surfacing user-facing flow signal. ``/metrics`` is no
+    longer in the exclusion set because Phase 3 deleted the route.
+    """
+    with structlog.testing.capture_logs() as captured:
+        for path in ("/health", "/ready"):
+            client.get(path)
+    assert [e for e in captured if e.get("event") == "request"] == []
+
+
+def test_access_log_middleware_path_constants() -> None:
+    """The exclusion set is the single source of truth for what we skip;
+    pin it so a future edit doesn't silently regress dashboard expectations.
+    """
+    from app.core.observability import AccessLogMiddleware
+
+    assert AccessLogMiddleware.EXCLUDED_PATHS == frozenset({"/health", "/ready"})
+
+
+def test_access_log_resolves_route_template_for_parameterized_path(
+    client: TestClient,
+) -> None:
+    """The ``route`` field carries the FastAPI route TEMPLATE so dashboards
+    can group by handler without exploding cardinality on the per-request
+    raw path.
+
+    Regression guard for ``observability.py::AccessLogMiddleware`` line
+    where ``route_template = getattr(route, "path", scope.get("path", ""))``.
+    The auth dependency 401s before the handler runs, but routing has
+    already matched the template by then, so ``scope["route"].path`` is
+    populated. If a future edit drops the ``getattr(route, "path", ...)``
+    resolution and just records ``scope["path"]`` (the raw URL), the Loki
+    label cardinality on dashboards 03 / 04 explodes on every unique
+    ``{repair_request_id}`` an operator hits.
+    """
+    raw_path = "/api/v1/repair-requests/99999"
+    with structlog.testing.capture_logs() as captured:
+        client.get(raw_path, headers={"Authorization": "Bearer bogus"})
+
+    access = [e for e in captured if e.get("event") == "request"]
+    assert len(access) == 1, captured
+    entry = access[0]
+    assert entry["path"] == raw_path
+    assert entry["route"] == "/api/v1/repair-requests/{repair_request_id}", entry
+
+
+def test_access_log_defaults_status_to_500_when_no_response_start() -> None:
+    """If the downstream app raises before ``http.response.start`` fires,
+    AccessLogMiddleware still records a ``status_code`` on the access log
+    so dashboards see the row.
+
+    Exercises the ``status_code = 500`` default at
+    ``observability.py::AccessLogMiddleware.__call__``. The FastAPI test
+    client routes raised exceptions through registered exception handlers
+    that DO call ``send`` with a real status code, so this branch is
+    unreachable from a normal request. We invoke the middleware directly
+    with a stub inner ASGI app that raises before sending anything — the
+    same shape an exception escaping ServerErrorMiddleware would take.
+    """
+    import asyncio
+    from collections.abc import MutableMapping
+
+    from starlette.types import Receive, Scope, Send
+
+    from app.core.observability import AccessLogMiddleware
+
+    async def broken_inner(_scope: Scope, _receive: Receive, _send: Send) -> None:
+        # Raise before emitting http.response.start so send_wrapper's
+        # status capture never runs and the default kicks in.
+        raise RuntimeError("simulated catastrophic failure")
+
+    middleware = AccessLogMiddleware(broken_inner)
+
+    async def fake_receive() -> MutableMapping[str, Any]:
+        return {"type": "http.request"}
+
+    async def fake_send(
+        _message: MutableMapping[str, Any],
+    ) -> None:  # pragma: no cover
+        raise AssertionError("send must not be called when inner raises")
+
+    scope: MutableMapping[str, Any] = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v1/something",
+        "headers": [],
+        "client": ("127.0.0.1", 0),
+    }
+
+    with structlog.testing.capture_logs() as captured:
+        with pytest.raises(RuntimeError, match="simulated"):
+            asyncio.run(middleware(scope, fake_receive, fake_send))
+
+    access = [e for e in captured if e.get("event") == "request"]
+    assert len(access) == 1, captured
+    entry = access[0]
+    assert entry["status_code"] == 500, entry
+    assert entry["method"] == "POST"
+    assert entry["path"] == "/api/v1/something"
+    assert isinstance(entry["duration_ms"], float)
+
+
+def test_access_log_runs_inside_otel_layer() -> None:
+    """Pin: in the built middleware stack, OpenTelemetryMiddleware is
+    OUTSIDE AccessLogMiddleware, so the OTel span context is still
+    attached when the access log's ``finally`` block emits its record.
+
+    OTel's FastAPI instrumentor wraps the stack via a
+    ``build_middleware_stack`` monkey-patch (not ``app.add_middleware``),
+    so the order in which ``setup_access_log`` and ``setup_tracing`` are
+    called in ``app/main.py`` does NOT affect this — OTel always ends up
+    outermost. If a future OTel release switches to ``add_middleware``,
+    or reorders its wrap, the dashboard 03 / 04 Loki → Tempo drill goes
+    dark and this test catches it before the regression ships.
+    """
+    from fastapi import FastAPI
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    from app.core.observability import setup_access_log
+
+    fresh_app = FastAPI()
+    setup_access_log(fresh_app)
+    FastAPIInstrumentor.instrument_app(fresh_app)
+    try:
+        layers: list[str] = []
+        node = fresh_app.build_middleware_stack()
+        for _ in range(20):
+            layers.append(type(node).__name__)
+            inner = getattr(node, "app", None)
+            if inner is None or inner is node:
+                break
+            node = inner
+        assert "OpenTelemetryMiddleware" in layers, layers
+        assert "AccessLogMiddleware" in layers, layers
+        otel_idx = layers.index("OpenTelemetryMiddleware")
+        access_idx = layers.index("AccessLogMiddleware")
+        assert otel_idx < access_idx, (
+            f"OpenTelemetryMiddleware ({otel_idx}) must wrap "
+            f"AccessLogMiddleware ({access_idx}) in the built stack; "
+            f"current outer-to-inner: {layers}"
+        )
+    finally:
+        FastAPIInstrumentor.uninstrument_app(fresh_app)

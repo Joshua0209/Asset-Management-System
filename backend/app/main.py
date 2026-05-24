@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.observability import (
     FRONTEND_OBS_BEACON_RATE_LIMITED,
     maybe_setup_profiling,
+    setup_access_log,
     setup_log_exporter,
     setup_logging,
     setup_metrics,
@@ -198,7 +199,7 @@ app.add_middleware(
 
 # Observability (W6 Phase 3, OTLP-native):
 #   Ordering after setup_logging + setup_log_exporter (above):
-#   metrics_exporter → metrics → tracing → profiling.
+#   metrics_exporter → metrics → tracing → profiling → access_log.
 #
 #   setup_metrics_exporter MUST run before setup_metrics: the FastAPI
 #   instrumentor's ``instrument_app`` resolves ``get_meter()`` at call
@@ -224,10 +225,19 @@ app.add_middleware(
 #   sets it true). The ``WEB_CONCURRENCY=1`` invariant above plus no
 #   ``gunicorn --preload`` means the sampling thread starts inside
 #   the worker post-fork.
+#
+#   setup_access_log registers AccessLogMiddleware so every request emits
+#   a structured JSON log line tagged with route + status + duration +
+#   trace_id. OTel's FastAPI instrumentor wraps the entire stack via a
+#   ``build_middleware_stack`` monkey-patch, so this call's position
+#   relative to ``setup_tracing`` is not load-bearing for trace_id
+#   propagation; the access log always runs INSIDE the OTel span context.
+#   Pinned by tests/test_observability.py::test_access_log_runs_inside_otel_layer.
 setup_metrics_exporter(settings)
 setup_metrics(app, settings)
 setup_tracing(app, settings)
 maybe_setup_profiling(settings)
+setup_access_log(app)
 # Fail-fast smoke test: in non-local envs, refuse to boot if any OTLP
 # provider's force_flush returns False. Closes the silent-export-failure
 # gap where a wrong API key would otherwise drop every span/metric/log
