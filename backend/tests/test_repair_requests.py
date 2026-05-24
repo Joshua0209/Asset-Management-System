@@ -2574,24 +2574,19 @@ class TestGetRepairRequestDbError:
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
+        scalar_skip_auth: Callable[[BaseException], Callable[..., Any]],
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
         holder = make_user(role=UserRole.HOLDER)
         _, rr = _seed_pending_review(db_session, holder)
         db_session.commit()
 
-        # Auth runs db.scalar first; let it through, then raise on the
-        # endpoint's own scalar so we exercise the 503 branch.
-        real_scalar = db_session.scalar
-        calls = {"n": 0}
-
-        def scalar_side_effect(*args: Any, **kwargs: Any) -> Any:
-            calls["n"] += 1
-            if calls["n"] == 1:
-                return real_scalar(*args, **kwargs)
-            raise SQLAlchemyError("DB down")
-
-        with patch.object(db_session, "scalar", side_effect=scalar_side_effect):
+        # Auth runs db.scalar first; ``scalar_skip_auth`` passes it through and
+        # raises on every subsequent call so we exercise the endpoint's own
+        # 503 branch, not the auth-lookup 401 path.
+        with patch.object(
+            db_session, "scalar", side_effect=scalar_skip_auth(SQLAlchemyError("DB down"))
+        ):
             response = client.get(
                 f"/api/v1/repair-requests/{rr.id}", headers=auth_headers(manager)
             )

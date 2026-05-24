@@ -279,10 +279,11 @@ class TestGetImage:
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
         upload_dir: Path,
+        scalar_skip_auth: Callable[[BaseException], Callable[..., Any]],
     ) -> None:
         # Cover the SQLAlchemyError → 503 branch in get_image (lines 91-96).
-        # Auth's own ``db.scalar`` call must be allowed through first; only
-        # the endpoint's lookup should raise.
+        # ``scalar_skip_auth`` lets auth's first ``db.scalar`` through and
+        # raises on every subsequent call so only the endpoint's lookup fails.
         holder = make_user(role=UserRole.HOLDER)
         rr = _seed_repair_request(db_session, holder)
         image = _attach_image(
@@ -290,16 +291,9 @@ class TestGetImage:
         )
         db_session.commit()
 
-        real_scalar = db_session.scalar
-        calls = {"n": 0}
-
-        def scalar_side_effect(*args: Any, **kwargs: Any) -> Any:
-            calls["n"] += 1
-            if calls["n"] == 1:
-                return real_scalar(*args, **kwargs)
-            raise SQLAlchemyError("DB down")
-
-        with patch.object(db_session, "scalar", side_effect=scalar_side_effect):
+        with patch.object(
+            db_session, "scalar", side_effect=scalar_skip_auth(SQLAlchemyError("DB down"))
+        ):
             response = client.get(
                 f"/api/v1/images/{image.id}",
                 headers=auth_headers(holder),

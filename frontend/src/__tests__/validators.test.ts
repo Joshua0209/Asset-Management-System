@@ -7,6 +7,12 @@ import { describe, expect, it } from "vitest";
 import type { TFunction } from "i18next";
 import { createAmountValidator } from "@/utils/validators";
 
+// i18next's TFunction is a heavily overloaded type (it's a callable + an
+// indexed-access type for namespaces) that cannot be expressed as a simple
+// (key: string) => string. For these tests we only need the key-echo
+// behavior so assertions can match raw i18n keys instead of localized
+// strings — the double cast keeps the stub minimal without disabling
+// strict typing across the file.
 const t = ((key: string) => key) as unknown as TFunction;
 
 describe("createAmountValidator", () => {

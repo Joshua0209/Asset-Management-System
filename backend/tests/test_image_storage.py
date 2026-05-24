@@ -62,7 +62,17 @@ class TestLocalImageStorageOpenErrors:
 
         # Anything other than ``FileNotFoundError`` must surface as the
         # generic ``ImageStorageError`` (it's transient — retry may help).
-        with patch.object(Path, "read_bytes", side_effect=OSError("EIO")):
+        # Narrow the patch's blast radius: only raise for paths under tmp_path,
+        # so any incidental ``Path.read_bytes`` call elsewhere in the stack
+        # during ``storage.open(...)`` still behaves normally.
+        original_read_bytes = Path.read_bytes
+
+        def selective_read_bytes(self: Path) -> bytes:
+            if str(tmp_path) in str(self):
+                raise OSError("EIO")
+            return original_read_bytes(self)
+
+        with patch.object(Path, "read_bytes", autospec=True, side_effect=selective_read_bytes):
             with pytest.raises(ImageStorageError) as excinfo:
                 storage.open(storage_key)
 
@@ -70,6 +80,9 @@ class TestLocalImageStorageOpenErrors:
         # 404 in ``image_storage_error_to_http`` and hide a real outage.
         assert not isinstance(excinfo.value, ImageNotFoundError)
         assert not isinstance(excinfo.value, ImageStorageIntegrityError)
+        # The diagnostic must carry the storage_key so the orphan can be found
+        # in logs without grepping the request body.
+        assert storage_key in str(excinfo.value)
 
     def test_unsupported_suffix_raises_integrity_error(self, tmp_path: Path) -> None:
         storage = LocalImageStorage(tmp_path)
@@ -97,12 +110,31 @@ class TestLocalImageStorageCleanup:
         target.parent.mkdir(parents=True)
         target.write_bytes(b"payload")
 
-        with patch.object(Path, "unlink", side_effect=OSError("EACCES")):
+        # Narrow the patch's blast radius: only raise when unlinking files
+        # under tmp_path (i.e. the targets owned by this test).
+        original_unlink = Path.unlink
+
+        def selective_unlink(self: Path, missing_ok: bool = False) -> None:
+            if str(tmp_path) in str(self):
+                raise OSError("EACCES")
+            original_unlink(self, missing_ok=missing_ok)
+
+        # Ensure the module's warnings propagate even if a future handler
+        # blocks propagation; without this, ``caplog`` may capture nothing
+        # and the substring assertion below would silently pass empty.
+        caplog.set_level(logging.WARNING, logger="app.services.image_storage")
+        with patch.object(Path, "unlink", autospec=True, side_effect=selective_unlink):
             # Must not raise — that's the contract.
             storage.cleanup([storage_key])
 
-        # And it must log the failure so the orphan can be reconciled later.
-        assert any("Failed to remove orphaned upload" in r.message for r in caplog.records)
+        # The failure must log at WARNING with the storage_key in the message
+        # so the orphan can be reconciled later. ``levelno`` filtering catches
+        # a regression that drops the level (e.g. to DEBUG, invisible in prod).
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any(
+            "Failed to remove orphaned upload" in r.message and storage_key in r.message
+            for r in warnings
+        )
 
     def test_cleanup_silently_skips_already_missing_file(self, tmp_path: Path) -> None:
         storage = LocalImageStorage(tmp_path)

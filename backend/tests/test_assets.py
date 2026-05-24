@@ -699,14 +699,17 @@ class TestAssetUpdateSchema:
             )
 
     def test_warranty_expiry_equal_to_purchase_date_raises(self) -> None:
-        # Validator says "must be after", so equal also fails.
+        # Validator says "must be after", so equal also fails. Both dates must
+        # be in the past — otherwise the future-purchase-date guard would fire
+        # first and this test would pass for the wrong reason once the system
+        # clock crosses the chosen date.
         with pytest.raises(
             ValidationError, match="warranty_expiry must be after purchase_date"
         ):
             AssetUpdate.model_validate(
                 {
-                    "purchase_date": "2026-01-01",
-                    "warranty_expiry": "2026-01-01",
+                    "purchase_date": "2025-06-01",
+                    "warranty_expiry": "2025-06-01",
                     "version": 1,
                 }
             )
@@ -2134,24 +2137,18 @@ class TestGetAssetDbError:
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
+        scalar_skip_auth: Callable[[BaseException], Callable[..., Any]],
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
         asset = _make_asset(db_session)
 
         # Both ``get_current_user`` and ``get_asset`` use ``db.scalar``; the
-        # auth lookup is always the first call. Let it pass through, then
-        # raise on the endpoint's own scalar so we exercise the SQLAlchemyError
-        # branch (line 380-385) rather than the 401 path.
-        real_scalar = db_session.scalar
-        call_count = {"n": 0}
-
-        def scalar_side_effect(*args: Any, **kwargs: Any) -> Any:
-            call_count["n"] += 1
-            if call_count["n"] == 1:
-                return real_scalar(*args, **kwargs)
-            raise SQLAlchemyError("DB down")
-
-        with patch.object(db_session, "scalar", side_effect=scalar_side_effect):
+        # auth lookup is always the first call. ``scalar_skip_auth`` passes
+        # it through and raises on every subsequent call so we exercise the
+        # SQLAlchemyError branch (line 380-385) rather than the 401 path.
+        with patch.object(
+            db_session, "scalar", side_effect=scalar_skip_auth(SQLAlchemyError("DB down"))
+        ):
             response = client.get(
                 f"/api/v1/assets/{asset.id}", headers=auth_headers(manager)
             )

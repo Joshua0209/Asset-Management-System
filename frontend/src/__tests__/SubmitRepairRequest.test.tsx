@@ -250,6 +250,11 @@ describe('SubmitRepairRequest', () => {
     await waitFor(() => {
       expect(messageErrorSpy).toHaveBeenCalledWith('common.repairRequest.uploadSize');
     });
+    // Mirror the format-rejection test: the oversize file must be filtered
+    // out by Upload.LIST_IGNORE. A regression that emits the toast but
+    // forgets to return LIST_IGNORE would otherwise leave the file in
+    // ``fileList`` and silently upload it on submit.
+    expect(screen.queryByText('big.jpg')).toBeNull();
   });
 
   it('accepts a valid JPEG via beforeUpload + onChange and submits it as an image part', async () => {
