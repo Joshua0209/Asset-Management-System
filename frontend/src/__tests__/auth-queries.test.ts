@@ -1,8 +1,25 @@
-// Exercises the mock-mode branch of api/auth/queries (VITE_USE_MOCK_AUTH=true).
-// Real-API branches go through `request()` and are covered by base-client.test.ts.
+// Exercises both branches of api/auth/queries:
+//   - mock mode (VITE_USE_MOCK_AUTH=true): returns in-memory fixtures
+//   - real-API mode (VITE_USE_MOCK_AUTH=false): forwards to base-client `request()`
+//
+// `request()` itself is covered by base-client.test.ts; here we only assert the
+// HTTP method/url contract and the envelope-unwrapping done by queries.ts.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoginPayload, RegisterPayload } from "@/api/auth";
+
+// Mock base-client.request but preserve ApiError so mock-mode tests below
+// (which `throw new ApiError(...)`) still get a real constructor.
+vi.mock("@/api/base-client", async () => {
+  const actual = await vi.importActual<typeof import("@/api/base-client")>("@/api/base-client");
+  return {
+    ...actual,
+    request: vi.fn(),
+  };
+});
+
+const baseClientModule = await import("@/api/base-client");
+const mockRequest = vi.mocked(baseClientModule.request);
 
 type QueriesModule = typeof import("@/api/auth/queries");
 
@@ -72,5 +89,90 @@ describe("api/auth/queries (mock mode)", () => {
       name: "ApiError",
       status: 401,
     });
+  });
+});
+
+describe("api/auth/queries (real-API mode)", () => {
+  let mod: QueriesModule;
+
+  beforeEach(async () => {
+    vi.stubEnv("VITE_USE_MOCK_AUTH", "false");
+    vi.resetModules();
+    mockRequest.mockReset();
+    mod = await import("@/api/auth/queries");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("login posts to /auth/login and unwraps the data envelope", async () => {
+    mockRequest.mockResolvedValueOnce({
+      data: {
+        token: "tok-1",
+        expires_at: "2026-12-31T00:00:00Z",
+        user: { id: "u1", email: "alice@example.com", name: "Alice", role: "holder" },
+      },
+    });
+
+    const payload: LoginPayload = { email: "alice@example.com", password: "abcd1234" };
+    const session = await mod.login(payload);
+
+    expect(mockRequest).toHaveBeenCalledWith({
+      method: "POST",
+      url: "/auth/login",
+      data: payload,
+    });
+    expect(session.token).toBe("tok-1");
+    expect(session.expiresAt).toBe("2026-12-31T00:00:00Z");
+    expect(session.user.role).toBe("holder");
+  });
+
+  it("register posts to /auth/register and returns the unwrapped user", async () => {
+    mockRequest.mockResolvedValueOnce({
+      data: {
+        id: "u-new",
+        email: "new@example.com",
+        name: "New User",
+        role: "holder",
+      },
+    });
+
+    const payload: RegisterPayload = {
+      email: "new@example.com",
+      password: "abcd1234",
+      name: "New User",
+      department: "IT",
+    };
+    const user = await mod.register(payload);
+
+    expect(mockRequest).toHaveBeenCalledWith({
+      method: "POST",
+      url: "/auth/register",
+      data: payload,
+    });
+    expect(user.id).toBe("u-new");
+    expect(user.email).toBe("new@example.com");
+    expect(user.role).toBe("holder");
+  });
+
+  it("fetchMe GETs /auth/me and returns the unwrapped user", async () => {
+    mockRequest.mockResolvedValueOnce({
+      data: {
+        id: "u1",
+        email: "alice@example.com",
+        name: "Alice",
+        role: "holder",
+      },
+    });
+
+    const user = await mod.fetchMe();
+
+    expect(mockRequest).toHaveBeenCalledWith({
+      method: "GET",
+      url: "/auth/me",
+    });
+    expect(user.id).toBe("u1");
+    expect(user.email).toBe("alice@example.com");
   });
 });
