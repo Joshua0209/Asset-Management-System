@@ -120,6 +120,27 @@ OPTIMISTIC_CONFLICTS = _meter.create_counter(
   …). Matches ``docs/system-design/12-api-design.md`` §"409 Conflict".
 """
 
+FRONTEND_OBS_FAILURES = _meter.create_counter(
+    "ams_frontend_observability_init_failures_total",
+    description=(
+        "Frontend OTel SDK init failures reported via the browser beacon "
+        "POST /api/v1/observability/client-error. Attributes: kind (free-form "
+        "subcategory the browser sends, currently always "
+        "'observability_init_failed')."
+    ),
+)
+"""OTel counter for browser-side observability init failures.
+
+Incremented by ``POST /api/v1/observability/client-error`` whenever the
+frontend's ``initObservability`` catch block fires. The browser-side
+OTLP SDK has no way to report its own init failure back to GC (CORS,
+no auth, no fallback channel), so without this beacon a misconfigured
+prod bundle silently disables tracing for 100% of users —
+indistinguishable from ``VITE_OTEL_ENABLED=false``. Operators alert on
+``rate(ams_frontend_observability_init_failures_total[5m]) > 0`` to
+catch a regression in the next deploy.
+"""
+
 
 # ---------------------------------------------------------------------------
 # Tracing helpers
@@ -387,7 +408,11 @@ def setup_metrics(app: FastAPI, settings: Settings) -> None:
 
     FastAPIInstrumentor.instrument_app(
         app,
-        excluded_urls="/health,/ready",
+        # Also skip the frontend-failure beacon: it would create a
+        # circular telemetry loop (the beacon's own request would
+        # generate a span / metric that, if export then failed, could
+        # trigger another beacon — runaway feedback).
+        excluded_urls="/health,/ready,/api/v1/observability/client-error",
         http_capture_headers_sanitize_fields=[
             ".*authorization.*",
             ".*cookie.*",

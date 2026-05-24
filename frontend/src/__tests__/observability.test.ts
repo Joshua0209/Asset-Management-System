@@ -228,4 +228,56 @@ describe("initObservability", () => {
 
     warn.mockRestore();
   });
+
+  it("posts a navigator.sendBeacon to the backend when init fails so operators see the regression", async () => {
+    // Without this beacon, a misconfigured prod bundle silently disables
+    // tracing for 100% of users — indistinguishable from
+    // VITE_OTEL_ENABLED=false from the operator's view. The beacon
+    // increments the backend's ams_frontend_observability_init_failures_total
+    // counter so an alert rule catches the regression in the next deploy.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sendBeacon = vi.fn(() => true);
+    vi.stubGlobal("navigator", { sendBeacon });
+    providerRegister.mockImplementationOnce(() => {
+      throw new Error("VITE_OTEL_ENDPOINT typo'd");
+    });
+    const { initObservability } = await importFreshModule();
+
+    const result = await initObservability({ enabled: true });
+    expect(result).toBe(false);
+    expect(sendBeacon).toHaveBeenCalledTimes(1);
+    const [url, body] = sendBeacon.mock.calls[0] as [string, string];
+    expect(url).toBe("/api/v1/observability/client-error");
+    // Passing a string makes the browser set Content-Type to
+    // `text/plain;charset=UTF-8` automatically — in the simple-CORS
+    // set, so a future cross-origin deploy skips the preflight that
+    // fire-and-forget sendBeacon cannot satisfy.
+    expect(typeof body).toBe("string");
+    const parsed = JSON.parse(body) as { kind: string; message: string };
+    expect(parsed.kind).toBe("observability_init_failed");
+    expect(parsed.message).toContain("VITE_OTEL_ENDPOINT");
+
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not throw when navigator.sendBeacon is absent (older runtimes)", async () => {
+    // The catch block in the catch block must never crash the app. A
+    // jsdom runtime without sendBeacon (or a browser variant that
+    // returns false / throws) must fall through to console-only
+    // diagnostics without propagating.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("navigator", {});
+    providerRegister.mockImplementationOnce(() => {
+      throw new Error("dynamic-import chunk failed");
+    });
+    const { initObservability } = await importFreshModule();
+
+    const result = await initObservability({ enabled: true });
+    expect(result).toBe(false);
+    expect(warn).toHaveBeenCalled();
+
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
 });

@@ -79,9 +79,49 @@ export async function initObservability(
     // misconfig (typo'd endpoint, missing peer dep, HMR re-init) but let
     // React render normally. initialized stays false so a later retry can
     // try again from a clean state.
-    // eslint-disable-next-line no-console
+    //
+    // The browser-side OTLP SDK has no way to report its own init failure
+    // back to Grafana Cloud (CORS, no auth, no fallback channel). Without
+    // a backend beacon, a misconfigured prod build silently disables
+    // tracing for 100% of users — indistinguishable from
+    // VITE_OTEL_ENABLED=false from the operator's view. Fire a
+    // navigator.sendBeacon so the backend's
+    // ams_frontend_observability_init_failures_total counter ticks and
+    // an alert can catch the regression in the next deploy. Best-effort:
+    // older browsers without sendBeacon (none in our supported matrix
+    // today) silently degrade to console-only.
+    reportInitFailure(err);
     console.warn("[observability] init failed; tracing disabled", err);
     return false;
+  }
+}
+
+const _CLIENT_ERROR_BEACON_URL = "/api/v1/observability/client-error";
+const _MAX_MESSAGE_LEN = 500;
+
+function reportInitFailure(err: unknown): void {
+  // Bail when the runtime doesn't support sendBeacon — the page-unload
+  // safety guarantee that motivated sendBeacon is the reason we use it
+  // here too (a regular fetch with no `await` can be cancelled before the
+  // browser flushes the request). Older browsers fall back to silent
+  // console-only diagnostics.
+  if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
+    return;
+  }
+  const message =
+    err instanceof Error
+      ? err.message.slice(0, _MAX_MESSAGE_LEN)
+      : String(err).slice(0, _MAX_MESSAGE_LEN);
+  const body = JSON.stringify({ kind: "observability_init_failed", message });
+  try {
+    // sendBeacon ignores all responses (the browser cannot read them
+    // even if a CORS handshake succeeded). Passing a plain string sets
+    // Content-Type to `text/plain;charset=UTF-8` automatically, which
+    // is in the simple-CORS set so cross-origin sendBeacon skips
+    // preflight (preflight + fire-and-forget don't compose).
+    navigator.sendBeacon(_CLIENT_ERROR_BEACON_URL, body);
+  } catch {
+    // Never let the failure-reporter itself crash the app.
   }
 }
 

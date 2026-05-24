@@ -573,7 +573,13 @@ def test_setup_metrics_passes_sanitize_and_excluded_urls(
 
     instrument_mock.assert_called_once()
     kwargs = instrument_mock.call_args.kwargs
-    assert kwargs.get("excluded_urls") == "/health,/ready", kwargs
+    excluded = kwargs.get("excluded_urls", "")
+    # ALB liveness/readiness probes are excluded (cardinality fix) and
+    # the frontend-failure beacon is excluded (circular-telemetry
+    # avoidance: the beacon's own span would otherwise re-trigger the
+    # beacon on export failure).
+    for required_path in ("/health", "/ready", "/api/v1/observability/client-error"):
+        assert required_path in excluded, (required_path, excluded)
     sanitize = kwargs.get("http_capture_headers_sanitize_fields")
     assert sanitize is not None, "sanitize regex list must be set"
     # All sensitive header families must be covered. Regex strings are
