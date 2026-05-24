@@ -4,151 +4,284 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "links": [
-    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Start Here", "tooltip": "Back to start", "type": "link", "url": "/d/ams-obs-start-here/00-start-here"},
-    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Service Drilldown", "tooltip": "Open service drilldown for backend", "type": "link", "url": "/d/ams-obs-service-drilldown/02-service-drilldown?var-service=backend"}
+    {"asDropdown": false, "icon": "dashboard", "includeVars": true, "keepTime": true, "tags": [], "targetBlank": false, "title": "Start Here", "tooltip": "Back to start", "type": "link", "url": "/d/ams-obs-start-here/00-start-here"},
+    {"asDropdown": false, "icon": "dashboard", "includeVars": true, "keepTime": true, "tags": [], "targetBlank": false, "title": "Service Drilldown", "tooltip": "Open service drilldown for backend", "type": "link", "url": "/d/ams-obs-service-drilldown/02-service-drilldown"}
   ],
   "panels": [
     {
       "datasource": {"type": "datasource", "uid": "grafana"},
-      "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
       "id": 1,
       "options": {
         "mode": "markdown",
-        "content": "MySQL health from the `prom/mysqld-exporter:v0.15.1` sidecar. The exporter connects to `mysql:3306` as the read-only `exporter` user seeded by `db/init/01-exporter-grant.sql`. Panels are a trimmed subset of Grafana Labs community dashboard 7362, scoped to the AMS demo: buffer-pool hit rate, query throughput, slow queries, connections, lock waits."
+        "content": "**MySQL (RDS) health.** Sourced from AWS RDS via Grafana Cloud's hosted CloudWatch integration. Polled every 60s.\n\nFiltered by the `$dbinstance` template variable (default `ams-prod-mysql`; change at the top of the dashboard to point at a different RDS instance).\n\n**Local dev:** the docker-compose MySQL has no equivalent exporter (mysqld-exporter was removed alongside the rest of the local observability stack). When `$environment=local`, panels show No data and operators fall back to `docker compose exec mysql mysql -e 'SHOW STATUS'` for ad-hoc checks. RDS Enhanced Monitoring is the production replacement."
       },
       "title": "MySQL Server Health",
       "type": "text"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}, "mappings": [{"options": {"0": {"color": "red", "text": "DOWN"}, "1": {"color": "green", "text": "UP"}}, "type": "value"}]}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 3},
-      "id": 2,
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["last"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_up{service=\"mysqld-exporter\"}", "legendFormat": "up", "refId": "A"}],
-      "title": "Up",
-      "type": "stat"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "dtdurations"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 3},
-      "id": 3,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_status_uptime{service=\"mysqld-exporter\"}", "legendFormat": "uptime", "refId": "A"}],
-      "title": "Uptime",
-      "type": "stat"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 3},
-      "id": 4,
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 4},
+      "id": 2,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_status_threads_connected{service=\"mysqld-exporter\"}", "legendFormat": "connected", "refId": "A"}],
+      "targets": [
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "DatabaseConnections",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "connections",
+          "refId": "A"
+        }
+      ],
       "title": "Connections (Current)",
       "type": "stat"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "qps"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 3},
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+      "fieldConfig": {"defaults": {"unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 4},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "CPUUtilization",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "cpu",
+          "refId": "A"
+        }
+      ],
+      "title": "CPU (Average)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+      "fieldConfig": {"defaults": {"unit": "decbytes"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "FreeableMemory",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "freeable",
+          "refId": "A"
+        }
+      ],
+      "title": "Freeable Memory",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 4},
       "id": 5,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_questions{service=\"mysqld-exporter\"}[1m])", "legendFormat": "qps", "refId": "A"}],
-      "title": "Queries / sec",
+      "targets": [
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "DiskQueueDepth",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "queue depth",
+          "refId": "A"
+        }
+      ],
+      "title": "Disk Queue Depth",
       "type": "stat"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.95}, {"color": "green", "value": 0.99}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 3},
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
       "id": 6,
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "1 - (rate(mysql_global_status_innodb_buffer_pool_reads{service=\"mysqld-exporter\"}[5m]) / clamp_min(rate(mysql_global_status_innodb_buffer_pool_read_requests{service=\"mysqld-exporter\"}[5m]), 1))", "legendFormat": "hit ratio", "refId": "A"}],
-      "title": "Buffer Pool Hit Ratio",
-      "type": "stat"
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "CPUUtilization",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "cpu-avg",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "CPUUtilization",
+          "statistic": "Maximum",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "cpu-max",
+          "refId": "B"
+        }
+      ],
+      "title": "CPU Over Time",
+      "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "ops", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 1}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 3},
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
       "id": 7,
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_slow_queries{service=\"mysqld-exporter\"}[5m])", "legendFormat": "slow/sec", "refId": "A"}],
-      "title": "Slow Queries / sec",
-      "type": "stat"
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "DatabaseConnections",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "connections-avg",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "DatabaseConnections",
+          "statistic": "Maximum",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "connections-max",
+          "refId": "B"
+        }
+      ],
+      "title": "Connections Over Time",
+      "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "qps"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
       "id": 8,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
       "targets": [
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_questions{service=\"mysqld-exporter\"}[1m])", "legendFormat": "questions/sec", "refId": "A"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_com_select{service=\"mysqld-exporter\"}[1m])", "legendFormat": "select/sec", "refId": "B"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_com_insert{service=\"mysqld-exporter\"}[1m])", "legendFormat": "insert/sec", "refId": "C"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_com_update{service=\"mysqld-exporter\"}[1m])", "legendFormat": "update/sec", "refId": "D"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_com_delete{service=\"mysqld-exporter\"}[1m])", "legendFormat": "delete/sec", "refId": "E"}
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "DiskQueueDepth",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "queue-depth",
+          "refId": "A"
+        }
       ],
-      "title": "Query Throughput",
-      "type": "timeseries"
+      "title": "Disk Queue Depth Over Time",
+      "type": "timeseries",
+      "description": "Sustained values > 1 typically mean disk IOPS are saturated; upgrade the RDS instance class or storage type."
     },
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+      "fieldConfig": {"defaults": {"unit": "decbytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
       "id": 9,
-      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_status_threads_connected{service=\"mysqld-exporter\"}", "legendFormat": "connected", "refId": "A"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_status_threads_running{service=\"mysqld-exporter\"}", "legendFormat": "running", "refId": "B"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "mysql_global_variables_max_connections{service=\"mysqld-exporter\"}", "legendFormat": "max_connections", "refId": "C"}
-      ],
-      "title": "Threads / Connections",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
-      "id": 10,
       "options": {"legend": {"calcs": ["mean", "min"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "1 - (rate(mysql_global_status_innodb_buffer_pool_reads{service=\"mysqld-exporter\"}[5m]) / clamp_min(rate(mysql_global_status_innodb_buffer_pool_read_requests{service=\"mysqld-exporter\"}[5m]), 1))", "legendFormat": "buffer-pool hit ratio", "refId": "A"}],
-      "title": "InnoDB Buffer Pool Hit Ratio",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
-      "id": 11,
-      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
       "targets": [
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_innodb_row_lock_waits{service=\"mysqld-exporter\"}[1m])", "legendFormat": "row-lock waits/sec", "refId": "A"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mysql_global_status_innodb_row_lock_time{service=\"mysqld-exporter\"}[1m]) / 1000", "legendFormat": "row-lock time (s/sec)", "refId": "B"}
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "FreeableMemory",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "freeable",
+          "refId": "A"
+        },
+        {
+          "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+          "namespace": "AWS/RDS",
+          "metricName": "FreeStorageSpace",
+          "statistic": "Average",
+          "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
+          "region": "default",
+          "period": "60",
+          "legendFormat": "free-storage",
+          "refId": "B"
+        }
       ],
-      "title": "InnoDB Row Lock Activity",
+      "title": "Memory + Storage Over Time",
       "type": "timeseries"
     },
     {
       "datasource": {"type": "loki", "uid": "loki"},
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 23},
-      "id": 12,
-      "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=~\"mysql|mysqld-exporter\"} |~ \"(?i)error|warning|slow\"", "refId": "A"}],
-      "title": "MySQL + Exporter Logs (filtered: error / warning / slow)",
-      "type": "logs"
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "id": 10,
+      "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"ams-backend\", environment=\"$environment\"} | json | event=~\"(?i).*(slow.query|mysql.error|deadlock).*\"", "refId": "A"}],
+      "title": "Backend DB-related Logs (slow query, deadlock, error)",
+      "type": "logs",
+      "description": "Backend-side logs that touch MySQL. RDS server logs are exposed via the CloudWatch Logs integration; query them in Explore at {log_group=\"/aws/rds/instance/ams-prod-mysql/slowquery\"} once the operator opts in."
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["ams-observability", "mysql", "database"],
+  "tags": ["ams-observability", "mysql", "rds"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": false, "text": "production", "value": "production"},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Environment",
+        "multi": false,
+        "name": "environment",
+        "options": [
+          {"selected": false, "text": "local", "value": "local"},
+          {"selected": true, "text": "production", "value": "production"}
+        ],
+        "query": "local,production",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {"selected": false, "text": "ams-prod-mysql", "value": "ams-prod-mysql"},
+        "hide": 0,
+        "includeAll": false,
+        "label": "RDS Instance",
+        "multi": false,
+        "name": "dbinstance",
+        "options": [
+          {"selected": true, "text": "ams-prod-mysql", "value": "ams-prod-mysql"}
+        ],
+        "query": "ams-prod-mysql",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
   "time": {"from": "now-30m", "to": "now"},
   "timezone": "browser",
   "title": "05 MySQL",
   "uid": "ams-obs-mysql",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

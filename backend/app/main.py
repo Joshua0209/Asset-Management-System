@@ -21,6 +21,7 @@ from app.core.observability import (
     setup_metrics,
     setup_metrics_exporter,
     setup_tracing,
+    verify_observability_exports,
 )
 from app.core.rate_limit import limiter
 from app.db.session import engine
@@ -216,6 +217,11 @@ setup_metrics(app, settings)
 setup_metrics_exporter(settings)
 setup_tracing(app, settings)
 maybe_setup_profiling(settings)
+# Fail-fast smoke test: in non-local envs, refuse to boot if any OTLP
+# provider's force_flush returns False. Closes the silent-export-failure
+# gap where a wrong API key would otherwise drop every span/metric/log
+# while the container reports healthy to the ALB.
+verify_observability_exports(settings)
 
 # Map HTTP status → machine-readable error code per docs/system-design/12-api-design.md
 _STATUS_CODE_MAP = {

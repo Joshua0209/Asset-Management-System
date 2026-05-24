@@ -362,20 +362,8 @@ jobs:
           # (>=32 bytes random) and stored in AWS Secrets Manager.
           # Tracked in #69 - revisit when upstream publishes a fix version
           # or when PyJWT is upgraded to >=3.x.
-          #
-          # PYSEC-2026-161: starlette Host-header URL reconstruction advisory.
-          # Fix is starlette 1.0.1, but the upgrade is blocked transitively by
-          # `prometheus-fastapi-instrumentator` (latest 7.1.0 pins
-          # `starlette<1.0.0`). Not exploitable here: the app uses JWT + role
-          # deps (`app/api/deps.py`) over FastAPI's standard routing on the
-          # actual request path, never the reconstructed URL. The single
-          # `request.url.path` reference (`app/main.py` unhandled-exception
-          # handler) is for log output only, not an authorization decision.
-          # Revisit when prometheus-fastapi-instrumentator publishes a
-          # starlette-1.x compatible release.
           ignore-vulns: |
             PYSEC-2025-183
-            PYSEC-2026-161
 
   npm-audit:
     name: SCA - Node (npm audit)
@@ -673,6 +661,9 @@ jobs:
             RDS_SECRET_NAME
             APP_SECRET_NAME
             BOOTSTRAP_MANAGER_EMAIL
+            GC_OTLP_ENDPOINT
+            GC_PYROSCOPE_ENDPOINT
+            GC_SECRET_NAME
         env:
           ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           REGION: ${{ vars.AWS_REGION }}
@@ -683,6 +674,9 @@ jobs:
           RDS_SECRET_NAME: ${{ vars.RDS_SECRET_NAME }}
           APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
           BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
+          GC_OTLP_ENDPOINT: ${{ vars.GC_OTLP_ENDPOINT }}
+          GC_PYROSCOPE_ENDPOINT: ${{ vars.GC_PYROSCOPE_ENDPOINT }}
+          GC_SECRET_NAME: ${{ vars.GC_SECRET_NAME }}
 
       - name: Render backend task definition
         # Patches the container image into the committed task-def template.

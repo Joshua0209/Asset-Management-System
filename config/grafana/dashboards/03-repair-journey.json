@@ -4,8 +4,8 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "links": [
-    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Start Here", "tooltip": "Back to start", "type": "link", "url": "/d/ams-obs-start-here/00-start-here"},
-    {"asDropdown": false, "icon": "dashboard", "includeVars": false, "keepTime": true, "tags": [], "targetBlank": false, "title": "Service Drilldown", "tooltip": "Open service drilldown", "type": "link", "url": "/d/ams-obs-service-drilldown/02-service-drilldown?var-service=backend"}
+    {"asDropdown": false, "icon": "dashboard", "includeVars": true, "keepTime": true, "tags": [], "targetBlank": false, "title": "Start Here", "tooltip": "Back to start", "type": "link", "url": "/d/ams-obs-start-here/00-start-here"},
+    {"asDropdown": false, "icon": "dashboard", "includeVars": true, "keepTime": true, "tags": [], "targetBlank": false, "title": "Service Drilldown", "tooltip": "Open service drilldown", "type": "link", "url": "/d/ams-obs-service-drilldown/02-service-drilldown"}
   ],
   "panels": [
     {
@@ -14,7 +14,7 @@
       "id": 1,
       "options": {
         "mode": "markdown",
-        "content": "**Domain-specific view of the AMS repair workflow.** The metrics here come from two custom counters in `app/core/observability.py`: `ams_fsm_transitions_total{from,to,asset_kind}` (every successful state change) and `ams_optimistic_conflicts_total{endpoint,code}` (every 409 raised when two writers raced or a transition was illegal). Latency panels pivot on the FastAPI `handler` label so a route template (e.g. `/api/v1/repair-requests/{repair_request_id}/approve`) shows up once regardless of which id is in the URL.\n\nRate windows are deliberately asymmetric: stat panels use `[5m]` for a smoothed headline, timeseries panels use `[1m]` so a regression is visible within a refresh cycle. Don't normalise them — pick the window that matches the question."
+        "content": "**Domain-specific view of the AMS repair workflow.** The metrics here come from two custom counters in `app/core/observability.py`: `ams_fsm_transitions_total{from,to,asset_kind}` (every successful state change) and `ams_optimistic_conflicts_total{endpoint,code}` (every 409 raised when two writers raced or a transition was illegal). Latency panels pivot on the FastAPI `http_route` label so a route template (e.g. `/api/v1/repair-requests/{repair_request_id}/approve`) shows up once regardless of which id is in the URL.\n\nRate windows are deliberately asymmetric: stat panels use `[5m]` for a smoothed headline, timeseries panels use `[1m]` so a regression is visible within a refresh cycle. Do not normalise them; pick the window that matches the question.\n\nUse the `$environment` toggle at the top to switch between `local` and `production`."
       },
       "title": "Repair Journey",
       "type": "text"
@@ -25,7 +25,7 @@
       "gridPos": {"h": 5, "w": 6, "x": 0, "y": 4},
       "id": 2,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(ams_fsm_transitions_total[5m]))", "legendFormat": "transitions/sec", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(ams_fsm_transitions_total{service_name=\"ams-backend\", environment=\"$environment\"}[5m]))", "legendFormat": "transitions/sec", "refId": "A"}],
       "title": "FSM Transitions /sec",
       "type": "stat"
     },
@@ -35,7 +35,7 @@
       "gridPos": {"h": 5, "w": 6, "x": 6, "y": 4},
       "id": 3,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(ams_optimistic_conflicts_total[5m]))", "legendFormat": "conflicts/sec", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(ams_optimistic_conflicts_total{service_name=\"ams-backend\", environment=\"$environment\"}[5m]))", "legendFormat": "conflicts/sec", "refId": "A"}],
       "title": "409 Conflicts /sec",
       "type": "stat"
     },
@@ -45,7 +45,7 @@
       "gridPos": {"h": 5, "w": 6, "x": 12, "y": 4},
       "id": 4,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests\", method=\"POST\"}[5m])) by (le))", "legendFormat": "submit p95", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/repair-requests\", http_request_method=\"POST\"}[5m])) by (le))", "legendFormat": "submit p95", "refId": "A"}],
       "title": "Submit Repair p95",
       "type": "stat"
     },
@@ -55,7 +55,7 @@
       "gridPos": {"h": 5, "w": 6, "x": 18, "y": 4},
       "id": 5,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/auth/login\", method=\"POST\"}[5m])) by (le))", "legendFormat": "login p95", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/auth/login\", http_request_method=\"POST\"}[5m])) by (le))", "legendFormat": "login p95", "refId": "A"}],
       "title": "Login p95",
       "type": "stat"
     },
@@ -65,7 +65,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 9},
       "id": 6,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (from, to) (rate(ams_fsm_transitions_total[1m]))", "legendFormat": "{{from}} → {{to}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (from, to) (rate(ams_fsm_transitions_total{service_name=\"ams-backend\", environment=\"$environment\"}[1m]))", "legendFormat": "{{from}} → {{to}}", "refId": "A"}],
       "title": "FSM Transitions By (from → to)",
       "type": "timeseries"
     },
@@ -75,7 +75,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 9},
       "id": 7,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (code) (rate(ams_optimistic_conflicts_total[1m]))", "legendFormat": "{{code}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (code) (rate(ams_optimistic_conflicts_total{service_name=\"ams-backend\", environment=\"$environment\"}[1m]))", "legendFormat": "{{code}}", "refId": "A"}],
       "title": "409 Conflicts By Code",
       "type": "timeseries"
     },
@@ -86,13 +86,13 @@
       "id": 8,
       "options": {"legend": {"calcs": ["max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
       "targets": [
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/auth/login\", method=\"POST\"}[5m])) by (le))", "legendFormat": "login", "refId": "A"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests\", method=\"POST\"}[5m])) by (le))", "legendFormat": "submit-repair", "refId": "B"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests/{repair_request_id}/approve\"}[5m])) by (le))", "legendFormat": "approve-repair", "refId": "C"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests/{repair_request_id}/reject\"}[5m])) by (le))", "legendFormat": "reject-repair", "refId": "G"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/repair-requests/{repair_request_id}/complete\"}[5m])) by (le))", "legendFormat": "complete-repair", "refId": "D"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/assets\", method=\"POST\"}[5m])) by (le))", "legendFormat": "register-asset", "refId": "E"},
-        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"backend\", handler=\"/api/v1/assets\", method=\"GET\"}[5m])) by (le))", "legendFormat": "search-assets", "refId": "F"}
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/auth/login\", http_request_method=\"POST\"}[5m])) by (le))", "legendFormat": "login", "refId": "A"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/repair-requests\", http_request_method=\"POST\"}[5m])) by (le))", "legendFormat": "submit-repair", "refId": "B"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/repair-requests/{repair_request_id}/approve\"}[5m])) by (le))", "legendFormat": "approve-repair", "refId": "C"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/repair-requests/{repair_request_id}/reject\"}[5m])) by (le))", "legendFormat": "reject-repair", "refId": "G"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/repair-requests/{repair_request_id}/complete\"}[5m])) by (le))", "legendFormat": "complete-repair", "refId": "D"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/assets\", http_request_method=\"POST\"}[5m])) by (le))", "legendFormat": "register-asset", "refId": "E"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", http_route=\"/api/v1/assets\", http_request_method=\"GET\"}[5m])) by (le))", "legendFormat": "search-assets", "refId": "F"}
       ],
       "title": "p95 Latency For Seven Critical Flows",
       "type": "timeseries"
@@ -103,7 +103,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
       "id": 9,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (to) (increase(ams_fsm_transitions_total{asset_kind=\"repair_request\"}[5m]))", "legendFormat": "→ {{to}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (to) (increase(ams_fsm_transitions_total{service_name=\"ams-backend\", environment=\"$environment\", asset_kind=\"repair_request\"}[5m]))", "legendFormat": "→ {{to}}", "refId": "A"}],
       "title": "Repair-Request Transitions Into Each State (5m bucket)",
       "type": "timeseries"
     },
@@ -112,7 +112,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26},
       "id": 10,
       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=\"backend\"} | json | path=~\"/api/v1/repair-requests.*\"", "refId": "A"}],
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"ams-backend\", environment=\"$environment\"} | json | http_route=~\"/api/v1/repair-requests.*\"", "refId": "A"}],
       "title": "Repair Request Logs (click trace_id → Tempo)",
       "type": "logs"
     }
@@ -120,10 +120,30 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "tags": ["ams-observability", "domain", "repair-journey"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": false, "text": "production", "value": "production"},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Environment",
+        "multi": false,
+        "name": "environment",
+        "options": [
+          {"selected": false, "text": "local", "value": "local"},
+          {"selected": true, "text": "production", "value": "production"}
+        ],
+        "query": "local,production",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
   "time": {"from": "now-30m", "to": "now"},
   "timezone": "browser",
   "title": "03 Repair Journey",
   "uid": "ams-obs-repair-journey",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

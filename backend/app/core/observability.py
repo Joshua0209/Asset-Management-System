@@ -32,7 +32,6 @@ the old prometheus-fastapi-instrumentator output keep working unchanged.
 from __future__ import annotations
 
 import logging
-import logging.config
 import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
@@ -76,7 +75,12 @@ FSM_TRANSITIONS = _meter.create_counter(
 
 Call sites attach attributes per ``.add(1, attributes={...})``:
 
-* ``from`` / ``to``: enum names (``PENDING_REVIEW``, ``UNDER_REPAIR``, …).
+* ``from`` / ``to``: enum names (``PENDING_REVIEW``, ``UNDER_REPAIR``, …),
+  taken from ``RepairRequestStatus.<X>.name`` / ``AssetStatus.<X>.name``
+  so a rename in the enum surfaces here at type-check time. The submit
+  flow uses the sentinel literal ``"NONE"`` for ``from`` because the
+  repair request did not previously exist; dashboards can count
+  creations without collapsing them into other PENDING_REVIEW arrivals.
 * ``asset_kind``: ``asset`` for direct asset transitions, ``repair_request``
   for repair-request transitions. Lets the Repair Journey dashboard slice
   the two streams without a regex on the metric name.
@@ -281,7 +285,7 @@ def setup_log_exporter(settings: Settings) -> None:
     provider = LoggerProvider(resource=_build_resource(settings))
     exporter = OTLPLogExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers or None,
+        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
     )
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
     set_logger_provider(provider)
@@ -350,7 +354,7 @@ def setup_metrics_exporter(settings: Settings) -> None:
 
     exporter = OTLPMetricExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers or None,
+        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
     )
     reader = PeriodicExportingMetricReader(exporter)
     provider = MeterProvider(
@@ -383,7 +387,7 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     provider = TracerProvider(resource=_build_resource(settings))
     exporter = OTLPSpanExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers or None,
+        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
     otel_trace.set_tracer_provider(provider)
@@ -425,5 +429,63 @@ def maybe_setup_profiling(settings: Settings) -> None:
         application_name=f"ams-backend.{settings.replica_id}",
         server_address=settings.pyroscope_server,
         basic_auth_username=settings.pyroscope_basic_auth_username,
-        auth_token=settings.pyroscope_auth_token,
+        auth_token=settings.pyroscope_auth_token.get_secret_value(),
     )
+
+
+def verify_observability_exports(settings: Settings) -> None:
+    """Smoke-test the OTLP exporters at startup; fail-loud on failure.
+
+    Runs only when ``settings.otel_enabled`` is true and
+    ``settings.environment != "local"``. Calls ``force_flush`` on every
+    installed provider (metrics, traces, logs) with a 5-second timeout;
+    any ``False`` return raises ``RuntimeError`` so the ECS task crashes
+    before the rolling-deploy gate marks it healthy.
+
+    Closes the silent-export-failure gap: previously a misconfigured
+    secret (wrong API key, unreachable endpoint) would let the OTLP
+    BatchProcessor swallow every export error on its background thread,
+    shipping zero telemetry while the application reported healthy to
+    the ALB. With this probe, an ECS deploy with bad creds rolls back
+    automatically.
+
+    Local-with-otel-on is exempt so a developer pointing at a
+    self-hosted Tempo without strict creds keeps an interactive boot.
+    Idempotent — safe to call from main.py after ``setup_*_exporter``.
+    """
+    if not settings.otel_enabled or settings.environment == "local":
+        return
+
+    # Lazy imports for the same reason setup_* are lazy: keep dev images
+    # free of the OTLP SDK's import cost when the flag is off.
+    from opentelemetry import metrics as otel_metrics
+    from opentelemetry import trace as otel_trace
+    from opentelemetry._logs import get_logger_provider
+
+    failures: list[str] = []
+
+    # `getattr(..., None)` because the no-op providers do not implement
+    # force_flush; a `hasattr` check would pass for both real and fake
+    # providers, so we additionally treat "no force_flush method" as a
+    # silent skip (means the exporter was never installed for that signal).
+    meter_provider = otel_metrics.get_meter_provider()
+    flush_metrics = getattr(meter_provider, "force_flush", None)
+    if callable(flush_metrics) and not flush_metrics(5_000):
+        failures.append("metrics")
+
+    tracer_provider = otel_trace.get_tracer_provider()
+    flush_traces = getattr(tracer_provider, "force_flush", None)
+    if callable(flush_traces) and not flush_traces(5_000):
+        failures.append("traces")
+
+    logger_provider = get_logger_provider()
+    flush_logs = getattr(logger_provider, "force_flush", None)
+    if callable(flush_logs) and not flush_logs(5_000):
+        failures.append("logs")
+
+    if failures:
+        raise RuntimeError(
+            f"OTLP startup probe failed for: {', '.join(failures)}. "
+            f"Verify OTEL_ENDPOINT={settings.otel_endpoint!r} is reachable "
+            "and OTEL_EXPORTER_OTLP_HEADERS authenticates against Grafana Cloud."
+        )

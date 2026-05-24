@@ -260,6 +260,149 @@ def test_fsm_transition_counter_increments_on_review_approval(
     assert after == before + 1, (before, after)
 
 
+def test_fsm_transition_counter_submit_creates_new_request(
+    client: TestClient,
+    db_session: Session,
+    make_user: MakeManager,
+    auth_headers: Callable[[User], dict[str, str]],
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """Submitting a new repair request bumps the counter with from=NONE.
+
+    The submit transition is special: there is no prior state, so the
+    ``from`` attribute is the sentinel literal ``"NONE"`` rather than an
+    enum name. Pins that the source string stays in sync with the
+    dashboard query in ``03-repair-journey.json``.
+    """
+    holder = make_user(role=UserRole.HOLDER)
+    asset = _make_asset(db_session, holder=holder, status=AssetStatus.IN_USE)
+
+    before = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "NONE", "to": "PENDING_REVIEW"},
+    )
+
+    response = client.post(
+        "/api/v1/repair-requests",
+        headers=auth_headers(holder),
+        json={
+            "asset_id": asset.id,
+            "fault_description": "new request",
+            "version": asset.version,
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+
+    after = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "NONE", "to": "PENDING_REVIEW"},
+    )
+    assert after == before + 1, (before, after)
+
+
+def test_fsm_transition_counter_review_rejection(
+    client: TestClient,
+    db_session: Session,
+    make_user: MakeManager,
+    auth_headers: Callable[[User], dict[str, str]],
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """Rejecting a pending review bumps PENDING_REVIEW → REJECTED."""
+    manager = make_user(role=UserRole.MANAGER)
+    holder = make_user(role=UserRole.HOLDER)
+    asset = _make_asset(
+        db_session,
+        holder=holder,
+        status=AssetStatus.PENDING_REPAIR,
+    )
+    req = RepairRequest(
+        asset_id=asset.id,
+        repair_id=_unique_repair_id(),
+        requester_id=holder.id,
+        status=RepairRequestStatus.PENDING_REVIEW,
+        fault_description="needs repair",
+    )
+    db_session.add(req)
+    db_session.commit()
+    db_session.refresh(req)
+
+    before = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "PENDING_REVIEW", "to": "REJECTED"},
+    )
+
+    response = client.post(
+        f"/api/v1/repair-requests/{req.id}/reject",
+        headers=auth_headers(manager),
+        json={"version": req.version, "rejection_reason": "out of scope"},
+    )
+    assert response.status_code == 200, response.text
+
+    after = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "PENDING_REVIEW", "to": "REJECTED"},
+    )
+    assert after == before + 1, (before, after)
+
+
+def test_fsm_transition_counter_repair_completion(
+    client: TestClient,
+    db_session: Session,
+    make_user: MakeManager,
+    auth_headers: Callable[[User], dict[str, str]],
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """Completing an in-repair request bumps UNDER_REPAIR → COMPLETED."""
+    manager = make_user(role=UserRole.MANAGER)
+    holder = make_user(role=UserRole.HOLDER)
+    asset = _make_asset(
+        db_session,
+        holder=holder,
+        status=AssetStatus.UNDER_REPAIR,
+    )
+    req = RepairRequest(
+        asset_id=asset.id,
+        repair_id=_unique_repair_id(),
+        requester_id=holder.id,
+        status=RepairRequestStatus.UNDER_REPAIR,
+        fault_description="needs repair",
+    )
+    db_session.add(req)
+    db_session.commit()
+    db_session.refresh(req)
+
+    before = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "UNDER_REPAIR", "to": "COMPLETED"},
+    )
+
+    response = client.post(
+        f"/api/v1/repair-requests/{req.id}/complete",
+        headers=auth_headers(manager),
+        json={
+            "version": req.version,
+            "repair_date": str(date(2026, 5, 24)),
+            "fault_content": "thermal paste worn",
+            "repair_plan": "replaced thermal paste",
+            "repair_cost": "150.00",
+            "repair_vendor": "Vendor Co",
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    after = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "UNDER_REPAIR", "to": "COMPLETED"},
+    )
+    assert after == before + 1, (before, after)
+
+
 # ---------------------------------------------------------------------------
 # Structlog JSON renderer
 # ---------------------------------------------------------------------------
@@ -587,10 +730,10 @@ def test_settings_observability_fields_defaults(monkeypatch: pytest.MonkeyPatch)
     # Endpoint defaults are empty so the source never ships a clear-text
     # URL literal; operators set the value when they flip the flag on.
     assert settings.otel_endpoint == ""
-    assert settings.otel_exporter_otlp_headers == ""
+    assert settings.otel_exporter_otlp_headers.get_secret_value() == ""
     assert settings.pyroscope_enabled is False
     assert settings.pyroscope_server == ""
-    assert settings.pyroscope_auth_token == ""
+    assert settings.pyroscope_auth_token.get_secret_value() == ""
     assert settings.pyroscope_basic_auth_username == ""
     assert settings.environment == "local"
     # Default replica id is hostname-derived; just confirm it's a non-empty str.
@@ -618,3 +761,165 @@ def test_settings_observability_flag_requires_url(
 
     with pytest.raises(ValueError, match=url_env):
         Settings()  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    ("flag_env", "url_env"),
+    [
+        ("OTEL_ENABLED", "OTEL_ENDPOINT"),
+        ("PYROSCOPE_ENABLED", "PYROSCOPE_SERVER"),
+    ],
+)
+def test_settings_observability_endpoints_must_be_https(
+    monkeypatch: pytest.MonkeyPatch, flag_env: str, url_env: str
+) -> None:
+    """An ``http://`` endpoint must be rejected at boot.
+
+    Plaintext OTLP would leak the GC API key carried in
+    ``OTEL_EXPORTER_OTLP_HEADERS``; the only legitimate GC OTLP /
+    Pyroscope targets are HTTPS.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.setenv(flag_env, "true")
+    monkeypatch.setenv(url_env, "http://attacker.example/otlp")
+    # Needed for OTLP path only — Pyroscope-only test still tolerates it.
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Basic dGVzdA==")
+
+    with pytest.raises(ValueError, match="https://"):
+        Settings()  # type: ignore[call-arg]
+
+
+def test_settings_otel_enabled_in_production_requires_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OTLP without auth headers in a non-local env must fail loud.
+
+    ``OTEL_ENABLED=true`` + ``ENVIRONMENT!=local`` + empty
+    ``OTEL_EXPORTER_OTLP_HEADERS`` means the exporter ships every
+    span/metric/log unauthenticated; GC silently 401s and observability
+    degrades to nothing with no application-visible error. We refuse to
+    boot in that shape so the misconfiguration surfaces immediately.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.setenv("OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_ENDPOINT", "https://otlp-gateway.example/otlp")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+
+    with pytest.raises(ValueError, match="OTEL_EXPORTER_OTLP_HEADERS"):
+        Settings()  # type: ignore[call-arg]
+
+
+def test_settings_otel_enabled_locally_does_not_require_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The headers check is gated on non-local environments.
+
+    Local-with-otel-on (e.g. a developer testing the exporter wire against
+    a self-hosted Tempo) must remain bootable without forcing a fake header
+    just to satisfy the validator.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.setenv("OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_ENDPOINT", "https://otlp-gateway.example/otlp")
+    monkeypatch.setenv("ENVIRONMENT", "local")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+
+    # Must not raise.
+    Settings()  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# verify_observability_exports startup probe
+# ---------------------------------------------------------------------------
+
+
+def test_verify_observability_exports_noop_when_otel_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No flush attempted when OTEL_ENABLED is false (dev default)."""
+    from app.core import observability as obs
+
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.delenv("OTEL_ENABLED", raising=False)
+    settings = Settings()  # type: ignore[call-arg]
+
+    # Must not raise and must not touch provider state.
+    obs.verify_observability_exports(settings)
+
+
+def test_verify_observability_exports_noop_in_local_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Probe is gated to non-local environments.
+
+    A developer running with OTEL_ENABLED=true against a self-hosted
+    collector must not be blocked at boot if the collector is offline.
+    """
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="local")
+    obs.verify_observability_exports(settings)
+
+
+def test_verify_observability_exports_raises_on_flush_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A False return from any provider's force_flush surfaces as RuntimeError.
+
+    Simulates the wrong-API-key / unreachable-OTLP-gateway scenario by
+    patching the global meter provider to return False from force_flush.
+    The probe must raise so the ECS task crashes before being marked
+    healthy by the ALB.
+    """
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+
+    fake_provider = MagicMock()
+    fake_provider.force_flush = MagicMock(return_value=False)
+    monkeypatch.setattr(
+        "opentelemetry.metrics.get_meter_provider",
+        lambda: fake_provider,
+    )
+    # Tracing + logs providers have no force_flush in the default no-op
+    # state, so they are skipped — the metrics failure alone must trip.
+
+    with pytest.raises(RuntimeError, match="metrics"):
+        obs.verify_observability_exports(settings)
+
+
+def test_verify_observability_exports_passes_on_successful_flush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All providers returning True from force_flush is the happy path."""
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+
+    fake_provider = MagicMock()
+    fake_provider.force_flush = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "opentelemetry.metrics.get_meter_provider",
+        lambda: fake_provider,
+    )
+
+    # Must not raise.
+    obs.verify_observability_exports(settings)
+    fake_provider.force_flush.assert_called_once_with(5_000)

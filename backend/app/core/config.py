@@ -4,7 +4,7 @@ import socket
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import BeforeValidator, Field, field_validator, model_validator
+from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -152,7 +152,10 @@ class Settings(BaseSettings):
     # OTLP exporter authentication. Grafana Cloud expects
     # ``Authorization=Basic <base64(instance_id:api_key)>``; the SDK splits
     # comma-separated ``key=value`` pairs into the gRPC metadata headers.
-    otel_exporter_otlp_headers: str = ""
+    # ``SecretStr`` so a ``repr(settings)`` / ``model_dump()`` / structured
+    # log of the settings object does not leak the GC API key into Loki.
+    # Call sites use ``.get_secret_value()`` at the exporter boundary.
+    otel_exporter_otlp_headers: SecretStr = SecretStr("")
     pyroscope_enabled: bool = False
     pyroscope_server: str = ""
     # Pyroscope (Grafana Cloud) basic auth: username is the per-stack
@@ -160,8 +163,8 @@ class Settings(BaseSettings):
     # used for OTLP. Empty defaults keep the dev image's
     # ``pyroscope-io < 0.8.5`` historical kwargs-free configure() path
     # available, but >=0.8.5 (now pinned) accepts both kwargs as empty
-    # strings without raising.
-    pyroscope_auth_token: str = ""
+    # strings without raising. Same SecretStr posture as the OTLP header.
+    pyroscope_auth_token: SecretStr = SecretStr("")
     pyroscope_basic_auth_username: str = ""
     # Resource attribute stamped on every signal so dashboards can filter
     # local vs production traffic side-by-side. ``local`` matches what
@@ -210,22 +213,53 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_observability_endpoints(self) -> "Settings":
-        """Fail fast when an observability flag is on but its URL is empty.
+        """Fail fast when an observability flag is on but config is incomplete.
 
         The `otel_endpoint` / `pyroscope_server` defaults are intentionally
         empty so the source never ships a clear-text URL literal. When the
         operator flips a feature flag on they must also point it at a real
         collector — same posture as a missing DATABASE_URL or JWT_SECRET.
+
+        Endpoints must be ``https://`` so a misconfigured env var cannot
+        downgrade OTLP traffic to plaintext (which would leak the GC API key
+        carried in ``OTEL_EXPORTER_OTLP_HEADERS``). The HTTP/2 OTLP gRPC
+        SDK accepts ``http://`` too, but we refuse it: the only legitimate
+        OTLP/Pyroscope targets in this project are GC's HTTPS endpoints.
+
+        In any non-``local`` environment, ``OTEL_EXPORTER_OTLP_HEADERS``
+        must also be set when ``otel_enabled`` is true — otherwise the
+        OTLP exporter ships traffic that GC will silently 401, dropping
+        every span/metric/log without an application-visible error.
         """
         if self.otel_enabled and not self.otel_endpoint:
             raise ValueError(
                 "OTEL_ENABLED=true requires OTEL_ENDPOINT to be set "
                 "(e.g. https://otlp-gateway-prod-<region>.grafana.net/otlp)."
             )
+        if self.otel_enabled and not self.otel_endpoint.startswith("https://"):
+            raise ValueError(
+                f"OTEL_ENDPOINT must use https:// (got {self.otel_endpoint!r}). "
+                "Plaintext OTLP would leak the GC API key in "
+                "OTEL_EXPORTER_OTLP_HEADERS."
+            )
         if self.pyroscope_enabled and not self.pyroscope_server:
             raise ValueError(
                 "PYROSCOPE_ENABLED=true requires PYROSCOPE_SERVER to be set "
                 "(e.g. https://profiles-prod-<region>.grafana.net)."
+            )
+        if self.pyroscope_enabled and not self.pyroscope_server.startswith("https://"):
+            raise ValueError(
+                f"PYROSCOPE_SERVER must use https:// (got {self.pyroscope_server!r})."
+            )
+        if (
+            self.otel_enabled
+            and self.environment != "local"
+            and not self.otel_exporter_otlp_headers.get_secret_value()
+        ):
+            raise ValueError(
+                f"OTEL_ENABLED=true in ENVIRONMENT={self.environment!r} requires "
+                "OTEL_EXPORTER_OTLP_HEADERS to be set; the exporter would otherwise "
+                "ship every span/metric/log with no auth and GC would silently 401."
             )
         return self
 
