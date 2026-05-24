@@ -122,12 +122,12 @@ OPTIMISTIC_CONFLICTS = _meter.create_counter(
 )
 """OTel counter for 409 conflicts.
 
-* ``endpoint``: **module-scoped today** — the value is whatever the
-  per-module ``_conflict`` helper defaults to (``"assets"`` or
-  ``"repair_requests"``). Slice by ``code`` for granular dashboards.
+* ``endpoint``: the resource module that raised the conflict
+  (e.g. ``"assets"``, ``"repair_requests"``). Slice by ``code`` for
+  granular dashboards.
 * ``code``: the granular error code from the project envelope
   (``duplicate_request``, ``invalid_transition``, ``version_conflict``,
-  …). Matches ``docs/system-design/12-api-design.md`` §"409 Conflict".
+  …). Matches ``docs/system-design/12-api-design.md``.
 """
 
 FRONTEND_OBS_FAILURES = _meter.create_counter(
@@ -1000,11 +1000,26 @@ class AccessLogMiddleware:
 
 
 def setup_access_log(app: FastAPI) -> None:
-    """Attach :class:`AccessLogMiddleware`.
+    """Attach :class:`AccessLogMiddleware` idempotently.
 
     OTel's FastAPI instrumentor wraps the entire stack via a
     ``build_middleware_stack`` monkey-patch, so this middleware's relative
     position vs ``setup_tracing`` is not load-bearing for ``trace_id``
     propagation. See the class docstring for the full rationale.
+
+    Calling this twice on the same app is a no-op the second time — without
+    the guard, every request would log twice (the inner AccessLogMiddleware
+    handles the request first, then the outer one does too, since neither
+    short-circuits). Production wires this exactly once via
+    ``app/main.py``; the guard exists for the test surface (any test that
+    constructs its own app and would otherwise stack duplicates) and for
+    defence against accidental double-wiring in future setup code.
     """
+    for middleware in app.user_middleware:
+        # Starlette types ``middleware.cls`` as ``_MiddlewareFactory[P]``
+        # (a Protocol), so mypy can't see that an installed
+        # AccessLogMiddleware satisfies it; the runtime identity check
+        # is correct.
+        if middleware.cls is AccessLogMiddleware:  # type: ignore[comparison-overlap]
+            return
     app.add_middleware(AccessLogMiddleware)

@@ -2090,6 +2090,88 @@ def test_access_log_omits_error_fields_on_success(client: TestClient) -> None:
     assert entry["log_level"] == "info", entry
 
 
+def test_setup_access_log_is_idempotent() -> None:
+    """Pin: calling :func:`setup_access_log` twice on the same app installs
+    exactly ONE ``AccessLogMiddleware`` instance.
+
+    Without the guard, every request would log twice (the outer middleware
+    delegates to the inner one, which also runs to completion). Production
+    wires this once in ``app/main.py``; the guard exists for the test
+    surface where a fresh app may end up touched by multiple fixtures.
+    """
+    from fastapi import FastAPI
+
+    from app.core.observability import AccessLogMiddleware, setup_access_log
+
+    fresh_app = FastAPI()
+    setup_access_log(fresh_app)
+    setup_access_log(fresh_app)
+    setup_access_log(fresh_app)
+    access_log_layers = [
+        m for m in fresh_app.user_middleware if m.cls is AccessLogMiddleware
+    ]
+    assert len(access_log_layers) == 1, access_log_layers
+
+
+def test_access_log_processor_stamps_trace_id_under_active_span() -> None:
+    """Behavioral pin: when an OTel span is active, the structlog processor
+    that AccessLogMiddleware logs through stamps a non-empty ``trace_id``
+    and ``span_id`` onto the event_dict.
+
+    This is the contract the Grafana Cloud Loki → Tempo derived-field
+    link in dashboard 04 depends on: the access log row carries a
+    ``trace_id`` field that the dashboard's regex extracts as a clickable
+    target. The existing ``test_access_log_runs_inside_otel_layer`` test
+    pins the *middleware ordering* (OTel wraps AccessLog so the span is
+    available when the access log emits), but it does NOT verify the
+    actual stamping — a future change that breaks the processor signature
+    or short-circuits it on a falsy ``trace_id`` would pass that test
+    while silently dropping the field.
+
+    This test invokes the production processor with a fresh OTel
+    TracerProvider + an active span and asserts the contract directly,
+    decoupled from Starlette's middleware-stack composition.
+    """
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from app.core.observability import _structlog_processor_trace_context
+
+    tracer = TracerProvider().get_tracer("test")
+    with tracer.start_as_current_span("test_request"):
+        event_dict: dict[str, Any] = {
+            "event": "request",
+            "method": "GET",
+            "path": "/api/v1/repair-requests",
+            "status_code": 200,
+        }
+        result = _structlog_processor_trace_context(None, "info", event_dict)
+
+    assert "trace_id" in result, result
+    assert len(result["trace_id"]) == 32, result["trace_id"]
+    assert result["trace_id"] != "0" * 32, result["trace_id"]
+    assert "span_id" in result, result
+    assert len(result["span_id"]) == 16, result["span_id"]
+    assert result["span_id"] != "0" * 16, result["span_id"]
+
+
+def test_access_log_processor_omits_trace_id_outside_span() -> None:
+    """Pin: when NO span is active (e.g. boot-time / lifespan logs),
+    the processor returns the event_dict UNTOUCHED.
+
+    A trace_id of all-zeros (``"0" * 32``) or an empty string would
+    decorate pre-startup logs with a bogus link in the GC Loki panel —
+    the processor must skip silently instead of fabricating one.
+    """
+    from app.core.observability import _structlog_processor_trace_context
+
+    event_dict: dict[str, Any] = {"event": "boot", "phase": "startup"}
+    result = _structlog_processor_trace_context(None, "info", dict(event_dict))
+
+    assert result == event_dict, result
+    assert "trace_id" not in result, result
+    assert "span_id" not in result, result
+
+
 def test_access_log_runs_inside_otel_layer() -> None:
     """Pin: in the built middleware stack, OpenTelemetryMiddleware is
     OUTSIDE AccessLogMiddleware, so the OTel span context is still

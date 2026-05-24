@@ -31,13 +31,18 @@ import {
 } from "./lib/flows.js";
 
 const TRAFFIC_DURATION = __ENV.TRAFFIC_DURATION || "30m";
-const DEFAULT_MAX_VUS = parsePositive("MAX_VUS", 50);
+const DEFAULT_MAX_VUS = parseStrictlyPositive("MAX_VUS", 50);
 
-function parsePositive(name, fallback) {
+// Strict: rejects 0 and falls back. Used for sizing (VU counts) where
+// a zero would silently disable everything.
+function parseStrictlyPositive(name, fallback) {
   const value = Number.parseInt(__ENV[name] || `${fallback}`, 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+// Permissive: accepts 0 as a valid "drop this scenario" sentinel. Used
+// for per-flow arrival rates so an operator can zero out a scenario via
+// env without editing the script.
 function parseRate(name, fallback) {
   const value = Number.parseInt(__ENV[name] || `${fallback}`, 10);
   return Number.isFinite(value) && value >= 0 ? value : 0;
