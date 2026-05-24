@@ -544,6 +544,28 @@ def verify_observability_exports(settings: Settings) -> None:
     if not settings.otel_enabled or settings.environment == "local":
         return
 
+    # Assert each exporter actually installed before flushing. The original
+    # implementation used ``getattr(provider, "force_flush", None)`` and a
+    # ``callable`` guard, which silently skipped any signal whose exporter
+    # had failed to install and left the global no-op ProxyProvider in
+    # place — the exact silent-export-failure class this function exists
+    # to catch. If a signal's ``setup_*_exporter`` raised or never ran, the
+    # task must crash here, not boot with that signal dark.
+    missing: list[str] = []
+    if not _METRICS_EXPORTER_INSTALLED:
+        missing.append("metrics")
+    if not _TRACING_INSTALLED:
+        missing.append("traces")
+    if not _LOG_EXPORTER_INSTALLED:
+        missing.append("logs")
+    if missing:
+        raise RuntimeError(
+            f"OTLP exporter not installed for: {', '.join(missing)}. "
+            "setup_log_exporter / setup_metrics_exporter / setup_tracing must "
+            "complete before verify_observability_exports — check earlier "
+            "startup logs for the failure that left the no-op provider in place."
+        )
+
     # Lazy imports for the same reason setup_* are lazy: keep dev images
     # free of the OTLP SDK's import cost when the flag is off.
     from opentelemetry import metrics as otel_metrics
@@ -552,54 +574,59 @@ def verify_observability_exports(settings: Settings) -> None:
 
     # --- Synthetic emit: one signal of each kind. ----------------------
     probe_attrs = {"ams.probe": "startup"}
-
-    # Metric: bump a counter created off the same ProxyMeter as the
-    # call-site counters so this exercises the same resolution path.
-    probe_counter = _meter.create_counter(
-        "ams_observability_probe_total",
-        description=(
-            "Synthetic increment from verify_observability_exports. "
-            "Always 1 per process start when OTEL is enabled in non-local "
-            "environments. Filter out of dashboards with ams.probe!=startup."
-        ),
-    )
-    probe_counter.add(1, attributes=probe_attrs)
-
-    # Trace: open and close one span. BatchSpanProcessor enqueues on
-    # ``on_end``, so the span lands in the buffer before force_flush.
-    tracer = otel_trace.get_tracer("ams.backend.probe")
-    with tracer.start_as_current_span("observability_probe") as span:
-        for key, value in probe_attrs.items():
-            span.set_attribute(key, value)
-
-    # Log: emit through the stdlib bridge so the OTel LoggingHandler
-    # installed by setup_log_exporter picks it up.
-    logger.info(
-        "Observability startup probe — synthetic signal for OTLP export check.",
-        extra=probe_attrs,
-    )
-
-    # --- Flush and fail loudly if any signal failed to push. -----------
     failures: list[str] = []
 
-    # `getattr(..., None)` because the no-op providers do not implement
-    # force_flush; a `hasattr` check would pass for both real and fake
-    # providers, so we additionally treat "no force_flush method" as a
-    # silent skip (means the exporter was never installed for that signal).
+    # Each synthetic emit is independently guarded — a broken instrument
+    # (proxy not yet swapped, SDK API drift, exporter shutdown race) must
+    # surface as a structured failure on the RuntimeError below, not as a
+    # bare stack trace that crashes the container before the diagnostic
+    # message renders. Same fail-loud contract; richer error payload.
+    try:
+        probe_counter = _meter.create_counter(
+            "ams_observability_probe_total",
+            description=(
+                "Synthetic increment from verify_observability_exports. "
+                "Always 1 per process start when OTEL is enabled in non-local "
+                "environments. Filter out of dashboards with ams.probe!=startup."
+            ),
+        )
+        probe_counter.add(1, attributes=probe_attrs)
+    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
+        failures.append(f"metrics-emit ({exc!r})")
+
+    try:
+        tracer = otel_trace.get_tracer("ams.backend.probe")
+        with tracer.start_as_current_span("observability_probe") as span:
+            for key, value in probe_attrs.items():
+                span.set_attribute(key, value)
+    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
+        failures.append(f"traces-emit ({exc!r})")
+
+    try:
+        logger.info(
+            "Observability startup probe — synthetic signal for OTLP export check.",
+            extra=probe_attrs,
+        )
+    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
+        failures.append(f"logs-emit ({exc!r})")
+
+    # --- Flush and fail loudly if any signal failed to push. -----------
+    # The installed-flag assertions above already proved each provider is
+    # real, not the global no-op ProxyProvider, so ``force_flush`` is
+    # guaranteed to exist as a callable. A missing attribute now is a
+    # programming error (SDK version regression) and surfaces as
+    # AttributeError — which is what we want.
     meter_provider = otel_metrics.get_meter_provider()
-    flush_metrics = getattr(meter_provider, "force_flush", None)
-    if callable(flush_metrics) and not flush_metrics(5_000):
-        failures.append("metrics")
+    if not meter_provider.force_flush(5_000):  # type: ignore[attr-defined]
+        failures.append("metrics-flush")
 
     tracer_provider = otel_trace.get_tracer_provider()
-    flush_traces = getattr(tracer_provider, "force_flush", None)
-    if callable(flush_traces) and not flush_traces(5_000):
-        failures.append("traces")
+    if not tracer_provider.force_flush(5_000):  # type: ignore[attr-defined]
+        failures.append("traces-flush")
 
     logger_provider = get_logger_provider()
-    flush_logs = getattr(logger_provider, "force_flush", None)
-    if callable(flush_logs) and not flush_logs(5_000):
-        failures.append("logs")
+    if not logger_provider.force_flush(5_000):  # type: ignore[attr-defined]
+        failures.append("logs-flush")
 
     if failures:
         raise RuntimeError(

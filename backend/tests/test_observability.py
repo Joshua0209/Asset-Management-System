@@ -122,6 +122,7 @@ def _reset_observability_module_state() -> Iterable[None]:
     """
     from opentelemetry import _logs as otel_logs_api
     from opentelemetry import trace as otel_trace
+    from opentelemetry.metrics import _internal as otel_metrics_internal
 
     from app.core import observability as obs
 
@@ -138,6 +139,11 @@ def _reset_observability_module_state() -> Iterable[None]:
         otel_trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
         otel_logs_api._internal._LOGGER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
         otel_logs_api._internal._LOGGER_PROVIDER = None  # type: ignore[attr-defined]
+        # Metrics has no Once guard but the global slot persists across
+        # tests; clear it so get_meter_provider() returns the proxy fresh.
+        # Tests that need a real provider visible to get_meter_provider()
+        # write to this slot directly (see synthetic-emit test).
+        otel_metrics_internal._METER_PROVIDER = None  # type: ignore[attr-defined]
 
     _reset()
     yield
@@ -888,6 +894,59 @@ def test_settings_otel_enabled_locally_does_not_require_headers(
     Settings()  # type: ignore[call-arg]
 
 
+@pytest.mark.parametrize(
+    "missing_env",
+    ["PYROSCOPE_AUTH_TOKEN", "PYROSCOPE_BASIC_AUTH_USERNAME"],
+)
+def test_settings_pyroscope_enabled_in_production_requires_auth(
+    monkeypatch: pytest.MonkeyPatch, missing_env: str
+) -> None:
+    """Pyroscope without either basic-auth half in non-local env must fail loud.
+
+    The OTLP startup probe (verify_observability_exports) does not cover
+    Pyroscope — pyroscope-io has no synchronous flush surface — so a
+    missing PYROSCOPE_AUTH_TOKEN or PYROSCOPE_BASIC_AUTH_USERNAME would
+    silently 401 against GC and leave profiling dark in production. Refuse
+    to boot in that shape; same posture as the OTLP headers validator.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.setenv("PYROSCOPE_ENABLED", "true")
+    monkeypatch.setenv("PYROSCOPE_SERVER", "https://profiles-prod.grafana.net")
+    monkeypatch.setenv("PYROSCOPE_AUTH_TOKEN", "tok-xyz")
+    monkeypatch.setenv("PYROSCOPE_BASIC_AUTH_USERNAME", "123456")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv(missing_env, raising=False)
+
+    with pytest.raises(ValueError, match="PYROSCOPE_AUTH_TOKEN"):
+        Settings()  # type: ignore[call-arg]
+
+
+def test_settings_pyroscope_enabled_locally_does_not_require_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Local Pyroscope-on must boot without credentials.
+
+    A developer pointing at a self-hosted Pyroscope server with no auth
+    (or whose dev setup uses cookie-based auth) must not be blocked by
+    the production-gated validator.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.setenv("PYROSCOPE_ENABLED", "true")
+    monkeypatch.setenv("PYROSCOPE_SERVER", "https://profiles-prod.grafana.net")
+    monkeypatch.setenv("ENVIRONMENT", "local")
+    monkeypatch.delenv("PYROSCOPE_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("PYROSCOPE_BASIC_AUTH_USERNAME", raising=False)
+
+    # Must not raise.
+    Settings()  # type: ignore[call-arg]
+
+
 # ---------------------------------------------------------------------------
 # verify_observability_exports startup probe
 # ---------------------------------------------------------------------------
@@ -924,6 +983,48 @@ def test_verify_observability_exports_noop_in_local_env(
     obs.verify_observability_exports(settings)
 
 
+def _patch_all_providers(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    metrics_flush: bool = True,
+    traces_flush: bool = True,
+    logs_flush: bool = True,
+) -> dict[str, Any]:
+    """Install fake real-shaped providers + flip the install flags True.
+
+    ``verify_observability_exports`` now refuses to proceed unless every
+    signal's ``_*_INSTALLED`` flag is True (the regression fix for the
+    silent-export-skip class). Test arrangements that previously relied
+    on the global no-op providers being silently skipped must now declare
+    the provider state explicitly.
+    """
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+
+    obs._METRICS_EXPORTER_INSTALLED = True
+    obs._TRACING_INSTALLED = True
+    obs._LOG_EXPORTER_INSTALLED = True
+
+    meter_mock = MagicMock()
+    meter_mock.force_flush = MagicMock(return_value=metrics_flush)
+    tracer_mock = MagicMock()
+    tracer_mock.force_flush = MagicMock(return_value=traces_flush)
+    logger_mock = MagicMock()
+    logger_mock.force_flush = MagicMock(return_value=logs_flush)
+
+    monkeypatch.setattr(
+        "opentelemetry.metrics.get_meter_provider", lambda: meter_mock
+    )
+    monkeypatch.setattr(
+        "opentelemetry.trace.get_tracer_provider", lambda: tracer_mock
+    )
+    monkeypatch.setattr(
+        "opentelemetry._logs.get_logger_provider", lambda: logger_mock
+    )
+    return {"metrics": meter_mock, "traces": tracer_mock, "logs": logger_mock}
+
+
 def test_verify_observability_exports_raises_on_flush_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -934,22 +1035,12 @@ def test_verify_observability_exports_raises_on_flush_failure(
     The probe must raise so the ECS task crashes before being marked
     healthy by the ALB.
     """
-    from unittest.mock import MagicMock
-
     from app.core import observability as obs
 
     settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+    _patch_all_providers(monkeypatch, metrics_flush=False)
 
-    fake_provider = MagicMock()
-    fake_provider.force_flush = MagicMock(return_value=False)
-    monkeypatch.setattr(
-        "opentelemetry.metrics.get_meter_provider",
-        lambda: fake_provider,
-    )
-    # Tracing + logs providers have no force_flush in the default no-op
-    # state, so they are skipped — the metrics failure alone must trip.
-
-    with pytest.raises(RuntimeError, match="metrics"):
+    with pytest.raises(RuntimeError, match="metrics-flush"):
         obs.verify_observability_exports(settings)
 
 
@@ -957,22 +1048,51 @@ def test_verify_observability_exports_passes_on_successful_flush(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """All providers returning True from force_flush is the happy path."""
-    from unittest.mock import MagicMock
-
     from app.core import observability as obs
 
     settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+    fakes = _patch_all_providers(monkeypatch)
 
-    fake_provider = MagicMock()
-    fake_provider.force_flush = MagicMock(return_value=True)
-    monkeypatch.setattr(
-        "opentelemetry.metrics.get_meter_provider",
-        lambda: fake_provider,
-    )
-
-    # Must not raise.
     obs.verify_observability_exports(settings)
-    fake_provider.force_flush.assert_called_once_with(5_000)
+    # All three signals flushed; mocks were each invoked exactly once with
+    # the 5 s timeout. A regression that skipped a signal's flush silently
+    # would fail one of these assertions.
+    fakes["metrics"].force_flush.assert_called_once_with(5_000)
+    fakes["traces"].force_flush.assert_called_once_with(5_000)
+    fakes["logs"].force_flush.assert_called_once_with(5_000)
+
+
+@pytest.mark.parametrize(
+    ("missing_flag", "expected_signal"),
+    [
+        ("_METRICS_EXPORTER_INSTALLED", "metrics"),
+        ("_TRACING_INSTALLED", "traces"),
+        ("_LOG_EXPORTER_INSTALLED", "logs"),
+    ],
+)
+def test_verify_observability_exports_fails_when_install_flag_false(
+    monkeypatch: pytest.MonkeyPatch,
+    missing_flag: str,
+    expected_signal: str,
+) -> None:
+    """The probe refuses to proceed when any installer never finished.
+
+    Locks the CRITICAL fix for the silent-logs-skip regression. The pre-
+    fix implementation used ``getattr(provider, "force_flush", None)`` +
+    ``callable`` guards, so a signal whose ``setup_*_exporter`` raised
+    silently fell through to ``force_flush returned True trivially`` —
+    the probe gave false confidence against an exporter that never ran.
+    """
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+    _patch_all_providers(monkeypatch)
+    # Flip exactly one install flag back to False — the probe must
+    # surface that signal in the RuntimeError before reaching flush.
+    setattr(obs, missing_flag, False)
+
+    with pytest.raises(RuntimeError, match=f"not installed for: {expected_signal}"):
+        obs.verify_observability_exports(settings)
 def test_proxy_counter_increments_after_late_provider_install() -> None:
     """Counters created at import time must record into a MeterProvider
     installed AFTER the create_counter call.
@@ -1185,7 +1305,10 @@ def test_verify_observability_exports_emits_synthetic_signals_before_flush(
     something during force_flush.
     This test asserts both synthetic artefacts land where they should.
     """
+    from unittest.mock import MagicMock
+
     from opentelemetry import trace as otel_trace
+    from opentelemetry.metrics import _internal as otel_metrics_internal
     from opentelemetry.metrics._internal import _PROXY_METER_PROVIDER
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -1198,10 +1321,27 @@ def test_verify_observability_exports_emits_synthetic_signals_before_flush(
     reader = InMemoryMetricReader()
     meter_provider = MeterProvider(metric_readers=[reader])
     _PROXY_METER_PROVIDER.on_set_meter_provider(meter_provider)
+    # Also write the real MeterProvider into the global slot so
+    # ``otel_metrics.get_meter_provider()`` in verify_observability_exports
+    # returns the real provider (with force_flush) instead of the proxy.
+    # The autouse fixture clears this slot between tests.
+    otel_metrics_internal._METER_PROVIDER = meter_provider  # type: ignore[attr-defined]
     span_exp = InMemorySpanExporter()
     tracer_provider = TracerProvider()
     tracer_provider.add_span_processor(SimpleSpanProcessor(span_exp))
     otel_trace.set_tracer_provider(tracer_provider)
+    # The strict-install-flag check refuses to proceed without all three
+    # signals' flags set. The test exercises the synthetic-emit path
+    # under real metric + trace providers; log provider is mocked so the
+    # log flush also clears.
+    obs._METRICS_EXPORTER_INSTALLED = True
+    obs._TRACING_INSTALLED = True
+    obs._LOG_EXPORTER_INSTALLED = True
+    log_provider_mock = MagicMock()
+    log_provider_mock.force_flush = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "opentelemetry._logs.get_logger_provider", lambda: log_provider_mock
+    )
     try:
         obs.verify_observability_exports(settings)
     finally:

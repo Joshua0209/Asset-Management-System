@@ -261,6 +261,27 @@ class Settings(BaseSettings):
                 "OTEL_EXPORTER_OTLP_HEADERS to be set; the exporter would otherwise "
                 "ship every span/metric/log with no auth and GC would silently 401."
             )
+        # Pyroscope auth in non-local environments mirrors the OTLP check.
+        # ``verify_observability_exports`` does NOT probe Pyroscope (the
+        # pyroscope-io client has no synchronous flush/health surface), so
+        # a missing token would only surface as silent 401s on the GC
+        # ingest side and a dark profiling stream in production — same
+        # silent-export-failure class the OTLP probe was added to close.
+        # Refuse boot loudly here instead.
+        if (
+            self.pyroscope_enabled
+            and self.environment != "local"
+            and (
+                not self.pyroscope_auth_token.get_secret_value()
+                or not self.pyroscope_basic_auth_username
+            )
+        ):
+            raise ValueError(
+                f"PYROSCOPE_ENABLED=true in ENVIRONMENT={self.environment!r} requires "
+                "both PYROSCOPE_AUTH_TOKEN and PYROSCOPE_BASIC_AUTH_USERNAME to be "
+                "set; pyroscope-io would otherwise ship samples with empty basic-auth "
+                "credentials and GC would silently 401, leaving profiling dark."
+            )
         return self
 
     @field_validator("log_format")
