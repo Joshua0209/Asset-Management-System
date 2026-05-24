@@ -75,7 +75,12 @@ FSM_TRANSITIONS = _meter.create_counter(
 
 Call sites attach attributes per ``.add(1, attributes={...})``:
 
-* ``from`` / ``to``: enum names (``PENDING_REVIEW``, ``UNDER_REPAIR``, …).
+* ``from`` / ``to``: enum names (``PENDING_REVIEW``, ``UNDER_REPAIR``, …),
+  taken from ``RepairRequestStatus.<X>.name`` / ``AssetStatus.<X>.name``
+  so a rename in the enum surfaces here at type-check time. The submit
+  flow uses the sentinel literal ``"NONE"`` for ``from`` because the
+  repair request did not previously exist; dashboards can count
+  creations without collapsing them into other PENDING_REVIEW arrivals.
 * ``asset_kind``: ``asset`` for direct asset transitions, ``repair_request``
   for repair-request transitions. Lets the Repair Journey dashboard slice
   the two streams without a regex on the metric name.

@@ -731,8 +731,8 @@ def approve_repair_request(
         FSM_TRANSITIONS.add(
             1,
             attributes={
-                "from": "PENDING_REVIEW",
-                "to": "UNDER_REPAIR",
+                "from": RepairRequestStatus.PENDING_REVIEW.name,
+                "to": RepairRequestStatus.UNDER_REPAIR.name,
                 "asset_kind": "repair_request",
             },
         )
@@ -796,8 +796,8 @@ def reject_repair_request(
         FSM_TRANSITIONS.add(
             1,
             attributes={
-                "from": "PENDING_REVIEW",
-                "to": "REJECTED",
+                "from": RepairRequestStatus.PENDING_REVIEW.name,
+                "to": RepairRequestStatus.REJECTED.name,
                 "asset_kind": "repair_request",
             },
         )
@@ -917,8 +917,8 @@ def complete_repair_request(
         FSM_TRANSITIONS.add(
             1,
             attributes={
-                "from": "UNDER_REPAIR",
-                "to": "COMPLETED",
+                "from": RepairRequestStatus.UNDER_REPAIR.name,
+                "to": RepairRequestStatus.COMPLETED.name,
                 "asset_kind": "repair_request",
             },
         )
@@ -1043,7 +1043,7 @@ def _create_repair_request_with_retry(
                 1,
                 attributes={
                     "from": "NONE",
-                    "to": "PENDING_REVIEW",
+                    "to": RepairRequestStatus.PENDING_REVIEW.name,
                     "asset_kind": "repair_request",
                 },
             )

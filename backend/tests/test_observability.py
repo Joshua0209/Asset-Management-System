@@ -260,6 +260,149 @@ def test_fsm_transition_counter_increments_on_review_approval(
     assert after == before + 1, (before, after)
 
 
+def test_fsm_transition_counter_submit_creates_new_request(
+    client: TestClient,
+    db_session: Session,
+    make_user: MakeManager,
+    auth_headers: Callable[[User], dict[str, str]],
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """Submitting a new repair request bumps the counter with from=NONE.
+
+    The submit transition is special: there is no prior state, so the
+    ``from`` attribute is the sentinel literal ``"NONE"`` rather than an
+    enum name. Pins that the source string stays in sync with the
+    dashboard query in ``03-repair-journey.json``.
+    """
+    holder = make_user(role=UserRole.HOLDER)
+    asset = _make_asset(db_session, holder=holder, status=AssetStatus.IN_USE)
+
+    before = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "NONE", "to": "PENDING_REVIEW"},
+    )
+
+    response = client.post(
+        "/api/v1/repair-requests",
+        headers=auth_headers(holder),
+        json={
+            "asset_id": asset.id,
+            "fault_description": "new request",
+            "version": asset.version,
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+
+    after = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "NONE", "to": "PENDING_REVIEW"},
+    )
+    assert after == before + 1, (before, after)
+
+
+def test_fsm_transition_counter_review_rejection(
+    client: TestClient,
+    db_session: Session,
+    make_user: MakeManager,
+    auth_headers: Callable[[User], dict[str, str]],
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """Rejecting a pending review bumps PENDING_REVIEW → REJECTED."""
+    manager = make_user(role=UserRole.MANAGER)
+    holder = make_user(role=UserRole.HOLDER)
+    asset = _make_asset(
+        db_session,
+        holder=holder,
+        status=AssetStatus.PENDING_REPAIR,
+    )
+    req = RepairRequest(
+        asset_id=asset.id,
+        repair_id=_unique_repair_id(),
+        requester_id=holder.id,
+        status=RepairRequestStatus.PENDING_REVIEW,
+        fault_description="needs repair",
+    )
+    db_session.add(req)
+    db_session.commit()
+    db_session.refresh(req)
+
+    before = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "PENDING_REVIEW", "to": "REJECTED"},
+    )
+
+    response = client.post(
+        f"/api/v1/repair-requests/{req.id}/reject",
+        headers=auth_headers(manager),
+        json={"version": req.version, "rejection_reason": "out of scope"},
+    )
+    assert response.status_code == 200, response.text
+
+    after = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "PENDING_REVIEW", "to": "REJECTED"},
+    )
+    assert after == before + 1, (before, after)
+
+
+def test_fsm_transition_counter_repair_completion(
+    client: TestClient,
+    db_session: Session,
+    make_user: MakeManager,
+    auth_headers: Callable[[User], dict[str, str]],
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """Completing an in-repair request bumps UNDER_REPAIR → COMPLETED."""
+    manager = make_user(role=UserRole.MANAGER)
+    holder = make_user(role=UserRole.HOLDER)
+    asset = _make_asset(
+        db_session,
+        holder=holder,
+        status=AssetStatus.UNDER_REPAIR,
+    )
+    req = RepairRequest(
+        asset_id=asset.id,
+        repair_id=_unique_repair_id(),
+        requester_id=holder.id,
+        status=RepairRequestStatus.UNDER_REPAIR,
+        fault_description="needs repair",
+    )
+    db_session.add(req)
+    db_session.commit()
+    db_session.refresh(req)
+
+    before = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "UNDER_REPAIR", "to": "COMPLETED"},
+    )
+
+    response = client.post(
+        f"/api/v1/repair-requests/{req.id}/complete",
+        headers=auth_headers(manager),
+        json={
+            "version": req.version,
+            "repair_date": str(date(2026, 5, 24)),
+            "fault_content": "thermal paste worn",
+            "repair_plan": "replaced thermal paste",
+            "repair_cost": "150.00",
+            "repair_vendor": "Vendor Co",
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    after = _counter_value(
+        metric_reader,
+        "ams_fsm_transitions_total",
+        {"from": "UNDER_REPAIR", "to": "COMPLETED"},
+    )
+    assert after == before + 1, (before, after)
+
+
 # ---------------------------------------------------------------------------
 # Structlog JSON renderer
 # ---------------------------------------------------------------------------
