@@ -174,7 +174,8 @@ describe('SubmitRepairRequest', () => {
 
   it('shows the generic error message when submit rejects with a non-ApiError', async () => {
     mockListMyAssets.mockResolvedValue(ASSETS_RESPONSE);
-    mockSubmitRepairRequest.mockRejectedValue(new Error('network down'));
+    const submitError = new Error('network down');
+    mockSubmitRepairRequest.mockRejectedValue(submitError);
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     renderPage();
@@ -188,8 +189,37 @@ describe('SubmitRepairRequest', () => {
     await waitFor(() => {
       expect(messageErrorSpy).toHaveBeenCalledWith('common.repairRequest.errorMessage');
     });
-    expect(consoleErrorSpy).toHaveBeenCalled();
+    // Pin the exact ``console.error('Submission error:', error)`` call shape.
+    // A regression that drops the prefix, swaps the order, or rewraps the
+    // original Error would otherwise pass with the looser .toHaveBeenCalled().
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Submission error:', submitError);
     consoleErrorSpy.mockRestore();
+  });
+
+  it('surfaces the ApiError branch via getApiErrorMessage when submit rejects with an ApiError', async () => {
+    // The ApiError branch of the submit catch in SubmitRepairRequest.tsx
+    // routes through getApiErrorMessage(error, t), not the generic
+    // 'common.repairRequest.errorMessage' key. A regression that conflates
+    // the two branches would silently drop server-side conflict messages.
+    mockListMyAssets.mockResolvedValue(ASSETS_RESPONSE);
+    mockSubmitRepairRequest.mockRejectedValue(
+      new ApiError(409, 'conflict', 'Repair request already exists'),
+    );
+
+    renderPage();
+    await selectFirstAsset();
+
+    fireEvent.change(screen.getByLabelText('common.repairRequest.faultDescription'), {
+      target: { value: 'Broken screen' },
+    });
+    fireEvent.click(screen.getByText('common.repairRequest.submit'));
+
+    await waitFor(() => {
+      // getApiErrorMessage maps code='conflict' to t('errors.conflict'),
+      // which the i18n stub returns verbatim as the key.
+      expect(messageErrorSpy).toHaveBeenCalledWith('errors.conflict');
+    });
+    expect(messageErrorSpy).not.toHaveBeenCalledWith('common.repairRequest.errorMessage');
   });
 
   it('beforeUpload rejects non-image files with the format error', async () => {
