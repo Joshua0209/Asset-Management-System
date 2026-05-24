@@ -693,3 +693,90 @@ def test_settings_otel_enabled_locally_does_not_require_headers(
 
     # Must not raise.
     Settings()  # type: ignore[call-arg]
+
+
+# ---------------------------------------------------------------------------
+# verify_observability_exports startup probe
+# ---------------------------------------------------------------------------
+
+
+def test_verify_observability_exports_noop_when_otel_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No flush attempted when OTEL_ENABLED is false (dev default)."""
+    from app.core import observability as obs
+
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("JWT_SECRET", "x")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    monkeypatch.setenv("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    monkeypatch.delenv("OTEL_ENABLED", raising=False)
+    settings = Settings()  # type: ignore[call-arg]
+
+    # Must not raise and must not touch provider state.
+    obs.verify_observability_exports(settings)
+
+
+def test_verify_observability_exports_noop_in_local_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Probe is gated to non-local environments.
+
+    A developer running with OTEL_ENABLED=true against a self-hosted
+    collector must not be blocked at boot if the collector is offline.
+    """
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="local")
+    obs.verify_observability_exports(settings)
+
+
+def test_verify_observability_exports_raises_on_flush_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A False return from any provider's force_flush surfaces as RuntimeError.
+
+    Simulates the wrong-API-key / unreachable-OTLP-gateway scenario by
+    patching the global meter provider to return False from force_flush.
+    The probe must raise so the ECS task crashes before being marked
+    healthy by the ALB.
+    """
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+
+    fake_provider = MagicMock()
+    fake_provider.force_flush = MagicMock(return_value=False)
+    monkeypatch.setattr(
+        "opentelemetry.metrics.get_meter_provider",
+        lambda: fake_provider,
+    )
+    # Tracing + logs providers have no force_flush in the default no-op
+    # state, so they are skipped — the metrics failure alone must trip.
+
+    with pytest.raises(RuntimeError, match="metrics"):
+        obs.verify_observability_exports(settings)
+
+
+def test_verify_observability_exports_passes_on_successful_flush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All providers returning True from force_flush is the happy path."""
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+
+    fake_provider = MagicMock()
+    fake_provider.force_flush = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "opentelemetry.metrics.get_meter_provider",
+        lambda: fake_provider,
+    )
+
+    # Must not raise.
+    obs.verify_observability_exports(settings)
+    fake_provider.force_flush.assert_called_once_with(5_000)
