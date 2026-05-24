@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Generator
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # IMPORT-ORDER INVARIANT — DO NOT IMPORT ANY ``app.*`` MODULE ABOVE THIS LINE.
@@ -141,3 +142,35 @@ def auth_headers() -> Callable[[User], dict[str, str]]:
         return {"Authorization": f"Bearer {token}"}
 
     return _headers
+
+
+@pytest.fixture
+def scalar_skip_auth(db_session: Session) -> Callable[[BaseException], Callable[..., Any]]:
+    """Factory that builds a ``db.scalar`` side_effect with auth-pass-through.
+
+    Endpoints that themselves call ``db.scalar`` share the call with
+    ``get_current_user`` (which always issues the first scalar to resolve
+    the bearer token). Patching ``db.scalar`` globally would therefore 401
+    before the endpoint's own scalar ever runs — masking the branch under
+    test. This factory returns a side_effect that lets the first scalar
+    pass through (the auth lookup) and raises ``exc`` on every subsequent
+    call (the endpoint's own scalar).
+
+    The pattern was previously duplicated across test_assets.py,
+    test_repair_requests.py, and test_images.py. Centralising it here
+    keeps the auth-call-count invariant in one place.
+    """
+    real_scalar = db_session.scalar
+
+    def _build(exc: BaseException) -> Callable[..., Any]:
+        calls = {"n": 0}
+
+        def _side_effect(*args: Any, **kwargs: Any) -> Any:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return real_scalar(*args, **kwargs)
+            raise exc
+
+        return _side_effect
+
+    return _build

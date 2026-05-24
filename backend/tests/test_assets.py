@@ -4,18 +4,20 @@ import itertools
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.models.asset import Asset, AssetStatus
 from app.models.repair_request import RepairRequest, RepairRequestStatus
 from app.models.user import User, UserRole
-from app.schemas.asset import AssetCreate
+from app.schemas.asset import AssetCreate, AssetUpdate
 
 _PURCHASE_DATE = date(2026, 1, 1)
 _ASSIGNMENT_DATE_ISO = "2026-04-15"
@@ -667,6 +669,63 @@ class TestAssetCreateSchema:
                 purchase_date=_PURCHASE_DATE,
                 purchase_amount=Decimal("1500.00"),
                 warranty_expiry=date(2025, 12, 31),
+            )
+
+
+class TestAssetUpdateSchema:
+    """Cover the cross-field validator on ``AssetUpdate`` (PATCH payload).
+
+    ``TestAssetCreateSchema`` covers the same rules on ``AssetCreate``; these
+    exist because the PATCH validator runs against a different field shape
+    (every field is ``Optional`` with a default of ``None``) and only enforces
+    the rule when the caller actually set the field. The non-null guard at
+    line 82, the future-purchase-date guard at line 84, and the warranty
+    ordering guard at line 90 are otherwise unreachable from existing tests.
+    """
+
+    def test_explicit_null_for_non_nullable_field_raises(self) -> None:
+        # Caller cannot wipe a required field by sending ``null`` in PATCH.
+        with pytest.raises(ValidationError, match="name cannot be null"):
+            AssetUpdate.model_validate({"name": None, "version": 1})
+
+    def test_explicit_null_for_purchase_amount_raises(self) -> None:
+        with pytest.raises(ValidationError, match="purchase_amount cannot be null"):
+            AssetUpdate.model_validate({"purchase_amount": None, "version": 1})
+
+    def test_future_purchase_date_raises(self) -> None:
+        with pytest.raises(ValidationError, match="purchase_date must not be in the future"):
+            AssetUpdate.model_validate(
+                {"purchase_date": "9999-01-01", "version": 1}
+            )
+
+    def test_warranty_expiry_equal_to_purchase_date_raises(self) -> None:
+        # Validator says "must be after", so equal also fails. Both dates must
+        # be in the past — otherwise the future-purchase-date guard would fire
+        # first and this test would pass for the wrong reason once the system
+        # clock crosses the chosen date.
+        with pytest.raises(
+            ValidationError, match="warranty_expiry must be after purchase_date"
+        ):
+            AssetUpdate.model_validate(
+                {
+                    "purchase_date": "2025-06-01",
+                    "warranty_expiry": "2025-06-01",
+                    "version": 1,
+                }
+            )
+
+    def test_warranty_expiry_before_purchase_date_raises(self) -> None:
+        # Both dates must be in the past, otherwise the future-purchase-date
+        # guard fires first and the test would pass for the wrong reason.
+        with pytest.raises(
+            ValidationError, match="warranty_expiry must be after purchase_date"
+        ):
+            AssetUpdate.model_validate(
+                {
+                    "purchase_date": "2025-06-01",
+                    "warranty_expiry": "2025-01-01",
+                    "version": 1,
+                }
             )
 
 
@@ -2020,3 +2079,338 @@ class TestAssignmentDateFields:
 
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "invalid_unassignment_date"
+
+
+class TestListAssetsFilterBranches:
+    """Exercise the status / department / location filter branches of
+    ``_build_asset_filters``. Existing tests only set ``category``; without
+    these the three sibling branches stay unmeasured."""
+
+    @pytest.mark.parametrize(
+        ("kept_kwargs", "other_kwargs", "query"),
+        [
+            pytest.param(
+                {"status": AssetStatus.IN_STOCK},
+                {"status": AssetStatus.DISPOSED},
+                "status=in_stock",
+                id="status",
+            ),
+            pytest.param(
+                {"department": "HR"},
+                {"department": "IT"},
+                "department=HR",
+                id="department",
+            ),
+            pytest.param(
+                {"location": "Kaohsiung Office"},
+                {"location": "Taipei HQ"},
+                "location=Kaohsiung+Office",
+                id="location",
+            ),
+        ],
+    )
+    def test_filter_returns_only_matching_assets(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        kept_kwargs: dict[str, Any],
+        other_kwargs: dict[str, Any],
+        query: str,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        _make_asset(db_session, asset_code="AST-2026-00001", **kept_kwargs)
+        _make_asset(db_session, asset_code="AST-2026-00002", **other_kwargs)
+
+        response = client.get(f"/api/v1/assets?{query}", headers=auth_headers(manager))
+
+        assert response.status_code == 200
+        codes = [item["asset_code"] for item in response.json()["data"]]
+        assert codes == ["AST-2026-00001"]
+
+
+class TestGetAssetDbError:
+    def test_returns_503_on_sqlalchemy_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        scalar_skip_auth: Callable[[BaseException], Callable[..., Any]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        # Both ``get_current_user`` and ``get_asset`` use ``db.scalar``; the
+        # auth lookup is always the first call. ``scalar_skip_auth`` passes
+        # it through and raises on every subsequent call so we exercise the
+        # SQLAlchemyError branch (line 380-385) rather than the 401 path.
+        with patch.object(
+            db_session, "scalar", side_effect=scalar_skip_auth(SQLAlchemyError("DB down"))
+        ):
+            response = client.get(
+                f"/api/v1/assets/{asset.id}", headers=auth_headers(manager)
+            )
+
+        assert response.status_code == 503
+
+
+class TestListMyAssetsDbError:
+    def test_returns_503_on_sqlalchemy_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+
+        with patch.object(db_session, "scalars", side_effect=SQLAlchemyError("DB down")):
+            response = client.get("/api/v1/assets/mine", headers=auth_headers(holder))
+
+        assert response.status_code == 503
+
+
+class TestAssetCodeSequenceCorruption:
+    """Guard against silent recovery from a malformed ``asset_code`` row.
+
+    If we ever wrote a code that doesn't end in a parseable integer (legacy
+    import, schema migration bug, manual SQL touch), ``_next_asset_code``
+    would re-collide on every retry. The endpoint must fail loud with 500.
+    """
+
+    def test_returns_500_when_existing_asset_code_has_non_numeric_suffix(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        # Matches the AST-2026- LIKE filter so it lands as the "latest_code",
+        # but the suffix is not int-parseable.
+        _make_asset(db_session, asset_code="AST-2026-BADCODE")
+
+        response = client.post(
+            "/api/v1/assets",
+            json={
+                "name": "Business Laptop",
+                "model": "Dell Latitude 7440",
+                "category": "computer",
+                "supplier": "Dell",
+                "purchase_date": "2026-01-01",
+                "purchase_amount": "1500.00",
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 500
+        body = response.json()["error"]
+        assert body["code"] == "internal_server_error"
+        assert "corrupted" in body["message"]
+
+
+class TestRegisterAssetIntegrityErrors:
+    """Distinguish ``asset_code`` uniqueness collisions (retryable, 409) from
+    other constraint violations (programmer/data error, 422)."""
+
+    def test_non_asset_code_integrity_error_returns_422(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        payload = {
+            "name": "Business Laptop",
+            "model": "Dell Latitude 7440",
+            "category": "computer",
+            "supplier": "Dell",
+            "purchase_date": "2026-01-01",
+            "purchase_amount": "1500.00",
+        }
+
+        # Trip the registration retry loop's IntegrityError handler with an
+        # ``orig`` message that does NOT contain ``asset_code``: the endpoint
+        # must surface this as a validation error, not retry the loop forever.
+        with patch.object(
+            db_session,
+            "flush",
+            side_effect=IntegrityError(
+                "INSERT INTO assets ...",
+                {},
+                Exception("CHECK constraint failed on purchase_amount"),
+            ),
+        ):
+            response = client.post(
+                "/api/v1/assets", json=payload, headers=auth_headers(manager)
+            )
+
+        assert response.status_code == 422
+        body = response.json()["error"]
+        assert body["code"] == "validation_error"
+        assert "violates database constraints" in body["message"]
+
+
+_STALE_DATA_CASE = pytest.param(
+    StaleDataError("row was modified"),
+    409,
+    "conflict",
+    "modified by another user",
+    id="stale-data-409",
+)
+_INTEGRITY_CASE = pytest.param(
+    IntegrityError("UPDATE assets ...", {}, Exception("constraint violated")),
+    422,
+    "validation_error",
+    "violates database constraints",
+    id="integrity-422",
+)
+_COMMIT_ERROR_CASES = [_STALE_DATA_CASE, _INTEGRITY_CASE]
+
+
+class TestAssetMutationCommitErrors:
+    """``StaleDataError`` → 409 and ``IntegrityError`` → 422 on the four
+    mutation endpoints (update / assign / unassign / dispose).
+
+    The catch-all ``SQLAlchemyError`` → 503 branch is already covered by each
+    endpoint's ``test_returns_503_on_db_error``; these cover the two typed
+    branches that sit above it. ``StaleDataError`` in particular is the
+    optimistic-locking signal that the frontend conflict UI consumes.
+    """
+
+    @pytest.mark.parametrize(
+        ("commit_error", "expected_status", "expected_code", "message_substring"),
+        _COMMIT_ERROR_CASES,
+    )
+    def test_update_commit_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        commit_error: SQLAlchemyError,
+        expected_status: int,
+        expected_code: str,
+        message_substring: str,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session)
+
+        with patch.object(db_session, "commit", side_effect=commit_error):
+            response = client.patch(
+                f"/api/v1/assets/{asset.id}",
+                json={"location": "Kaohsiung", "version": asset.version},
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == expected_status
+        body = response.json()["error"]
+        assert body["code"] == expected_code
+        assert message_substring in body["message"]
+
+    @pytest.mark.parametrize(
+        ("commit_error", "expected_status", "expected_code", "message_substring"),
+        _COMMIT_ERROR_CASES,
+    )
+    def test_assign_commit_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        commit_error: SQLAlchemyError,
+        expected_status: int,
+        expected_code: str,
+        message_substring: str,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        target = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session)
+
+        with patch.object(db_session, "commit", side_effect=commit_error):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/assign",
+                json={
+                    "responsible_person_id": target.id,
+                    "assignment_date": _ASSIGNMENT_DATE_ISO,
+                    "version": asset.version,
+                },
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == expected_status
+        body = response.json()["error"]
+        assert body["code"] == expected_code
+        assert message_substring in body["message"]
+
+    @pytest.mark.parametrize(
+        ("commit_error", "expected_status", "expected_code", "message_substring"),
+        _COMMIT_ERROR_CASES,
+    )
+    def test_unassign_commit_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        commit_error: SQLAlchemyError,
+        expected_status: int,
+        expected_code: str,
+        message_substring: str,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+
+        with patch.object(db_session, "commit", side_effect=commit_error):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/unassign",
+                json={
+                    "reason": "transfer",
+                    "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                    "version": asset.version,
+                },
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == expected_status
+        body = response.json()["error"]
+        assert body["code"] == expected_code
+        assert message_substring in body["message"]
+
+    @pytest.mark.parametrize(
+        ("commit_error", "expected_status", "expected_code", "message_substring"),
+        _COMMIT_ERROR_CASES,
+    )
+    def test_dispose_commit_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        commit_error: SQLAlchemyError,
+        expected_status: int,
+        expected_code: str,
+        message_substring: str,
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        with patch.object(db_session, "commit", side_effect=commit_error):
+            response = client.post(
+                f"/api/v1/assets/{asset.id}/dispose",
+                json={"disposal_reason": "EOL", "version": asset.version},
+                headers=auth_headers(manager),
+            )
+
+        assert response.status_code == expected_status
+        body = response.json()["error"]
+        assert body["code"] == expected_code
+        assert message_substring in body["message"]

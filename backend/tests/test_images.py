@@ -4,10 +4,13 @@ from collections.abc import Callable, Generator
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.asset import Asset, AssetStatus
@@ -268,3 +271,32 @@ class TestGetImage:
 
         # ImageNotFoundError → 404 via image_storage_error_to_http.
         assert response.status_code == 404
+
+    def test_sqlalchemy_error_on_image_lookup_returns_503(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        upload_dir: Path,
+        scalar_skip_auth: Callable[[BaseException], Callable[..., Any]],
+    ) -> None:
+        # Cover the SQLAlchemyError → 503 branch in get_image (lines 91-96).
+        # ``scalar_skip_auth`` lets auth's first ``db.scalar`` through and
+        # raises on every subsequent call so only the endpoint's lookup fails.
+        holder = make_user(role=UserRole.HOLDER)
+        rr = _seed_repair_request(db_session, holder)
+        image = _attach_image(
+            db_session, rr=rr, upload_dir=upload_dir, suffix=".png", content=_PNG_BYTES
+        )
+        db_session.commit()
+
+        with patch.object(
+            db_session, "scalar", side_effect=scalar_skip_auth(SQLAlchemyError("DB down"))
+        ):
+            response = client.get(
+                f"/api/v1/images/{image.id}",
+                headers=auth_headers(holder),
+            )
+
+        assert response.status_code == 503
