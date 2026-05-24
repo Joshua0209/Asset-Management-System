@@ -23,6 +23,12 @@ ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 # Build with `--build-arg VITE_OTEL_ENABLED=true --build-arg VITE_OTEL_ENDPOINT=...`
 # to ship an opted-in image (e.g. pointed at Grafana Cloud's OTLP gateway). See
 # docs/plans/observability-prod-migration-plan.md for the production wiring.
+#
+# CRITICAL: do NOT add a VITE_OTEL_HEADERS / VITE_OTEL_AUTH build arg. Every
+# VITE_* value is inlined into the public JS bundle at build time and visible
+# to every browser user. The OTLP endpoint passed here must be CORS-open and
+# unauthenticated, or be a backend-proxied OTLP relay that vends short-lived
+# per-session tokens. See frontend/src/observability.ts for the same warning.
 ARG VITE_OTEL_ENABLED
 ENV VITE_OTEL_ENABLED=${VITE_OTEL_ENABLED}
 ARG VITE_OTEL_ENDPOINT

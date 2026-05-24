@@ -73,12 +73,13 @@ describe("initObservability", () => {
     registerInstrumentationsMock.mockClear();
     getWebAutoInstrumentationsMock.mockClear();
     providerRegister.mockClear();
+    providerRegister.mockReset();
     vi.unstubAllEnvs();
   });
 
   it("does nothing when explicitly disabled", async () => {
     const { initObservability } = await importFreshModule();
-    const result = initObservability({ enabled: false });
+    const result = await initObservability({ enabled: false });
     expect(result).toBe(false);
     expect(WebTracerProviderMock).not.toHaveBeenCalled();
     expect(registerInstrumentationsMock).not.toHaveBeenCalled();
@@ -86,7 +87,7 @@ describe("initObservability", () => {
 
   it("uses the default endpoint and service name when none provided", async () => {
     const { initObservability } = await importFreshModule();
-    const result = initObservability({ enabled: true });
+    const result = await initObservability({ enabled: true });
     expect(result).toBe(true);
     expect(OTLPTraceExporterMock).toHaveBeenCalledWith(
       expect.objectContaining({ url: "http://localhost:4318/v1/traces" }),
@@ -98,7 +99,10 @@ describe("initObservability", () => {
 
   it("passes a custom endpoint to the OTLP exporter", async () => {
     const { initObservability } = await importFreshModule();
-    initObservability({ enabled: true, endpoint: "https://otel.example.com/v1/traces" });
+    await initObservability({
+      enabled: true,
+      endpoint: "https://otel.example.com/v1/traces",
+    });
     expect(OTLPTraceExporterMock).toHaveBeenCalledWith(
       expect.objectContaining({ url: "https://otel.example.com/v1/traces" }),
     );
@@ -106,8 +110,8 @@ describe("initObservability", () => {
 
   it("registers the tracer provider exactly once across repeated calls", async () => {
     const { initObservability } = await importFreshModule();
-    const first = initObservability({ enabled: true });
-    const second = initObservability({ enabled: true });
+    const first = await initObservability({ enabled: true });
+    const second = await initObservability({ enabled: true });
     expect(first).toBe(true);
     expect(second).toBe(false);
     expect(WebTracerProviderMock).toHaveBeenCalledTimes(1);
@@ -117,7 +121,7 @@ describe("initObservability", () => {
 
   it("enables fetch + document-load auto instrumentations and disables XHR", async () => {
     const { initObservability } = await importFreshModule();
-    initObservability({
+    await initObservability({
       enabled: true,
       propagateTraceHeaderCorsUrls: [/^http:\/\/localhost:8000/],
     });
@@ -141,7 +145,7 @@ describe("initObservability", () => {
     vi.stubEnv("VITE_OTEL_ENABLED", "true");
     vi.stubEnv("VITE_OTEL_ENDPOINT", "https://otel.example.com/v1/traces");
     const { initObservability } = await importFreshModule();
-    const result = initObservability();
+    const result = await initObservability();
     expect(result).toBe(true);
     expect(OTLPTraceExporterMock).toHaveBeenCalledWith(
       expect.objectContaining({ url: "https://otel.example.com/v1/traces" }),
@@ -152,7 +156,7 @@ describe("initObservability", () => {
     vi.stubEnv("VITE_OTEL_ENABLED", "true");
     vi.stubEnv("VITE_API_BASE_URL", "http://localhost:8000/api/v1");
     const { initObservability } = await importFreshModule();
-    initObservability();
+    await initObservability();
     const config = lastInstrumentationConfig();
     expect(config?.["@opentelemetry/instrumentation-fetch"]).toEqual(
       expect.objectContaining({
@@ -165,7 +169,7 @@ describe("initObservability", () => {
     vi.stubEnv("VITE_OTEL_ENABLED", "true");
     vi.stubEnv("VITE_API_BASE_URL", "/api/v1");
     const { initObservability } = await importFreshModule();
-    initObservability();
+    await initObservability();
     const config = lastInstrumentationConfig();
     expect(
       config?.["@opentelemetry/instrumentation-fetch"]?.propagateTraceHeaderCorsUrls,
@@ -176,7 +180,7 @@ describe("initObservability", () => {
     vi.stubEnv("VITE_OTEL_ENABLED", "true");
     vi.stubEnv("VITE_API_BASE_URL", "http://localhost:8000/api/v1");
     const { initObservability } = await importFreshModule();
-    initObservability({ propagateTraceHeaderCorsUrls: [/^https:\/\/api\.prod\//] });
+    await initObservability({ propagateTraceHeaderCorsUrls: [/^https:\/\/api\.prod\//] });
     const config = lastInstrumentationConfig();
     expect(config?.["@opentelemetry/instrumentation-fetch"]).toEqual(
       expect.objectContaining({
@@ -187,7 +191,7 @@ describe("initObservability", () => {
 
   it("constructs the tracer provider with the resource and a batch processor wrapping the exporter", async () => {
     const { initObservability } = await importFreshModule();
-    initObservability({ enabled: true });
+    await initObservability({ enabled: true });
     expect(WebTracerProviderMock).toHaveBeenCalledTimes(1);
     const providerArgs = lastProviderArgs();
     expect(providerArgs).toBeDefined();
@@ -201,5 +205,27 @@ describe("initObservability", () => {
     expect(BatchSpanProcessorMock).toHaveBeenCalledWith(
       expect.objectContaining({ cfg: { url: "http://localhost:4318/v1/traces" } }),
     );
+  });
+
+  it("catches a provider.register() failure, logs, and leaves initialized=false so retries can proceed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    providerRegister.mockImplementationOnce(() => {
+      throw new Error("HMR re-register conflict");
+    });
+    const { initObservability } = await importFreshModule();
+
+    const first = await initObservability({ enabled: true });
+    expect(first).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      "[observability] init failed; tracing disabled",
+      expect.any(Error),
+    );
+
+    // initialized stayed false, so a clean retry runs end-to-end.
+    const second = await initObservability({ enabled: true });
+    expect(second).toBe(true);
+    expect(providerRegister).toHaveBeenCalledTimes(2);
+
+    warn.mockRestore();
   });
 });

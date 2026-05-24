@@ -1,9 +1,14 @@
-import { getWebAutoInstrumentations } from "@opentelemetry/auto-instrumentations-web";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { registerInstrumentations } from "@opentelemetry/instrumentation";
-import { resourceFromAttributes } from "@opentelemetry/resources";
-import { BatchSpanProcessor, WebTracerProvider } from "@opentelemetry/sdk-trace-web";
-import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+// Browser OTLP tracing for the AMS frontend.
+//
+// CRITICAL — credentials in the public bundle: VITE_* env vars are inlined
+// into the JavaScript bundle at build time and are visible to every browser
+// user. Do NOT add a VITE_OTEL_HEADERS / VITE_OTEL_AUTH build arg or
+// otherwise plumb an Authorization header through import.meta.env. Browser
+// OTLP must target either:
+//   - a CORS-friendly, unauthenticated public endpoint; or
+//   - a backend-proxied OTLP relay that vends short-lived per-session tokens.
+// See docs/plans/observability-prod-migration-plan.md for the production
+// wiring.
 
 const DEFAULT_ENDPOINT = "http://localhost:4318/v1/traces";
 const DEFAULT_SERVICE_NAME = "ams-frontend";
@@ -17,36 +22,67 @@ export interface InitObservabilityOptions {
 
 let initialized = false;
 
-export function initObservability(options: InitObservabilityOptions = {}): boolean {
+export async function initObservability(
+  options: InitObservabilityOptions = {},
+): Promise<boolean> {
   const enabled = options.enabled ?? readEnvFlag("VITE_OTEL_ENABLED");
   if (!enabled) return false;
   if (initialized) return false;
 
-  const endpoint =
-    options.endpoint ?? readEnvString("VITE_OTEL_ENDPOINT") ?? DEFAULT_ENDPOINT;
-  const serviceName = options.serviceName ?? DEFAULT_SERVICE_NAME;
-  const propagateTraceHeaderCorsUrls =
-    options.propagateTraceHeaderCorsUrls ?? derivePropagateUrlsFromEnv();
+  // Dynamic imports keep the OTel browser SDK out of the bundle when tracing
+  // is disabled (the default in production). As top-level static imports the
+  // ~80–120 KB gzipped SDK would ship to every user regardless of the flag.
+  try {
+    const [
+      { getWebAutoInstrumentations },
+      { OTLPTraceExporter },
+      { registerInstrumentations },
+      { resourceFromAttributes },
+      { BatchSpanProcessor, WebTracerProvider },
+      { ATTR_SERVICE_NAME },
+    ] = await Promise.all([
+      import("@opentelemetry/auto-instrumentations-web"),
+      import("@opentelemetry/exporter-trace-otlp-http"),
+      import("@opentelemetry/instrumentation"),
+      import("@opentelemetry/resources"),
+      import("@opentelemetry/sdk-trace-web"),
+      import("@opentelemetry/semantic-conventions"),
+    ]);
 
-  const exporter = new OTLPTraceExporter({ url: endpoint });
-  const resource = resourceFromAttributes({ [ATTR_SERVICE_NAME]: serviceName });
-  const provider = new WebTracerProvider({
-    resource,
-    spanProcessors: [new BatchSpanProcessor(exporter)],
-  });
-  provider.register();
+    const endpoint =
+      options.endpoint ?? readEnvString("VITE_OTEL_ENDPOINT") ?? DEFAULT_ENDPOINT;
+    const serviceName = options.serviceName ?? DEFAULT_SERVICE_NAME;
+    const propagateTraceHeaderCorsUrls =
+      options.propagateTraceHeaderCorsUrls ?? derivePropagateUrlsFromEnv();
 
-  registerInstrumentations({
-    instrumentations: getWebAutoInstrumentations({
-      "@opentelemetry/instrumentation-xml-http-request": { enabled: false },
-      "@opentelemetry/instrumentation-fetch": {
-        propagateTraceHeaderCorsUrls,
-      },
-    }),
-  });
+    const exporter = new OTLPTraceExporter({ url: endpoint });
+    const resource = resourceFromAttributes({ [ATTR_SERVICE_NAME]: serviceName });
+    const provider = new WebTracerProvider({
+      resource,
+      spanProcessors: [new BatchSpanProcessor(exporter)],
+    });
+    provider.register();
 
-  initialized = true;
-  return true;
+    registerInstrumentations({
+      instrumentations: getWebAutoInstrumentations({
+        "@opentelemetry/instrumentation-xml-http-request": { enabled: false },
+        "@opentelemetry/instrumentation-fetch": {
+          propagateTraceHeaderCorsUrls,
+        },
+      }),
+    });
+
+    initialized = true;
+    return true;
+  } catch (err) {
+    // Telemetry must never crash the app. Log loudly so a dev notices the
+    // misconfig (typo'd endpoint, missing peer dep, HMR re-init) but let
+    // React render normally. initialized stays false so a later retry can
+    // try again from a clean state.
+    // eslint-disable-next-line no-console
+    console.warn("[observability] init failed; tracing disabled", err);
+    return false;
+  }
 }
 
 function readEnvFlag(key: "VITE_OTEL_ENABLED"): boolean {
