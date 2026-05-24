@@ -1483,6 +1483,7 @@ def test_setup_log_exporter_bridges_trace_id_via_structlog(
 
     from app.core import observability as obs
     settings = _settings_with_otel(monkeypatch)
+    saved_structlog_config = structlog.get_config()
     obs.setup_logging(settings)
     log_exp = InMemoryLogExporter()
     logger_provider = LoggerProvider()
@@ -1520,6 +1521,7 @@ def test_setup_log_exporter_bridges_trace_id_via_structlog(
         )
     finally:
         logging.getLogger().handlers = saved_handlers
+        structlog.configure(**saved_structlog_config)
 def test_maybe_setup_profiling_is_noop_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
