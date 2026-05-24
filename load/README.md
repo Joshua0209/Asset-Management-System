@@ -33,10 +33,13 @@ compose service. Run it on the host or via a one-shot `docker run`.
 
 - Backend reachable on `http://localhost:8000` (`docker compose up -d
   backend mysql`).
-- Bootstrap manager seeded — `scripts/seed_demo_data.py` runs once
-  unattended via `docker compose run --rm -e AMS_SEED_CONFIRM=1 backend
-  python scripts/seed_demo_data.py`.
-- `k6 >= 0.54` on PATH (`brew install k6`, or use the official image).
+- Bootstrap manager seeded — `backend/scripts/seed_demo_data.py` (the
+  host path) runs once unattended via `docker compose run --rm -e
+  AMS_SEED_CONFIRM=1 backend python scripts/seed_demo_data.py` (the
+  container path, since `/app` is `backend/`).
+- `k6 >= 0.46` on PATH (`brew install k6`, or use the official image).
+  0.46 is the floor at which `experimental-prometheus-rw` is supported;
+  any newer release works without changes.
 
 ### Direct invocation
 
@@ -95,9 +98,10 @@ and do not require any script-side change. Source them from your
 `.env`-style file when invoking, e.g. `set -a; source .env.gc; set +a` then
 the `k6 run` above.
 
-`experimental-prometheus-rw` requires k6 >= 0.46. The Grafana Cloud Prom
-gateway accepts the `application/x-protobuf` payload k6 sends by default;
-no `--out` sub-options are needed beyond the URL/auth env.
+The Grafana Cloud Prom gateway accepts the `application/x-protobuf`
+payload k6 sends by default; no `--out` sub-options are needed beyond
+the URL/auth env. The `k6 >= 0.46` floor is repeated in the
+Prerequisites section above.
 
 ## Tuning rates without rebuilding
 
@@ -147,7 +151,7 @@ invocation.
   `backend/.env.example`. Override via `MANAGER_EMAIL` / `MANAGER_PASSWORD`
   env when your seed used different bootstrap creds.
 - `HOLDER_EMAIL = holder1@example.com` / `HOLDER_PASSWORD = Password123`
-  — matches `scripts/seed_demo_data.py`'s first holder.
+  — matches `backend/scripts/seed_demo_data.py`'s first holder.
 
 If login keeps 401-ing, those defaults don't match your seed. `lib/auth.js`
 calls `fail()` so the run aborts immediately rather than reporting bogus
