@@ -149,7 +149,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--stack-url",
         default="",
-        help="Grafana Cloud stack URL, e.g. https://ams.grafana.net",
+        help=(
+            "Grafana Cloud stack URL, e.g. https://<your-stack-slug>.grafana.net. "
+            "Required when not in --dry-run mode."
+        ),
     )
     parser.add_argument(
         "--dry-run",

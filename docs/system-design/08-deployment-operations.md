@@ -146,7 +146,7 @@ The repo-side dashboard JSONs (`config/grafana/dashboards/*.json`) are the sourc
 
 ### Stack URL and login
 
-The Grafana Cloud stack URL is `https://ams.grafana.net` (substitute your stack name if different). Operators authenticate with the Grafana Cloud account credentials; no SSO is provisioned for this class project. Per-developer API keys are out of scope for this phase; a single shared publish-key in `ams-grafana-cloud` covers OTLP and Pyroscope, and a single shared admin login covers UI access.
+The Grafana Cloud stack URL follows the pattern `https://<your-stack-slug>.grafana.net`. The slug is the name of the stack created in the GC web UI when the account was provisioned; an operator running this runbook needs to know the current slug for their team's stack. Treat the slug as a low-sensitivity operational detail (the URL is access-controlled, not secret), but do not commit it to public source so the repo stays portable across stack renames or migrations. Operators authenticate with the Grafana Cloud account credentials; no SSO is provisioned for this class project. Per-developer API keys are out of scope for this phase; a single shared publish-key in `ams-grafana-cloud` covers OTLP and Pyroscope, and a single shared admin login covers UI access. Rotate the publish-key on the schedule documented in `infra/grafana-cloud/README.md` § "Step 6: key rotation".
 
 ### `ams-grafana-cloud` AWS Secrets Manager secret
 

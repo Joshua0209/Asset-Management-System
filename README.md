@@ -40,7 +40,7 @@ Resource shift this week: 5 devs → **1 dev (DESIGN.md theme + demo polish)** +
 | Profiles | `pyroscope-io` SDK → GC hosted Pyroscope | Enabled in production (reverses the original W6 "off in prod" decision); `WEB_CONCURRENCY=1` keeps the sampling thread alive post-fork |
 | AWS-side signals | GC hosted CloudWatch integration → cross-account role `ams-grafana-cloud-reader` | Pulls ALB / RDS / ECS Container Insights every 60s. Read-only IAM role, externalId from the GC console |
 | Browser traces | `@opentelemetry/sdk-trace-web` → GC OTLP-HTTP | Page-load + fetch spans for the asset-list → repair-detail click path |
-| Dashboards | 6 JSONs in `config/grafana/dashboards/` | Synced to `https://ams.grafana.net` via `scripts/sync_grafana_cloud_dashboards.py`. Phase 6 deletes them from the repo once GC import is verified |
+| Dashboards | 6 JSONs in `config/grafana/dashboards/` | Synced to the Grafana Cloud stack via `scripts/sync_grafana_cloud_dashboards.py --stack-url https://<stack>.grafana.net`. Phase 6 deletes them from the repo once GC import is verified |
 | Load gen (Phase 5) | k6 → GC remote-write | PR [#84](https://github.com/Joshua0209/Asset-Management-System/pull/84) being rebased onto the post-Phase-3 branch |
 
 Local `docker compose up` runs only `mysql + backend + frontend`. No observability containers. `OTEL_ENABLED` defaults off locally, so a credential-less boot is silent; supply GC credentials via `backend/.env` to push from a laptop.

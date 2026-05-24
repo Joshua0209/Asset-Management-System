@@ -188,3 +188,30 @@ connector only if compromise is suspected, then redo Steps 1 through 4.
   enable the integration before the first task deploy, the log group dropdown
   will be empty. Either deploy the task first or pre-create the group out of
   band.
+
+## Accepted IAM `Resource: "*"` exposure
+
+`iam-role-permissions.json` carries two statements scoped to `Resource: "*"`.
+AWS Security Hub will flag both; documenting why each is unavoidable here so a
+future audit doesn't relitigate the trade-off.
+
+| Statement | Actions on `Resource: "*"` | Why it can't be narrowed |
+|-----------|---------------------------|--------------------------|
+| `LogQueryControl` | `logs:DescribeLogGroups`, `logs:GetQueryResults`, `logs:StopQuery` | `DescribeLogGroups` operates over the account-wide list and AWS does not support resource-level conditions on it. `GetQueryResults` / `StopQuery` reference CloudWatch Logs Insights query IDs that AWS does not bind to a log-group ARN at IAM-evaluation time; scoping to `arn:aws:logs:*:*:log-group:/ecs/ams-*:*` returns AccessDenied for legitimate GC queries. `logs:StartQuery` in the `ScopedLogReads` block stays scoped to `/ecs/ams-*`, so a query can only be *started* against AMS-owned log groups in the first place. |
+| `CloudWatchMetricsRead` | `cloudwatch:GetMetricData`, `cloudwatch:GetMetricStatistics`, `cloudwatch:ListMetrics`, `tag:GetResources`, `rds:DescribeDBInstances`, `ec2:DescribeRegions` | None of the `cloudwatch:*` Get/List actions support resource-level permissions per AWS docs (the IAM evaluator can scope metric *namespace* via condition keys, not Resource ARNs, and GC's integration needs to discover dimensions per-region). `rds:DescribeDBInstances` and `ec2:DescribeRegions` are explicitly listed as not supporting resource-level permissions in the AWS IAM reference. Tag-based scoping via `tag:GetResources` is similarly account-wide. |
+
+**Residual risk (accepted):** Grafana Cloud's AWS account can enumerate all
+RDS instance metadata in this account (instance classes, engine versions,
+endpoint DNS names, subnet IDs) and read every CloudWatch metric and Insights
+query result across every namespace. For the AMS class project the blast
+radius is bounded by the small surface (one RDS instance, one ECS cluster,
+no cross-tenant data), but a future production hand-off should:
+
+1. Adopt the more granular [Grafana Cloud private connectivity](https://grafana.com/docs/grafana-cloud/account-management/private-connectivity/)
+   path so reads happen through a VPC endpoint rather than a cross-account
+   role with `*` resources.
+2. Place AMS-sensitive RDS instances in a separate AWS account so the
+   broad-Describe surface above can't enumerate them.
+
+Until that hand-off, treat the GC stack itself as part of the production
+trust boundary and rotate the GC API key per the schedule in Step 6.
