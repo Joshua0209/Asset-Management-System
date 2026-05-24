@@ -674,8 +674,16 @@ jobs:
           RDS_SECRET_NAME: ${{ vars.RDS_SECRET_NAME }}
           APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
           BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
-          GC_OTLP_ENDPOINT: ${{ vars.GC_OTLP_ENDPOINT }}
-          GC_PYROSCOPE_ENDPOINT: ${{ vars.GC_PYROSCOPE_ENDPOINT }}
+          # The Grafana Cloud OTLP + Pyroscope endpoint URLs are read
+          # from ``secrets.*`` rather than ``vars.*`` because they
+          # embed the GC stack slug / region. The slug + a leaked GC
+          # API key would narrow an attacker's target identification.
+          # Endpoint URLs are not themselves credentials, but treating
+          # them as defense-in-depth secrets costs nothing operationally
+          # (operator sets one value in repo settings) and removes a
+          # half-credential from public-repo visibility.
+          GC_OTLP_ENDPOINT: ${{ secrets.GC_OTLP_ENDPOINT }}
+          GC_PYROSCOPE_ENDPOINT: ${{ secrets.GC_PYROSCOPE_ENDPOINT }}
           GC_SECRET_NAME: ${{ vars.GC_SECRET_NAME }}
 
       - name: Render backend task definition
