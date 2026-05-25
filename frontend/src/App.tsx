@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   Navigate,
   Outlet,
@@ -24,6 +24,7 @@ import { ProtectedRoute } from "@/auth/ProtectedRoute";
 import { PublicOnlyRoute } from "@/auth/PublicOnlyRoute";
 import RoleLandingRedirect from "@/auth/RoleLandingRedirect";
 import SubmitRepairRequest from "@/pages/holder/SubmitRepairRequest";
+import { applyDesignCssVariables, getAntdTheme } from "@/design/antdTheme";
 
 // Initialize i18n
 import "@/i18n";
@@ -49,14 +50,20 @@ const RootProviders: React.FC = () => {
     () => ({ isDarkMode, toggleTheme: () => setIsDarkMode((v) => !v) }),
     [isDarkMode],
   );
+  const antdTheme = useMemo(
+    () => ({
+      ...getAntdTheme(isDarkMode),
+      algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+    }),
+    [isDarkMode],
+  );
+
+  useEffect(() => {
+    applyDesignCssVariables(isDarkMode);
+  }, [isDarkMode]);
 
   return (
-    <ConfigProvider
-      theme={{
-        algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: { colorPrimary: "#1677ff" },
-      }}
-    >
+    <ConfigProvider theme={antdTheme}>
       <ThemeModeContext.Provider value={themeValue}>
         <AuthProvider>
           <Outlet />

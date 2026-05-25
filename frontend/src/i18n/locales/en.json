@@ -99,8 +99,6 @@
   },
   "assetList": {
     "title": "Asset List",
-    "description": "View and manage organization assets with local dummy data during frontend development.",
-    "dataSourceNotice": "Using dummy assets because backend API and database data may not be ready yet.",
     "roleLabel": "View Mode",
     "holderLabel": "Holder",
     "holderPlaceholder": "Select holder",
@@ -208,6 +206,10 @@
       "forbidden": "You do not have permission to view this asset"
     },
     "loginFailed": "Incorrect email or password"
+  },
+  "dashboard": {
+    "description": "Monitor asset inventory, repair workload, and review activity from one operational view.",
+    "demoNotice": "Dashboard metrics are reserved for the demo data pass."
   },
   "reviews": {
     "title": "Repair Reviews",

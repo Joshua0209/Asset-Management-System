@@ -8,7 +8,7 @@ import { REPAIR_REQUEST_STATUS_COLORS } from './constants';
 const ID_PREFIX_LENGTH = 8;
 
 export const renderRequestIdCell = (id: string): React.ReactNode => (
-  <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+  <span className="asset-code">
     {id.slice(0, ID_PREFIX_LENGTH)}...
   </span>
 );
@@ -18,7 +18,7 @@ export const renderRequestAssetCell = (
 ): React.ReactNode => (
   <Space orientation="vertical" size={0}>
     <Typography.Text strong>{asset.name}</Typography.Text>
-    <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+    <Typography.Text className="asset-code muted-small">
       {asset.asset_code}
     </Typography.Text>
   </Space>

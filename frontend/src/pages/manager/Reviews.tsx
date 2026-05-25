@@ -104,7 +104,7 @@ const Reviews: React.FC = () => {
       dataIndex: 'created_at',
       key: 'created_at',
       width: 180,
-      render: (value: string) => formatDateTime(value),
+      render: (value: string) => <span className="tabular-nums">{formatDateTime(value)}</span>,
     },
     {
       title: t('reviews.columns.actions'),

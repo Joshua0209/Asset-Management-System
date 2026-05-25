@@ -99,8 +99,6 @@
   },
   "assetList": {
     "title": "資產清單",
-    "description": "在前端開發階段，使用本地假資料檢視與管理資產。",
-    "dataSourceNotice": "目前使用假資料，因為後端 API 或資料庫資料可能尚未完成。",
     "roleLabel": "檢視模式",
     "holderLabel": "持有者",
     "holderPlaceholder": "選擇持有者",
@@ -208,6 +206,10 @@
       "forbidden": "您沒有權限查看此資產"
     },
     "loginFailed": "電子郵件或密碼錯誤"
+  },
+  "dashboard": {
+    "description": "從單一營運視圖掌握資產庫存、維修負載與審核活動。",
+    "demoNotice": "儀表板指標保留給 demo 資料整理階段補齊。"
   },
   "reviews": {
     "title": "維修審核",

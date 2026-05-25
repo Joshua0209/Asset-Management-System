@@ -37,7 +37,7 @@ export const getAssetColumns = (
     key: 'asset_code',
     sorter: true,
     sortOrder: getSortOrder(sortState, 'asset_code'),
-    render: (value: string) => <span style={{ fontFamily: 'monospace' }}>{value}</span>,
+    render: (value: string) => <span className="asset-code">{value}</span>,
     width: 150,
   },
   {
@@ -98,7 +98,7 @@ export const getAssetColumns = (
     sortOrder: getSortOrder(sortState, 'purchase_amount'),
     width: 160,
     align: 'right',
-    render: (amount: string) => formatAmountValue(amount),
+    render: (amount: string) => <span className="tabular-nums">{formatAmountValue(amount)}</span>,
   },
   {
     title: t('assetList.columns.purchaseDate'),
@@ -107,6 +107,6 @@ export const getAssetColumns = (
     sorter: true,
     sortOrder: getSortOrder(sortState, 'purchase_date'),
     width: 150,
-    render: (value: string) => formatDateValue(value, t),
+    render: (value: string) => <span className="tabular-nums">{formatDateValue(value, t)}</span>,
   },
 ];
