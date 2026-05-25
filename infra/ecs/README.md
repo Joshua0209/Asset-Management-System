@@ -230,7 +230,9 @@ can do once assumed. Minimum permissions for this pipeline:
         "ecs:DescribeServices",
         "ecs:UpdateService",
         "ecs:DescribeTasks",
-        "ecs:DescribeTaskDefinition"
+        "ecs:DescribeTaskDefinition",
+        "ecs:RunTask",
+        "ecs:StopTask"
       ],
       "Resource": "*"
     },
