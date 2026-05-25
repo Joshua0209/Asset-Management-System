@@ -750,6 +750,18 @@ jobs:
             --argjson subnets "${ECS_MIGRATION_SUBNETS}" \
             --argjson sgs "${ECS_MIGRATION_SECURITY_GROUPS}" \
             '{awsvpcConfiguration: {subnets: $subnets, securityGroups: $sgs, assignPublicIp: "DISABLED"}}')
+          # Register the rendered task definition and capture the new ARN.
+          # `aws-actions/amazon-ecs-render-task-definition` outputs a *file
+          # path* (e.g. /home/runner/work/_temp/task-definition-...json), not
+          # a registered family or ARN. `aws ecs run-task --task-definition`
+          # accepts only family / family:revision / ARN -- passing the path
+          # directly fails with `family must match ^[a-zA-Z0-9\-_]+$` on the
+          # slashes. `deploy-backend` works because its deploy action calls
+          # RegisterTaskDefinition internally; `run-task` has no such wrapper.
+          task_def_arn=$(aws ecs register-task-definition \
+            --cli-input-json "file://${TASK_DEFINITION}" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Registered migration task definition: $task_def_arn"
           # Capture the full run-task JSON so we can inspect `failures[]`.
           # ECS returns HTTP 200 with `tasks: []` and a populated `failures[]`
           # whenever it cannot launch (capacity-provider exhaustion, ENI
@@ -759,7 +771,7 @@ jobs:
           # "task not found" instead of the real reason.
           run_task_output=$(aws ecs run-task \
             --cluster "${ECS_CLUSTER}" \
-            --task-definition "${TASK_DEFINITION}" \
+            --task-definition "${task_def_arn}" \
             --launch-type FARGATE \
             --network-configuration "${network_config}" \
             --overrides '{"containerOverrides":[{"name":"backend","command":["alembic","upgrade","head"]}]}' \
@@ -1077,12 +1089,20 @@ jobs:
               environment: [{name: "AMS_SEED_CONFIRM", value: "1"}]
             }]
           }')
-          # Capture run-task JSON to inspect failures[] — see migrate-database
+          # Register the rendered task definition first -- see migrate-database
+          # for the full rationale (render action outputs a file path, not a
+          # family/ARN, so `run-task --task-definition` rejects it on the
+          # slashes with `family must match ^[a-zA-Z0-9\-_]+$`).
+          task_def_arn=$(aws ecs register-task-definition \
+            --cli-input-json "file://${TASK_DEFINITION}" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Registered seed task definition: $task_def_arn"
+          # Capture run-task JSON to inspect failures[]. See migrate-database
           # for the rationale on why `--query 'tasks[0].taskArn' --output text`
           # is unsafe (silent "None" task ARN swallows ECS launch failures).
           run_task_output=$(aws ecs run-task \
             --cluster "${ECS_CLUSTER}" \
-            --task-definition "${TASK_DEFINITION}" \
+            --task-definition "${task_def_arn}" \
             --launch-type FARGATE \
             --network-configuration "${network_config}" \
             --overrides "${overrides}" \
