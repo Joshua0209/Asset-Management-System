@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
-
-from pydantic import Field
+from pydantic import AwareDatetime, Field
 
 from app.models.repair_request import RepairRequestStatus
 from app.schemas.common import APIModel, UUIDString
@@ -36,7 +34,9 @@ class RecentPendingRepair(APIModel):
     asset_name: str
     requester_name: str
     status: RepairRequestStatus
-    created_at: datetime
+    # Aware datetime — MySQL stores naive UTC; the endpoint attaches
+    # tzinfo=UTC on read so clients never have to guess the offset.
+    created_at: AwareDatetime
 
 
 class ManagerDashboard(APIModel):

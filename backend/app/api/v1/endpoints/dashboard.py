@@ -39,7 +39,11 @@ DbSession = Annotated[Session, Depends(get_db)]
 _RECENT_PENDING_LIMIT = 3
 
 
-@router.get("/manager", summary="Manager dashboard summary")
+@router.get(
+    "/manager",
+    summary="Manager dashboard summary",
+    response_model=DataResponse[ManagerDashboard],
+)
 def get_manager_dashboard(
     db: DbSession,
     _current: ManagerUser,
@@ -159,7 +163,11 @@ def get_manager_dashboard(
                 asset_name=row.asset_name,
                 requester_name=row.requester_name,
                 status=row.status,
-                created_at=row.created_at,
+                # MySQL DATETIME comes back naive — attach UTC so the
+                # serialised JSON carries an explicit offset.
+                created_at=row.created_at.replace(tzinfo=UTC)
+                if row.created_at.tzinfo is None
+                else row.created_at,
             )
             for row in recent_rows
         ]
@@ -174,7 +182,13 @@ def get_manager_dashboard(
         )
     except SQLAlchemyError as exc:
         logger.exception("Failed to build manager dashboard")
+        # Structured detail picks a granular code within 503; the
+        # global handler in app/main.py rewraps this into the project's
+        # {"error": {"code", "message"}} envelope.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Unable to load dashboard. Please try again later.",
+            detail={
+                "code": "dashboard_unavailable",
+                "message": "Unable to load dashboard. Please try again later.",
+            },
         ) from exc
