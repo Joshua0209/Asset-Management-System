@@ -295,6 +295,92 @@ describe("initObservability", () => {
     vi.unstubAllGlobals();
   });
 
+  it("does not throw when navigator.sendBeacon returns false (queue full / URL rejected)", async () => {
+    // sendBeacon returns false when the browser refuses to enqueue the
+    // request (queue full, URL rejected by browser policy, etc.). The
+    // catch block in observability.ts must treat this as a no-op — a
+    // regression that did ``if (!navigator.sendBeacon(...)) throw`` or
+    // recursed on false would crash the page. Pin the contract.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sendBeacon = vi.fn<(url: string, body: string) => boolean>(() => false);
+    vi.stubGlobal("navigator", { sendBeacon });
+    providerRegister.mockImplementationOnce(() => {
+      throw new Error("init failure under beacon-queue-full");
+    });
+    const { initObservability } = await importFreshModule();
+
+    const result = await initObservability({ enabled: true });
+    expect(result).toBe(false);
+    expect(sendBeacon).toHaveBeenCalledTimes(1);
+    // The console.warn for the init failure still fires (so the dev
+    // notices in DevTools). The beacon being dropped is silent on
+    // purpose — operators cannot see beacon-queue-full anyway.
+    expect(warn).toHaveBeenCalled();
+
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not throw when dynamic import of an OTel SDK chunk rejects", async () => {
+    // The whole point of the dynamic-import block at the top of
+    // initObservability is to keep the ~80-120 KB OTel browser SDK
+    // out of the disabled-default bundle. If one of the six chunk
+    // loads rejects at runtime (chunk 404'd after a partial CDN
+    // deploy, the wrong-version peer dep, network blip), the catch
+    // block must still:
+    //   - log to console.warn for the dev
+    //   - fire the backend beacon so operators see the regression
+    //   - leave initialized=false so a retry can proceed
+    // A regression that moved provider construction into static
+    // imports (defeating the bundle-size goal) would mean this
+    // failure mode could never trigger — and would silently re-add
+    // ~100 KB to every production bundle.
+    //
+    // Mocking the dynamic ``import("@opentelemetry/sdk-trace-web")``
+    // to reject is awkward in vitest 4 — ``vi.doMock`` factory throws
+    // get wrapped in a vitest meta-error before reaching our catch
+    // block, so we can't assert the original message verbatim. We CAN
+    // assert the structural contract: init returns false, the beacon
+    // fires, and the catch block logged a warn. That's what proves
+    // the dynamic-import-failure path is wired correctly.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sendBeacon = vi.fn<(url: string, body: string) => boolean>(() => true);
+    vi.stubGlobal("navigator", { sendBeacon });
+    vi.resetModules();
+    vi.doMock("@opentelemetry/sdk-trace-web", () => {
+      throw new Error("chunk load failed: /assets/otel-sdk-trace-web.<hash>.js");
+    });
+    const { initObservability } = await import("../observability");
+
+    const result = await initObservability({ enabled: true });
+    expect(result).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      "[observability] init failed; tracing disabled",
+      expect.any(Error),
+    );
+    expect(sendBeacon).toHaveBeenCalledTimes(1);
+    const [url, body] = sendBeacon.mock.calls[0];
+    expect(url).toBe("/api/v1/observability/client-error");
+    const parsed = JSON.parse(body) as { kind: string; message: string };
+    expect(parsed.kind).toBe("observability_init_failed");
+    // The wrapped error contains the original "chunk load failed" cause
+    // when vitest serializes Error.message via String(err). Either the
+    // raw factory throw or the vitest meta-error wrapper indicates the
+    // catch block fired — both satisfy the contract.
+    expect(parsed.message.length).toBeGreaterThan(0);
+
+    // Restore the original mock factory before the next test runs.
+    // vi.doUnmock alone is insufficient — vi.resetModules() in
+    // importFreshModule() re-evaluates the doMock factory unless we
+    // overwrite it with the original suite-wide shape.
+    vi.doMock("@opentelemetry/sdk-trace-web", () => ({
+      WebTracerProvider: WebTracerProviderMock,
+      BatchSpanProcessor: BatchSpanProcessorMock,
+    }));
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
   it("does not throw when navigator.sendBeacon is absent (older runtimes)", async () => {
     // The catch block in the catch block must never crash the app. A
     // jsdom runtime without sendBeacon (or a browser variant that
