@@ -42,6 +42,23 @@ export class AssetListPage {
     const initialFetch = this.waitForAssetsResponse();
     await this.page.goto("/assets");
     await initialFetch;
+    // `waitForResponse` resolves the moment the HTTP response arrives, but
+    // React still needs a tick to commit the new rows. Wait for either a row
+    // or the empty-state placeholder so callers never read a stale 0-count.
+    await this.waitForListSettled();
+  }
+
+  // Wait until the table reflects the post-fetch state. Without this, a
+  // sequence of `searchFor("X") → assetRows.first().click()` can land on a
+  // pre-render stale row because the API response and the React commit are
+  // two separate microtasks.
+  private async waitForListSettled(): Promise<void> {
+    await Promise.race([
+      this.assetRows.first().waitFor({ state: "visible", timeout: 5_000 }),
+      this.page
+        .getByText(/No assets found for the current view\./)
+        .waitFor({ state: "visible", timeout: 5_000 }),
+    ]);
   }
 
   // Wait for the next GET /api/v1/assets response. The search input is
@@ -61,6 +78,7 @@ export class AssetListPage {
     const next = this.waitForAssetsResponse();
     await this.searchInput.fill(text);
     await next;
+    await this.waitForListSettled();
   }
 
   async filterByStatus(label: string): Promise<void> {
@@ -76,12 +94,14 @@ export class AssetListPage {
       .first()
       .click();
     await next;
+    await this.waitForListSettled();
   }
 
   async resetFilters(): Promise<void> {
     const next = this.waitForAssetsResponse();
     await this.resetFiltersButton.click();
     await next;
+    await this.waitForListSettled();
   }
 
   async openRegisterModal(): Promise<void> {
@@ -115,5 +135,35 @@ export class AssetListPage {
   async firstRowName(): Promise<string> {
     const nameCell = this.assetRows.first().locator("td").nth(1);
     return ((await nameCell.textContent()) ?? "").trim();
+  }
+
+  // Click the "Detail" action on the first row and wait for the URL to
+  // settle on /assets/:uuid. Used by manager-asset-* specs to drill into
+  // the detail page.
+  async openFirstAssetDetail(): Promise<void> {
+    await this.openAssetDetailAt(0);
+  }
+
+  // Open the detail page for the row at `rowIndex` (0-based). Lets specs
+  // that run in parallel target different rows of the same filtered list so
+  // they don't race for the same FSM transition. The seed leaves ~20 rows
+  // in each in_stock / in_use bucket so small indexes are safe.
+  async openAssetDetailAt(rowIndex: number): Promise<void> {
+    await this.assetRows.nth(rowIndex).getByRole("button", { name: "Detail" }).click();
+    await this.page.waitForURL(/\/assets\/[0-9a-f-]+$/i);
+  }
+
+  // Open the detail page for the asset matching `code`. Searches first, then
+  // waits for that specific row to appear before drilling in. Safer than
+  // `searchFor + openFirstAssetDetail` because it asserts the targeted row
+  // is rendered (no race with React's commit after the API response).
+  async openAssetDetailByCode(code: string): Promise<void> {
+    const fetched = this.waitForAssetsResponse();
+    await this.searchInput.fill(code);
+    await fetched;
+    const targetRow = this.assetRows.filter({ hasText: code });
+    await targetRow.first().waitFor({ state: "visible", timeout: 5_000 });
+    await targetRow.first().getByRole("button", { name: "Detail" }).click();
+    await this.page.waitForURL(/\/assets\/[0-9a-f-]+$/i);
   }
 }

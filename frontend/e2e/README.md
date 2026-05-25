@@ -1,116 +1,144 @@
 # E2E tests (Playwright)
 
-Browser-driven tests that exercise the React app against the **real** FastAPI +
-MySQL backend. Unlike the Vitest suite under `frontend/src/__tests__/` (which
-mocks `@/api`), these tests catch contract drift between the frontend and the
-backend.
+Browser-driven tests against the real FastAPI + MySQL backend.
 
 ## Layout
 
 ```
 e2e/
-  playwright.config.ts   # baseURL, locale, webServer, reporters
-  tsconfig.json          # extends ../tsconfig.json, adds @playwright/test types
+  playwright.config.ts                       # two projects: `chromium` + `demo`
+  tsconfig.json                              # extends ../tsconfig.json
+  README.md
   fixtures/
-    auth.ts              # test fixture + loginAsManager/loginAsHolder helpers
-    test-images/         # binary fixtures (e.g. sample.png for upload spec)
-  pages/                 # Page Object Models — one class per route
-  tests/                 # *.spec.ts — the actual assertions
+    auth.ts                                  # MANAGER_/HOLDER_CREDENTIALS + loginAs*() helpers
+    test-images/
+      sample.png                             # 1×1 PNG for repair-request upload spec
+  pages/
+    LoginPage.ts                             # /auth/login
+    RegisterPage.ts                          # /auth/register
+    MainShellPage.ts                         # sidebar / theme / language / logout
+    SubmitRepairPage.ts                      # /repairs/new
+    AssetListPage.ts                         # /assets (search + filter + register modal)
+    AssetDetailPage.ts                       # /assets/:id (edit / assign / unassign / dispose modals)
+    ReviewsPage.ts                           # /reviews
+    ReviewDetailPage.ts                      # /reviews/:id (approve / reject / update-details / complete modals)
+  tests/
+    auth.spec.ts
+    auth-register.spec.ts
+    rbac.spec.ts
+    holder-submit-repair.spec.ts
+    holder-views.spec.ts
+    manager-approve.spec.ts
+    manager-reject.spec.ts
+    manager-complete.spec.ts
+    manager-update-repair-details.spec.ts
+    manager-register-asset.spec.ts
+    manager-asset-edit.spec.ts
+    manager-asset-assign.spec.ts
+    manager-asset-dispose.spec.ts
+    asset-search.spec.ts
+    manager-dashboard.spec.ts
+    shell.spec.ts
+    demo/
+      holder-journey.spec.ts                 # narrative for live presentation
+      manager-journey.spec.ts                # narrative for live presentation
 ```
 
-## Coverage — the six W6 critical flows
+## Regression suite — what each spec covers
 
-| # | Flow | Spec | POM |
-|---|---|---|---|
-| 1 | Login (with anti-enumeration guard) | `tests/auth.spec.ts` | `LoginPage` |
-| 2 | Holder submits a repair request (with image) | `tests/holder-submit-repair.spec.ts` | `SubmitRepairPage` |
-| 3 | Manager approves a pending repair request | `tests/manager-approve.spec.ts` | `ReviewsPage`, `ReviewDetailPage` |
-| 4 | Manager completes an under-repair request | `tests/manager-complete.spec.ts` | `ReviewsPage`, `ReviewDetailPage` |
-| 5 | Manager registers a new asset | `tests/manager-register-asset.spec.ts` | `AssetListPage` |
-| 6 | Manager filters/searches the asset list | `tests/asset-search.spec.ts` | `AssetListPage` |
+25 tests across 16 spec files. Default `npm run test:e2e` runs all of them.
 
-## Test data requirements
+| Spec | Tests | What it covers |
+|---|---|---|
+| `auth.spec.ts` | 3 | Manager logs in and lands on dashboard; wrong password shows error; unknown email returns the same error as wrong password (anti-enumeration guard) |
+| `auth-register.spec.ts` | 1 | New holder registers via `/auth/register`, auto-logs in, lands on `/my-assets` |
+| `rbac.spec.ts` | 3 | Holder hitting `/dashboard`, `/reviews`, `/assets` is bounced to `/forbidden` by `ProtectedRoute` |
+| `holder-submit-repair.spec.ts` | 1 | Holder picks an in_use asset, fills fault description, attaches a PNG, submits — new request appears as Pending Review |
+| `holder-views.spec.ts` | 3 | Render checks on `/my-assets`, `/repairs` list, and a `/repairs/:id` detail page |
+| `manager-approve.spec.ts` | 1 | Manager approves a `pending_review` repair with a repair plan → status flips to Under Repair, Complete button appears |
+| `manager-reject.spec.ts` | 1 | Manager rejects a `pending_review` with a reason → status flips to Rejected, Approve button gone |
+| `manager-complete.spec.ts` | 1 | Manager completes an `under_repair` request with vendor + cost → status flips to Completed, Complete button gone |
+| `manager-update-repair-details.spec.ts` | 1 | Manager edits a repair plan on an `under_repair` request — metadata-only change, status stays Under Repair |
+| `manager-register-asset.spec.ts` | 1 | Manager opens the register-asset modal, fills it, saves, and verifies the row appears in the list via search |
+| `manager-asset-edit.spec.ts` | 1 | Manager edits the name of `AST-2026-00050` (any FSM state — edit is always allowed) |
+| `manager-asset-assign.spec.ts` | 1 | Manager assigns `AST-2026-00007` to a holder (in_stock → in_use) then unassigns it (back to in_stock) |
+| `manager-asset-dispose.spec.ts` | 1 | Manager disposes `AST-2026-00013` (in_stock → disposed); Assign/Dispose buttons collapse afterwards |
+| `asset-search.spec.ts` | 2 | Free-text search narrows the list to rows containing the query; status filter shows only In Use rows |
+| `manager-dashboard.spec.ts` | 1 | Render check on `/dashboard` for the bootstrap manager |
+| `shell.spec.ts` | 3 | Logout returns to `/auth/login`; language switcher rewrites nav into zh-TW; dark-mode toggle flips the theme button's aria-label |
 
-The suite depends on the demo seed (`backend/scripts/seed_demo_data.py`). The
-specs assume:
 
-- **`holder1@example.com`** exists with at least one asset in `in_use` status
-  (flow #2 picks the first item out of the asset dropdown).
-- **At least one repair request** in `pending_review` status (flow #3).
-- **At least one repair request** in `under_repair` status (flow #4).
+## Demo flows — what each `test.step()` does
 
-Re-seeding between runs is the simplest way to keep these guarantees. Flows
-#3 and #4 mutate the seed state (transitioning rows out of their starting
-status), so running the full suite twice without re-seeding will eventually
-exhaust those rows and start failing flows #3/#4 — by design, not a bug.
+Two narrative specs in `tests/demo/`, run by `npm run test:e2e:demo`
+(headed + 500 ms slowMo so the audience can follow each action).
 
-## Prerequisites
+### `demo/holder-journey.spec.ts`
 
-1. **Node 22.x** — `package.json` engines field is enforced. Switch with
-   `nvm use 22` (or `fnm use 22`) before running anything.
-2. **Backend + MySQL up.** The suite does NOT auto-start them; bring them up
-   yourself before running tests:
-   ```bash
-   docker compose up -d mysql backend
-   ```
-3. **Seed the bootstrap manager.** The default test credentials are
-   `admin@example.com` / `ChangeMe123` (sourced from `BOOTSTRAP_MANAGER_*` env
-   vars — see `backend/.env.example`). The seed is destructive, so only run it
-   against a disposable DB:
-   ```bash
-   docker compose run --rm -e AMS_SEED_CONFIRM=1 backend python scripts/seed_demo_data.py
-   ```
-4. **Playwright browsers.** Already installed once via `npx playwright install
-   chromium`. Re-run after Playwright version bumps.
+A holder finds a broken laptop, files a repair, and watches it land in their
+queue. Six `test.step()` checkpoints:
 
-The Vite dev server is auto-started by Playwright's `webServer` config; you do
-not need to run `npm run dev` yourself.
+1. Sign in as the seeded holder
+2. Review the assets assigned to me
+3. Navigate to the repair-request submission form
+4. Fill in the fault report and attach a photo
+5. Confirm the new request appears as Pending Review
+6. Re-confirm credentials are stored and the holder is identified
 
-## Running
+### `demo/manager-journey.spec.ts`
+
+A manager registers newly procured hardware, then drives a repair from
+queue to closed. Seven `test.step()` checkpoints:
+
+1. Sign in as the bootstrap manager
+2. Open the asset inventory and explore search
+3. Register a newly procured laptop
+4. Find the brand-new asset in the inventory
+5. Pivot to the repair-review queue
+6. Approve the top Pending Review with a repair plan
+7. Vendor returns the unit — record completion
+
+If you run the holder demo first, the Pending Review it leaves behind is
+the same one the manager demo picks up — the two compose into one story.
+
+## Run the regression suite
 
 ```bash
-# Headless run (CI default)
-npm run test:e2e
+# Headless run — 25 tests, ~25s
+cd frontend && npm run test:e2e
 
-# Open the Playwright UI to debug interactively
-npm run test:e2e:ui
+# Headed (watch a real browser window)
+cd frontend && npm run test:e2e:headed
 
-# Headed mode (watch a real browser window)
-npm run test:e2e:headed
+# Interactive UI for debugging a single spec
+cd frontend && npm run test:e2e:ui
 
-# Filter to a single spec
-npm run test:e2e -- tests/auth.spec.ts
+# Only one spec file
+cd frontend && npm run test:e2e -- tests/auth.spec.ts
+
+# Open the HTML report after a failed run
+cd frontend && npx playwright show-report e2e/playwright-report
 ```
 
-After a failure run, open the HTML report:
+Re-seed the backend between full runs.
 
 ```bash
-npx playwright show-report e2e/playwright-report
+docker compose run --rm -e AMS_SEED_CONFIRM=1 backend python scripts/seed_demo_data.py
 ```
 
-## Conventions
+## Run the demo flows
 
-- **One Page Object per route** under `pages/`. Locators live as readonly
-  fields; specs never call `page.locator(".css-class")` directly.
-- **Selectors prefer role/label over CSS.** Ant Design class names are
-  unstable across minor versions. Use `getByRole`, `getByLabel`, `getByText`.
-- **No `waitForTimeout`.** Use `expect(...).toBeVisible()` and other
-  auto-retrying assertions. Hardcoded sleeps flake under CI load.
-- **Each test is independent.** Tests get a fresh browser context (cookies,
-  localStorage) automatically. Don't rely on state left by other tests.
-- **AAA structure** — Arrange / Act / Assert. Matches the project-wide
-  convention from `.claude/rules/testing.md`.
-- **Locale is locked to `en-US`** in the chromium project so i18n-driven label
-  assertions are stable. A zh-TW project can be added later for i18n
-  regression coverage.
+```bash
+# Both demos back-to-back (holder first, then manager)
+cd frontend && npm run test:e2e:demo
 
-## Credentials in CI
+# Holder only
+cd frontend && npm run test:e2e:demo -- tests/demo/holder-journey.spec.ts
 
-Override these env vars in GitHub Actions secrets when wiring this into
-`ci.yml`:
+# Manager only
+cd frontend && npm run test:e2e:demo -- tests/demo/manager-journey.spec.ts
 
-- `E2E_MANAGER_EMAIL`, `E2E_MANAGER_PASSWORD`
-- `E2E_HOLDER_EMAIL`, `E2E_HOLDER_PASSWORD`
-
-The defaults in `fixtures/auth.ts` are safe to commit because they are the
-documented seed values, not production secrets.
+# Slower playback for the actual presentation (1 s per action)
+cd frontend && E2E_SLOW_MO=1000 npm run test:e2e:demo -- tests/demo/holder-journey.spec.ts
+cd frontend && E2E_SLOW_MO=1000 npm run test:e2e:demo -- tests/demo/manager-journey.spec.ts
+```
