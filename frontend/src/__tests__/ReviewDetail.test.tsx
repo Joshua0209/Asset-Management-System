@@ -352,7 +352,7 @@ describe('ReviewDetail', () => {
     await clickButton(user, 'Save');
 
     await waitFor(() => {
-      expect(screen.getByText('Enter at least one repair detail')).toBeInTheDocument();
+      expect(screen.getByText('Please fill in at least one repair field')).toBeInTheDocument();
     });
     expect(mockUpdateRepairRequestDetails).not.toHaveBeenCalled();
   });
