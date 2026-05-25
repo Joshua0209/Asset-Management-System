@@ -21,7 +21,13 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 settings = get_settings()
-# Escape '%' for SafeConfigParser interpolation (Decision A4)
+# Double `%` before handing the URL to alembic. The Config object is
+# backed by configparser.ConfigParser with BasicInterpolation enabled
+# (via fileConfig above), so any literal `%` in DATABASE_URL — e.g. a
+# URL-encoded `%` in an RDS-rotated password — would raise
+# InterpolationSyntaxError the next time alembic reads sqlalchemy.url
+# through engine_from_config. `%%` survives interpolation as a single
+# `%` and SQLAlchemy URL-decodes it back to the original character.
 config.set_main_option("sqlalchemy.url", settings.sqlalchemy_database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
