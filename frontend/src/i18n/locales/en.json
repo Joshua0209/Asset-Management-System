@@ -210,7 +210,35 @@
   },
   "dashboard": {
     "description": "Monitor asset inventory, repair workload, and review activity from one operational view.",
-    "demoNotice": "Dashboard metrics are reserved for the demo data pass."
+    "loadError": "Failed to load dashboard data. Please try again later.",
+    "retry": "Retry",
+    "kpis": {
+      "title": "Key metrics",
+      "totalAssets": "Total assets",
+      "inUse": "In use",
+      "underRepair": "Under repair",
+      "pendingReview": "Pending review"
+    },
+    "categories": {
+      "title": "Asset category distribution",
+      "empty": "No active assets yet."
+    },
+    "repairSummary": {
+      "title": "Repair workload",
+      "createdToday": "Created today",
+      "pendingReview": "Pending review",
+      "underRepair": "In repair",
+      "completedToday": "Completed today"
+    },
+    "recentPending": {
+      "title": "Recent review requests",
+      "empty": "No pending review requests.",
+      "viewAll": "View all",
+      "repairId": "Request ID",
+      "asset": "Asset",
+      "requester": "Requester",
+      "submittedAt": "Submitted"
+    }
   },
   "reviews": {
     "title": "Repair Requests",
