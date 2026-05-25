@@ -6,61 +6,19 @@ Course project for a cloud computing / software engineering class. The repositor
 - `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
 
-## Status (as of Week 6 — Observability migration, 2026-05-24)
+## Status (Buffer week begins 2026-05-26)
 
-**Weeks 1–5 — done.** Foundation, CI/CD, security gates (gitleaks + Semgrep + SonarCloud + pip-audit + npm audit + OWASP Dependency-Check), Auth API, Asset CRUD, the full repair-request workflow, asset FSM transitions, image upload + retrieval (now backed by `S3ImageStorage` in prod), manager + holder pages reorganized by role with the two largest pages decomposed into folder-modules, audit log + `GET /assets/:id/history`, composite search indexes + multi-dimensional asset filter/sort UI, optimistic-locking pin tests + conflict-resolution dialog, rate limiting + CORS tightening, full i18n parity (212 keys × 2 locales), production multi-stage Dockerfiles, `/health` + `/ready` probes, and the OIDC-based ECR → ECS Fargate rolling-deploy pipeline. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
+W1–W6 code work is on `main`. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
 
-**W6 status (2026-05-24): observability migrated to Grafana Cloud.** The original W6 plan (self-hosted Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor via `docker-compose.observability.yml`) was retired in favour of **Grafana Cloud as the single telemetry backend for both local dev and AWS production**. Phases 2–4 of [docs/plans/observability-prod-migration-plan.md](docs/plans/observability-prod-migration-plan.md) have landed on `feat/observability-phase4-aws`. Remaining: Phase 5 (k6 load-test rebase) and Phase 6 (delete repo-side dashboard JSONs once GC import is verified in production).
+**Open before the Jun 2 presentation:**
 
-### Week 5 — Infra + Testing + Polish (May 12–16) — Closed
-
-Major merges:
-
-- **PR [#58](https://github.com/Joshua0209/Asset-Management-System/pull/58)** — prod CI/CD pipeline (ECS Fargate, multi-stage Dockerfiles, `S3ImageStorage`, `/ready` probe, OIDC deploy, full SCA gates).
-- **PR [#59](https://github.com/Joshua0209/Asset-Management-System/pull/59)** — frontend reorganized by role into `pages/holder/` + `pages/manager/`, the 594-line `ReviewDetail` and 564-line `AssetDetail` decomposed into folder-modules sharing a `useSubmitAction` hook, inconsistent `REPAIR_REQUEST_STATUS_COLORS` unified, `@/` path alias adopted across 200 imports.
-- **PR [#61](https://github.com/Joshua0209/Asset-Management-System/pull/61)** — multi-dimensional asset list filter + sort UI on a shared `listControls` module (closes the last open M4 outcome).
-- **PR [#60](https://github.com/Joshua0209/Asset-Management-System/pull/60)** — rate-limited auth endpoints no longer 500 on the third failed login, CORS preflight unblocked.
-- **PR [#62](https://github.com/Joshua0209/Asset-Management-System/pull/62)** — seed-data hardening: DISPOSED transitions, audit-log rows, email collisions, category enum drift.
-
-**Carries into W6:** DESIGN.md theme application (token wiring through Antd `ConfigProvider`), the Playwright E2E suite, and a coverage measurement run. **Operator-side AWS provisioning landed on W6 Tue (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged 2026-05-20)** with hardened `__NAME__` task-def placeholder substitution, fail-fast `require_var` guard against unset/empty GitHub `vars.*`, escape-safe sed (`\`, `|`, `&` neutralised), Secrets Manager refs pinned to `AWSCURRENT`, ECR image-scan gate at CVSS ≥ 7, identity-policy snippet, and deployment circuit breaker docs. The first `workflow_dispatch` smoke test is the only remaining piece. The smaller frontend consistency PR [#65](https://github.com/Joshua0209/Asset-Management-System/pull/65) also merged today: "Fault Content" → "Fault Description", `formatDateTime` follows the i18n locale, shared rendering helpers across `RepairRequestList` + `Reviews`.
-
-### Week 6 — Observability + Demo Prep (May 19–24) — Migrated to Grafana Cloud
-
-Resource shift this week: 5 devs → **1 dev (DESIGN.md theme + demo polish)** + **2 infra (backend instrumentation + observability + AWS provisioning)** + **1 QA (Playwright E2E + coverage)** + **1 presentation (slides + script)**.
-
-**What changed mid-week (2026-05-24).** W6 began with a self-hosted Grafana stack (Prometheus + Loki + Tempo + Pyroscope + Alloy + cAdvisor) on a `docker-compose.observability.yml` overlay, with a planned CloudWatch datasource alongside. After Phase 1–5 of the original implementation plan landed (backend `/metrics`, OTLP traces, structured logs, Pyroscope profiles, browser OTLP, the Alloy collector, the compose overlay, and 6 provisioned dashboards), the team locked seven decisions on 2026-05-24 and pivoted to **Grafana Cloud as the single telemetry backend** for both local dev and AWS production. The compose overlay, Alloy config, Loki/Tempo/Prom/Pyroscope configs, cAdvisor, mysqld-exporter, and `make obs-*` targets were deleted. The backend was refactored OTLP-native — `prometheus_client` / `prometheus-fastapi-instrumentator` / the `/metrics` route are gone, replaced by OTel SDK Counter/Meter/Tracer/Logger that pushes direct to GC's hosted OTLP gateway. CloudWatch read-back runs through GC's hosted integration via a cross-account IAM role. Full plan in [docs/plans/observability-prod-migration-plan.md](docs/plans/observability-prod-migration-plan.md).
-
-#### Observability stack (current — Grafana Cloud)
-
-| Signal | Path | Notes |
-|---|---|---|
-| Traces | Backend OTel SDK → GC OTLP gateway (gRPC) | FastAPI + SQLAlchemy auto-instrumentation. `trace_id` stamped on every log record via the OTel logging bridge so GC Tempo ↔ Loki correlation works natively |
-| Metrics | Backend OTel SDK → GC OTLP gateway | OTel `Counter`s for FSM transitions + optimistic-locking conflicts; HTTP server histograms via `FastAPIInstrumentor`. No scrape surface |
-| Logs | structlog → stdlib root logger → OTel `LoggingHandler` → GC OTLP gateway → GC Loki | One transport for all three signals; ENVIRONMENT is a resource attribute, not an endpoint switch |
-| Profiles | `pyroscope-io` SDK → GC hosted Pyroscope | Enabled in production (reverses the original W6 "off in prod" decision); `WEB_CONCURRENCY=1` keeps the sampling thread alive post-fork |
-| AWS-side signals | GC hosted CloudWatch integration → cross-account role `ams-grafana-cloud-reader` | Pulls ALB / RDS / ECS Container Insights every 60s. Read-only IAM role, externalId from the GC console |
-| Browser traces | `@opentelemetry/sdk-trace-web` → GC OTLP-HTTP | Page-load + fetch spans for the asset-list → repair-detail click path |
-| Dashboards | 6 JSONs in `config/grafana/dashboards/` | Synced to the Grafana Cloud stack via `scripts/sync_grafana_cloud_dashboards.py --stack-url https://<stack>.grafana.net`. Phase 6 deletes them from the repo once GC import is verified |
-| Load gen (Phase 5) | k6 → GC remote-write | PR [#84](https://github.com/Joshua0209/Asset-Management-System/pull/84) being rebased onto the post-Phase-3 branch |
-
-Local `docker compose up` runs only `mysql + backend + frontend`. No observability containers. `OTEL_ENABLED` defaults off locally, so a credential-less boot is silent; supply GC credentials via `backend/.env` to push from a laptop.
-
-#### Week 6 milestone — `M6 — Observed & Demo Ready`
-
-- [ ] DESIGN.md theme applied (W5 carry)
-- [x] AWS provisioning code merged (PR [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63) merged 2026-05-20)
-- [ ] App reachable on public URL — pending `workflow_dispatch` smoke test + first successful rolling deploy
-- [x] Backend instrumented: OTLP traces, OTel metrics, OTel-bridged structured JSON logs, Pyroscope profiles (Phase 3 commit `1d3deef`)
-- [x] Frontend instrumented: browser OTLP for the asset-list → repair-detail click path
-- [x] Telemetry path wired to Grafana Cloud from both local dev and production (Phase 3 backend refactor + Phase 4 ECS task-def secrets/env)
-- [x] Six dashboards provisioned in the repo and ready to sync to GC (Operations Overview, Service Drilldown, Repair Journey, Logs/Traces/Profiles correlation, MySQL, Start Here)
-- [ ] End-to-end correlation demo verified in GC (dashboard → log line → trace → flamegraph) — operator-side work after the first prod deploy
-- [ ] k6 load test report — Phase 5 (PR [#84](https://github.com/Joshua0209/Asset-Management-System/pull/84) rebase pending)
-- [ ] Playwright: 6 flows passing locally + in CI
-- [ ] Test coverage ≥ 80% (unit + integration), measured + SonarQube green
-- [ ] Slides first draft complete
-
-> Full weekly plan, risks, resource allocation, and rubric mapping live in [docs/roadmap.md](docs/roadmap.md).
+- **Production AWS deploy is not yet running.** Infrastructure code, ECS task definitions, OIDC IAM role, and the pre-deploy `alembic upgrade head` one-off task are all merged (PRs [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63), [#83](https://github.com/Joshua0209/Asset-Management-System/pull/83), [#90](https://github.com/Joshua0209/Asset-Management-System/pull/90)), but the rolling deploy has not completed cleanly. Until it does, the demo runs on `docker compose up` against Grafana Cloud from a laptop.
+- **k6 load test against the deployed service.** Six scenario scripts under `load/`, the per-VU JWT cache, and the per-request OTel-bridged access log are merged (PR [#85](https://github.com/Joshua0209/Asset-Management-System/pull/85)). The sustained-QPS run with `K6_PROMETHEUS_RW_*` against the prod ALB waits on the deploy.
+- **Grafana Cloud dashboard verification with production data.** Six dashboard JSONs and `scripts/sync_grafana_cloud_dashboards.py` are merged (PR [#78](https://github.com/Joshua0209/Asset-Management-System/pull/78)). Syncing them and confirming the panels render against real prod telemetry waits on the deploy.
+- **End-to-end correlation demo in Grafana Cloud:** dashboard → Loki log line → Tempo trace → Pyroscope flamegraph for the same window.
+- **Phase 6 of the obs migration plan:** delete repo-side dashboard JSONs once GC import is verified in production.
+- **Playwright E2E for the 6 critical flows:** login, holder submit repair (with image), manager approve with plan, manager complete, manager register asset, multi-dim asset search.
+- **Presentation:** slides first draft, demo script, report draft, May 26 + May 29 rehearsals.
 
 ## Repository layout
 
