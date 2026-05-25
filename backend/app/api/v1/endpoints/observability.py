@@ -37,6 +37,16 @@ Design constraints:
   ``excluded_urls`` block keeps this endpoint's own request from
   generating a span — a span that failed to export could trigger
   another beacon, runaway-feedback loop.
+* **Origin-checked.** ``sendBeacon`` with ``Content-Type: text/plain``
+  is a "simple request" under CORS — the browser sends it
+  cross-origin WITHOUT a preflight, so the backend processes the
+  body regardless of the ``Origin`` header. Without an explicit
+  check, an attacker page can fire beacons from any IP in a botnet
+  to inflate ``FRONTEND_OBS_FAILURES`` and trigger the alert rule
+  continuously (alert fatigue, operator distraction). We check
+  ``Origin`` against ``settings.cors_allowed_origins`` and skip the
+  counter increment on mismatch — fire-and-forget semantics
+  preserved (still 204), but the counter stays honest.
 """
 
 from __future__ import annotations
@@ -51,7 +61,10 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import get_settings
-from app.core.observability import FRONTEND_OBS_FAILURES
+from app.core.observability import (
+    FRONTEND_OBS_BEACON_CROSS_ORIGIN,
+    FRONTEND_OBS_FAILURES,
+)
 from app.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
@@ -128,6 +141,19 @@ async def report_client_observability_failure(
     browser can't read would be operator noise without diagnostic
     value; the counter going dark *is* the alert signal.
     """
+    # Origin check (M4): sendBeacon with text/plain is a CORS simple
+    # request, so the browser sends it cross-origin without preflight.
+    # If the Origin header is set AND not in the configured
+    # CORS_ALLOWED_ORIGINS allowlist, treat the request as cross-site
+    # noise — return 204 (preserve fire-and-forget) but tick the
+    # cross-origin counter INSTEAD of FRONTEND_OBS_FAILURES so the
+    # init-failure alert rule stays honest. Same-origin requests (no
+    # Origin header, or Origin equal to the request's own host) flow
+    # through to the normal counter increment.
+    origin = request.headers.get("origin")
+    if origin and origin not in get_settings().cors_allowed_origins:
+        FRONTEND_OBS_BEACON_CROSS_ORIGIN.add(1)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     raw = await request.body()
     if not raw:
         return Response(status_code=status.HTTP_204_NO_CONTENT)

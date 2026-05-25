@@ -170,6 +170,30 @@ alert on ``rate(ams_frontend_observability_beacon_rate_limited_total[5m]) > 0``
 to know the init-failure rate is being clipped.
 """
 
+FRONTEND_OBS_BEACON_CROSS_ORIGIN = _meter.create_counter(
+    "ams_frontend_observability_beacon_cross_origin_total",
+    description=(
+        "Beacon requests received with an Origin header NOT in "
+        "cors_allowed_origins. Indicates either a misconfigured "
+        "split-origin deploy (operator should add the origin to "
+        "CORS_ALLOWED_ORIGINS) or a malicious cross-site sender "
+        "attempting to poison FRONTEND_OBS_FAILURES. The endpoint "
+        "skips the init-failure counter increment for these requests."
+    ),
+)
+"""OTel counter ticked when the beacon endpoint sees a cross-origin request.
+
+``sendBeacon`` with text/plain is a CORS "simple request" — the
+browser sends it cross-origin without a preflight. Without an
+explicit ``Origin`` check, an attacker page can spam this endpoint
+to inflate ``FRONTEND_OBS_FAILURES`` and trigger the alert rule
+continuously. We bump THIS counter instead and skip the init-failure
+counter so the alert stays meaningful. Operators monitor
+``rate(ams_frontend_observability_beacon_cross_origin_total[5m])``
+both to detect the attack pattern AND to catch a split-origin
+deploy that forgot to add the new origin to ``CORS_ALLOWED_ORIGINS``.
+"""
+
 PROFILING_INIT_FAILURES = _meter.create_counter(
     "ams_profiling_init_failures_total",
     description=(

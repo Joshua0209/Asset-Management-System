@@ -90,6 +90,22 @@ def _beacon_rate_limited_count(reader: InMemoryMetricReader) -> float:
     return total
 
 
+def _cross_origin_count(reader: InMemoryMetricReader) -> float:
+    """Sum the M4 cross-origin counter's data points."""
+    data = reader.get_metrics_data()
+    if data is None:
+        return 0.0
+    total = 0.0
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                if metric.name != "ams_frontend_observability_beacon_cross_origin_total":
+                    continue
+                for dp in metric.data.data_points:
+                    total += float(dp.value)
+    return total
+
+
 def test_well_formed_text_plain_beacon_increments_counter_with_kind(
     client: TestClient,
     metric_reader: InMemoryMetricReader,
@@ -296,3 +312,86 @@ def test_endpoint_accepts_anonymous_request(
         json={"kind": "anonymous", "message": ""},
     )
     assert response.status_code == 204, response.text
+
+
+def test_cross_origin_beacon_skips_init_failure_counter(
+    client: TestClient,
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """M4 contract: a beacon with an Origin NOT in cors_allowed_origins
+    must NOT tick the init-failure counter.
+
+    ``sendBeacon`` with ``Content-Type: text/plain`` is a CORS simple
+    request. The browser sends it cross-origin without a preflight,
+    so the backend processes the body regardless of Origin. Without
+    the M4 check, any attacker page can fire beacons from every IP
+    in a botnet to inflate ``FRONTEND_OBS_FAILURES`` and trigger the
+    alert rule continuously.
+
+    Post-M4: the request still returns 204 (preserve fire-and-forget,
+    don't reveal the filter rule), but the init-failure counter does
+    NOT increment AND a dedicated cross-origin counter ticks so the
+    operator can see the volume of off-origin probes.
+    """
+    before_init = _kind_count(metric_reader, "observability_init_failed")
+    before_xo = _cross_origin_count(metric_reader)
+
+    response = client.post(
+        "/api/v1/observability/client-error",
+        json={"kind": "observability_init_failed", "message": "attacker"},
+        headers={"Origin": "https://attacker.example.com"},
+    )
+
+    assert response.status_code == 204, response.text
+    # Init-failure counter MUST NOT tick for the cross-origin request.
+    assert _kind_count(metric_reader, "observability_init_failed") == before_init
+    # Cross-origin counter ticks instead.
+    assert _cross_origin_count(metric_reader) == before_xo + 1.0
+
+
+def test_same_origin_no_origin_header_still_increments_counter(
+    client: TestClient,
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """M4 contract: missing Origin header → treated as same-origin.
+
+    The TestClient does not set an Origin header by default; same-origin
+    XHR / fetch generally omit it. The endpoint must treat the absence
+    of Origin as "same-origin, increment normally" — otherwise the M4
+    filter would silently disable the entire beacon for the production
+    same-origin deploy path.
+    """
+    before_init = _kind_count(metric_reader, "observability_init_failed")
+    response = client.post(
+        "/api/v1/observability/client-error",
+        json={"kind": "observability_init_failed", "message": "same origin"},
+    )
+    assert response.status_code == 204, response.text
+    assert _kind_count(metric_reader, "observability_init_failed") == before_init + 1.0
+
+
+def test_allowlisted_origin_increments_counter(
+    client: TestClient,
+    metric_reader: InMemoryMetricReader,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M4 contract: an Origin IN cors_allowed_origins → normal flow.
+
+    A split-origin deploy that correctly added the FE origin to
+    CORS_ALLOWED_ORIGINS must still see the init-failure counter
+    tick for legitimate beacons.
+    """
+    from app.core.config import get_settings
+
+    # Conftest leaves cors_allowed_origins at its default
+    # ["http://localhost:5173"]; assert the assumption then probe.
+    assert "http://localhost:5173" in get_settings().cors_allowed_origins
+
+    before_init = _kind_count(metric_reader, "observability_init_failed")
+    response = client.post(
+        "/api/v1/observability/client-error",
+        json={"kind": "observability_init_failed", "message": "legit"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+    assert response.status_code == 204, response.text
+    assert _kind_count(metric_reader, "observability_init_failed") == before_init + 1.0
