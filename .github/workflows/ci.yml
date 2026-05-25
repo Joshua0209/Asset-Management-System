@@ -11,7 +11,7 @@ on:
       run_seed:
         description: 'Run demo data seeding (WARNING: deletes ALL data)'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -542,12 +542,16 @@ jobs:
           (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true')
         )
       )
-    # Per-job concurrency so two queued main pushes deploy serially rather
-    # than racing each other to ECS. cancel-in-progress: false preserves
-    # an in-flight deploy if a newer commit lands (it might be a hot-fix
-    # that depends on the older one being deployed).
+    # Cross-run serialization of image builds for the same branch. The
+    # group is `build-` (not `deploy-`) so this lock does NOT block the
+    # deploy jobs below - previously they all shared the same `deploy-`
+    # group, which serialized backend-deploy behind frontend-deploy
+    # within a single run (run 26405726818: deploy-backend waited 1m54s
+    # for deploy-frontend to release the lock even though it had no
+    # `needs:` on it). cancel-in-progress: false preserves an in-flight
+    # build if a newer commit lands.
     concurrency:
-      group: deploy-${{ github.ref }}
+      group: build-${{ github.ref }}
       cancel-in-progress: false
     permissions:
       id-token: write
@@ -690,6 +694,16 @@ jobs:
       needs.sonarqube.result == 'success' &&
       ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') &&
       needs.changes.outputs.backend == 'true'
+    # Shares `deploy-backend-` with deploy-backend so two queued main
+    # pushes never run their migrations concurrently (Alembic forward-
+    # only migrations are sequential by design; concurrent runs against
+    # the same DB risk lock contention + partial-state corruption).
+    # Same group means within a run the migration releases the lock
+    # before deploy-backend tries to acquire it, and the per-side
+    # split keeps deploy-frontend free to roll in parallel.
+    concurrency:
+      group: deploy-backend-${{ github.ref }}
+      cancel-in-progress: false
     # Bound the job so a stuck `aws ecs wait tasks-stopped` (or a
     # never-launching task held in PROVISIONING by an ENI shortage)
     # fails the workflow loudly instead of inheriting the 360-min
@@ -863,8 +877,14 @@ jobs:
       needs.build-and-push.result == 'success' &&
       needs.migrate-database.result == 'success' &&
       needs.changes.outputs.backend == 'true'
+    # Per-service concurrency: backend-side jobs (migrate-database +
+    # deploy-backend) share `deploy-backend-` so they serialize cross-run
+    # but DO NOT block deploy-frontend (different group). This unblocks
+    # within-run parallelism that the prior single `deploy-` group was
+    # silently breaking - see build-and-push's comment above for the
+    # symptom this fixes.
     concurrency:
-      group: deploy-${{ github.ref }}
+      group: deploy-backend-${{ github.ref }}
       cancel-in-progress: false
     permissions:
       id-token: write
@@ -953,8 +973,11 @@ jobs:
       needs.build-and-push.result == 'success' &&
       needs.sonarqube.result == 'success' &&
       needs.changes.outputs.frontend == 'true'
+    # Per-service concurrency: see deploy-backend above. Separate group
+    # from `deploy-backend-` so the two services can roll in parallel
+    # within a run.
     concurrency:
-      group: deploy-${{ github.ref }}
+      group: deploy-frontend-${{ github.ref }}
       cancel-in-progress: false
     permissions:
       id-token: write
@@ -1019,12 +1042,22 @@ jobs:
     # ticked, so the silent-skip path is unreachable in practice.
     needs: [changes, build-and-push, migrate-database, deploy-backend]
     runs-on: ubuntu-latest
-    # `inputs.run_seed` is declared `type: boolean` but reaches the workflow
-    # as the string 'true' / 'false' (GitHub Actions coerces all dispatch
-    # inputs through JSON before injection). Comparing against the literal
-    # `true` keyword silently evaluates false and the job is skipped — no
-    # error, no annotation. String compare is the durable form.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_seed == 'true' }}
+    # `inputs.run_seed` is declared `type: boolean` and reaches the
+    # workflow as an actual boolean (true / false), not the string
+    # 'true' / 'false'. Comparing against the string 'true' silently
+    # evaluates false: GH's loose-equality coercion rules turn the
+    # boolean side into a number (true -> 1) and the string side into
+    # a number too (non-numeric strings -> NaN), and `NaN == 1` is
+    # always false. So `inputs.run_seed == 'true'` is unreachable
+    # regardless of whether the operator ticks the box, and the job
+    # silently skips with no annotation. (Symptom: dispatch run
+    # 26410291386 on 2026-05-25 - operator ticked run_seed, job
+    # showed "Seed demo data (DESTRUCTIVE)" as skipped, deploys
+    # succeeded.) The prior comment in this block claimed boolean
+    # inputs arrive as strings; that's wrong - confirmed empirically
+    # against current GH Actions behavior. Compare against the
+    # boolean literal `true` instead.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_seed == true }}
     # Same bound as migrate-database. The seed itself completes in seconds
     # but `aws ecs wait tasks-stopped` can poll for ~10 min before failing
     # loudly if the task hangs.
