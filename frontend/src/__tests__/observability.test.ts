@@ -166,6 +166,12 @@ describe("initObservability", () => {
   });
 
   it("does not derive propagation URLs when VITE_API_BASE_URL is relative", async () => {
+    // Relative URLs (`/api/v1`) are same-origin by definition — OTel's
+    // fetch instrumentor injects `traceparent` on same-origin requests
+    // without a propagation matcher. The short-circuit prevents `new
+    // URL("/api/v1")` from throwing and triggering the malformed-URL
+    // warning below — pin that no console.warn fires on this path.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubEnv("VITE_OTEL_ENABLED", "true");
     vi.stubEnv("VITE_API_BASE_URL", "/api/v1");
     const { initObservability } = await importFreshModule();
@@ -174,6 +180,34 @@ describe("initObservability", () => {
     expect(
       config?.["@opentelemetry/instrumentation-fetch"]?.propagateTraceHeaderCorsUrls,
     ).toBeUndefined();
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("malformed VITE_API_BASE_URL"),
+      expect.anything(),
+    );
+    warn.mockRestore();
+  });
+
+  it("warns and disables propagation when VITE_API_BASE_URL is malformed", async () => {
+    // A typo'd absolute URL (e.g. missing protocol) would silently
+    // disable cross-origin trace correlation between FE and BE — spans
+    // exist on each side but never join. The H4 fix logs to console.warn
+    // so a dev rebuilding with a bad value sees the failure instead of
+    // wondering why their Tempo traces are orphaned. Returns undefined
+    // so initObservability proceeds without a matcher.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubEnv("VITE_OTEL_ENABLED", "true");
+    vi.stubEnv("VITE_API_BASE_URL", "not a real url at all");
+    const { initObservability } = await importFreshModule();
+    await initObservability();
+    const config = lastInstrumentationConfig();
+    expect(
+      config?.["@opentelemetry/instrumentation-fetch"]?.propagateTraceHeaderCorsUrls,
+    ).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("malformed VITE_API_BASE_URL"),
+      expect.any(Error),
+    );
+    warn.mockRestore();
   });
 
   it("prefers an explicit propagateTraceHeaderCorsUrls option over the env-derived default", async () => {

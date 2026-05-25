@@ -146,10 +146,27 @@ function readEnvString(
 function derivePropagateUrlsFromEnv(): (string | RegExp)[] | undefined {
   const apiBase = readEnvString("VITE_API_BASE_URL");
   if (!apiBase) return undefined;
+  // Same-origin (relative path like "/api/v1") needs no propagation matcher
+  // — the OTel fetch instrumentor injects traceparent on same-origin
+  // requests without one. Short-circuit before `new URL()` so the
+  // legitimate relative-base case doesn't trigger the malformed-URL warn
+  // below. A protocol-relative URL ("//host/path") is also treated as
+  // same-origin per the browser, so skip it too.
+  if (apiBase.startsWith("/")) return undefined;
   try {
     const origin = new URL(apiBase).origin;
     return [origin];
-  } catch {
+  } catch (err) {
+    // A typo in VITE_API_BASE_URL would silently disable trace-header
+    // propagation across the FE → BE boundary — spans on each side would
+    // exist but never correlate. Surface the failure to the console so a
+    // dev rebuilding with a bad value sees it; production bundles
+    // already report init-level failures via the backend beacon, but
+    // this helper runs even on partial success of initObservability.
+    console.warn(
+      "[observability] derivePropagateUrlsFromEnv: malformed VITE_API_BASE_URL; trace-header propagation disabled",
+      err,
+    );
     return undefined;
   }
 }
@@ -157,7 +174,18 @@ function derivePropagateUrlsFromEnv(): (string | RegExp)[] | undefined {
 function safeImportMetaEnv(): Record<string, string | undefined> {
   try {
     return import.meta.env;
-  } catch {
+  } catch (err) {
+    // import.meta.env is a Vite-injected static object — under normal
+    // builds this never throws. A throw here means the bundle is being
+    // executed in a non-Vite context (e.g. a Node script importing the
+    // module directly, or a future bundler regression that drops the
+    // static replacement). Default to an empty env so the observability
+    // flag stays false instead of crashing the app, but warn so the
+    // dev sees the unusual context.
+    console.warn(
+      "[observability] import.meta.env unavailable; OTEL flags disabled",
+      err,
+    );
     return {};
   }
 }
