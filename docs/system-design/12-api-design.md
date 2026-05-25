@@ -57,6 +57,12 @@
 |--------|------|-------------|--------|-----|
 | GET | `/users` | List users | Manager | FR-16 |
 
+### Dashboard
+
+| Method | Path | Description | Access | FR |
+|--------|------|-------------|--------|-----|
+| GET | `/dashboard/manager` | Manager dashboard summary (KPIs, category distribution, repair workload, recent pending review) | Manager | — |
+
 ---
 
 ## Rate Limiting
@@ -113,6 +119,7 @@ Content-Type: application/json
 | View all repair requests | — | ✓ |
 | Approve/reject/complete repairs | — | ✓ |
 | View images on any request | ✓ | ✓ |
+| View manager dashboard summary | — | ✓ |
 
 ---
 
@@ -1231,3 +1238,67 @@ GET /api/v1/users
   "meta": { "total": 45, "page": 1, "per_page": 20, "total_pages": 3 }
 }
 ```
+
+---
+
+## 6. Dashboard (`/api/v1/dashboard`)
+
+A single read-only aggregation endpoint that powers the manager landing screen. Replaces what would otherwise be 4-5 round-trips to `/assets` and `/repair-requests` with one server-side roll-up.
+
+### 6.1 Manager Dashboard Summary
+
+```
+GET /api/v1/dashboard/manager
+```
+
+**Access:** Manager only (holders receive `403`).
+
+**Query Parameters:** none.
+
+**Response:** `200 OK`
+
+```json
+{
+  "data": {
+    "kpis": {
+      "total_assets": 324,
+      "in_use_assets": 268,
+      "under_repair_assets": 31,
+      "pending_repair_requests": 25
+    },
+    "asset_categories": [
+      { "category": "computer", "count": 98 },
+      { "category": "monitor", "count": 84 },
+      { "category": "keyboard", "count": 12 }
+    ],
+    "repair_summary": {
+      "created_today": 4,
+      "pending_review": 25,
+      "under_repair": 8,
+      "completed_today": 3
+    },
+    "recent_pending_repairs": [
+      {
+        "id": "rr-uuid",
+        "repair_id": "REP-2026-00041",
+        "asset_id": "asset-uuid",
+        "asset_name": "MacBook Pro 14",
+        "requester_name": "陳美華",
+        "status": "pending_review",
+        "created_at": "2026-05-25T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+**Semantics:**
+
+- `kpis.total_assets` and `asset_categories` exclude `disposed` assets — the dashboard is a *currently-managed* snapshot, not a historical inventory. `total_assets` therefore equals `in_stock + in_use + pending_repair + under_repair`. Disposed rows remain in the DB for audit/history queries but never reach this endpoint.
+- `kpis.pending_repair_requests` counts only repair requests in status `pending_review`.
+- `asset_categories` is grouped by `assets.category`, ordered by `count DESC, category ASC` so equal-count buckets render deterministically.
+- `repair_summary.created_today` / `completed_today` use **UTC start-of-day** as the boundary. The contract is timezone-neutral on purpose — converting to a local TZ on the server would couple the API to deploy-side clock config. Clients can re-bucket if they need a local-day view.
+- `repair_summary.pending_review` and `under_repair` are *current-state snapshots* (no time filter); `created_today` / `completed_today` are time-bounded.
+- `recent_pending_repairs` returns at most **3** repair requests in `pending_review`, ordered by `created_at DESC`, joined with `asset.name` and `users.name` (requester) so the UI never needs follow-up lookups.
+
+**Errors:** standard envelope — `401` (no/invalid token), `403` (holder), `503` (DB error). No `404` — the endpoint always returns 200 with zeros/empty arrays when the DB has no data.

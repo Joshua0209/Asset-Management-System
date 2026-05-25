@@ -13,19 +13,22 @@
 
 ## View 1: Manager Dashboard (管理員儀表板)
 
+資料來源：`GET /api/v1/dashboard/manager`（manager-only 聚合端點，詳見 `docs/system-design/12-api-design.md §6.1`）。KPI / 類別分布皆**排除 `disposed`** 資產；「今日」欄位以 UTC 起始日為界。
+
 **[UI 佈局與元件]**
 - **Sidebar (全域):** 包含 Logo、導航選單 (儀表板、資產清單、申請審查、維修工單) 及使用者資訊。
-- **KPI Row:** 四個數據卡片顯示「總資產、使用中、維修中、待審查」數量與進度條。
+- **KPI Row:** 四個數據卡片:「總資產 (`total_assets`)、使用中 (`in_use_assets`)、維修中 (`under_repair_assets`)、待審查 (`pending_repair_requests`)」；使用中 / 維修中卡片附比例進度條。
 - **Main Content:**
-  - **Bar Chart:** 顯示資產類別分布（筆電、桌機、螢幕等）。
-  - **Work Order Summary:** 網格小卡顯示今日新增、待處理、進行中、已完成工單數。
-  - **Review Table:** 顯示最近 3 筆待審查申請單號與申請人。
-  - **Announcements:** 垂直排列的系統公告清單。
+  - **Bar Chart:** 顯示資產類別分布（`asset_categories`）— 依 count 由大到小排序，以最大桶作為長條的相對基準。
+  - **Work Order Summary:** 網格小卡顯示「今日新增 (`created_today`)、待審查 (`pending_review`)、維修中 (`under_repair`)、今日完成 (`completed_today`)」。`pending_review` / `under_repair` 為目前狀態快照；`created_today` / `completed_today` 限定今日。
+  - **Review Table:** 顯示最近 3 筆 `pending_review` 申請（`recent_pending_repairs`），每筆包含 `repair_id` / `asset_name` / `requester_name` / `created_at`。
+  - *系統公告 (Announcements) 不在 MVP 範圍 — 見 `docs/system-design/10-design-decisions.md`。*
 
 **[使用者互動 Flow]**
 1. 點擊 `[資產清單]` -> 導航至 **View 2 (Asset List)**。
-2. 點擊 `Review Table` 項目 -> 導航至 **View 4 (Review Screen)**。
-3. 點擊 `[登出]` -> 清除 Session 並導航至 **Login Screen**。
+2. 點擊 `Review Table` 項目 -> 導航至 **View 4 (Review Screen)** 對應 detail (`/reviews/:id`)。
+3. 點擊「查看全部」-> 導航至 `/reviews?status=pending_review`（Review Screen 預先套用待審查 filter）。
+4. 點擊 `[登出]` -> 清除 Session 並導航至 **Login Screen**。
 
 ---
 
