@@ -333,12 +333,17 @@ def _parse_otlp_headers(raw: str) -> dict[str, str] | None:
             # only the index + length so an operator can locate the
             # bad pair without disclosing whatever secret was concatenated
             # into it. M2 finding from the third review (security-reviewer).
+            # ``extra={"event": "otel_headers_malformed"}`` gives Loki /
+            # the structlog JSONRenderer a stable label so an operator
+            # alert rule can pattern-match this specific misconfig
+            # without parsing the human-readable message body.
             logger.warning(
                 "OTEL_EXPORTER_OTLP_HEADERS contains a malformed pair "
                 "(no '=') at index %d (length %d) — skipped. "
                 "Value omitted from log to avoid credential disclosure.",
                 index,
                 len(kv),
+                extra={"event": "otel_headers_malformed"},
             )
             continue
         key, _, value = kv.partition("=")

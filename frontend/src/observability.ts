@@ -96,6 +96,11 @@ export async function initObservability(
   }
 }
 
+// Same-origin path — the backend mounts the beacon router under
+// ``api_v1_prefix + "/observability/client-error"``. If the prefix
+// is ever made non-default, the backend contract test
+// ``test_client_error_beacon.py::test_frontend_beacon_url_is_canonical``
+// is the cross-side lock that fails loudly before the FE goes silent.
 const _CLIENT_ERROR_BEACON_URL = "/api/v1/observability/client-error";
 const _MAX_MESSAGE_LEN = 500;
 const _DEFAULT_INIT_FAILURE_KIND = "observability_init_failed";

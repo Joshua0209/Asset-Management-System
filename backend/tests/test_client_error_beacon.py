@@ -337,6 +337,50 @@ def test_beacon_endpoint_enforces_dedicated_beacon_rate_limit(
         app.state.limiter.reset()
 
 
+def test_frontend_beacon_url_is_canonical() -> None:
+    """The hard-coded URL in ``frontend/src/observability.ts`` must
+    match whatever path the backend actually mounts the beacon under.
+
+    The frontend pins ``"/api/v1/observability/client-error"`` as a
+    literal string constant — it CANNOT derive the prefix from the
+    backend at build time because that would couple FE/BE Docker
+    builds. So the only cross-side lock is THIS test: read the
+    frontend's constant, compare to the backend's mounted route.
+    A change to ``settings.api_v1_prefix`` (or a rename of the
+    observability sub-router prefix) that forgot the frontend update
+    will fail this test rather than silently render the beacon path
+    unreachable in prod.
+    """
+    import re
+    from pathlib import Path
+
+    from app.core.config import get_settings
+    from app.main import app
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    fe_module = repo_root / "frontend" / "src" / "observability.ts"
+    assert fe_module.exists(), fe_module
+
+    text = fe_module.read_text(encoding="utf-8")
+    match = re.search(
+        r'_CLIENT_ERROR_BEACON_URL\s*=\s*"([^"]+)"',
+        text,
+    )
+    assert match, "frontend constant _CLIENT_ERROR_BEACON_URL not found"
+    fe_url = match.group(1)
+
+    expected = (
+        f"{get_settings().api_v1_prefix}/observability/client-error"
+    )
+    assert fe_url == expected, (fe_url, expected)
+
+    # Also assert the route is actually mounted at that path on the
+    # FastAPI app — catches the case where the test setting matches
+    # the constant but the router is mis-included.
+    mounted = {getattr(r, "path", None) for r in app.routes}
+    assert expected in mounted, sorted(p for p in mounted if p)
+
+
 def test_endpoint_accepts_anonymous_request(
     client: TestClient,
 ) -> None:

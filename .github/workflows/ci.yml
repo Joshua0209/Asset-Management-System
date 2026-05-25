@@ -486,6 +486,20 @@ jobs:
           python-version: "3.11"
       - name: Dry-run dashboard sync (parse + validate, no HTTP)
         run: python scripts/sync_grafana_cloud_dashboards.py --dry-run
+      # Guard against unsubstituted GC placeholders. If a developer
+      # accidentally applied infra/grafana-cloud/iam-role-trust-policy.json
+      # with literal __GC_AWS_ACCOUNT_ID__ / __GC_EXTERNAL_ID__ tokens
+      # the role becomes uncallable AND the ExternalId guard is bypassed
+      # for any future principal that happens to match the literal
+      # placeholder string. Substitute before commit; fail loud here
+      # otherwise. Pattern is a static literal — no untrusted input.
+      - name: Guard against unsubstituted GC placeholders
+        run: |
+          if grep -RE '__GC_(AWS_ACCOUNT_ID|EXTERNAL_ID)__' infra/grafana-cloud/ ; then
+            echo "::error::Unsubstituted GC placeholder tokens detected in infra/grafana-cloud/."
+            echo "Replace __GC_AWS_ACCOUNT_ID__ and __GC_EXTERNAL_ID__ before committing."
+            exit 1
+          fi
 
   # ─── Deploy pipeline ──────────────────────────────────────────────────────
   # Gated behind every quality + security job above. Runs only on push to
