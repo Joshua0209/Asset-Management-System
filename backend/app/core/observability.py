@@ -972,6 +972,16 @@ class AccessLogMiddleware:
             # ``scope["client"]`` is ``tuple[str, int] | None`` per the
             # ASGI spec — the ``or`` substitutes a typed default so we
             # can index without an inline guard.
+            #
+            # Same FORWARDED_ALLOW_IPS caveat as the rate limiter (see
+            # ``_warn_if_proxy_trust_misconfigured`` in ``app/main.py``):
+            # behind the ALB, uvicorn's ``ProxyHeadersMiddleware`` only
+            # rewrites ``scope["client"]`` from ``X-Forwarded-For`` when
+            # the immediate TCP peer is in ``FORWARDED_ALLOW_IPS``. Unset
+            # / misconfigured → ``client_ip`` collapses to the ALB
+            # private IP and Loki dashboards lose per-client pivots. The
+            # boot-time WARN already nags operators on misconfig; no
+            # additional fallback here.
             client_host, _client_port = scope.get("client") or ("", 0)
             # Resolve the FastAPI route template (e.g.
             # ``/api/v1/repair-requests/{repair_request_id}/approve``) so
