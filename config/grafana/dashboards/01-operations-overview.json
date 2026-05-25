@@ -82,7 +82,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\"}[5m]))",
+          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\"}[5m]))",
           "legendFormat": "requests/sec",
           "refId": "A"
         }
@@ -145,7 +145,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\", http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\"}[5m])), 0.001)",
+          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\"}[5m])), 0.001)",
           "legendFormat": "5xx ratio",
           "refId": "A"
         }
@@ -208,7 +208,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\"}[5m])) by (le))",
           "legendFormat": "p95",
           "refId": "A"
         }
@@ -254,7 +254,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(ams_http_requests_inprogress{service_name=\"ams-backend\", environment=\"$environment\"})",
+          "expr": "sum(ams_http_requests_inprogress{service_name=\"ams-backend\"})",
           "legendFormat": "in-flight",
           "refId": "A"
         }
@@ -301,7 +301,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\"}[1m])) by (http_response_status_code)",
+          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\"}[1m])) by (http_response_status_code)",
           "legendFormat": "{{http_response_status_code}}",
           "refId": "A"
         }
@@ -347,7 +347,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.50, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\"}[5m])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
@@ -356,7 +356,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\"}[5m])) by (le))",
           "legendFormat": "p95",
           "refId": "B"
         },
@@ -365,7 +365,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\"}[5m])) by (le))",
           "legendFormat": "p99",
           "refId": "C"
         }
