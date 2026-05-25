@@ -171,6 +171,47 @@ def test_empty_body_returns_204_without_counter_tick(
     assert _kind_count(metric_reader, "malformed_beacon") == before_malformed
 
 
+def test_control_characters_are_stripped_from_logged_fields(
+    client: TestClient,
+    metric_reader: InMemoryMetricReader,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ASCII control bytes from anonymous senders are scrubbed to '?'.
+
+    Pins the M2 contract: a payload containing CR/LF/null/etc. (which
+    could trip a downstream Slack-bridge log forwarder, terminal
+    rendering, or annotation viewer) is sanitized at the endpoint
+    boundary before the structured log line is emitted. structlog
+    itself escapes correctly into JSON, but defense in depth — the
+    string lands in the Loki label without surprises for the
+    operator's eyes.
+    """
+    import logging as stdlib_logging
+    poisoned_message = "TypeError\r\n\x00\x07injected: rm -rf /"
+    poisoned_kind = "init\rfail\n"
+    with caplog.at_level(stdlib_logging.WARNING):
+        response = client.post(
+            "/api/v1/observability/client-error",
+            json={"kind": poisoned_kind, "message": poisoned_message},
+        )
+    assert response.status_code == 204
+    # Counter ticks under the SANITIZED kind, not the raw bytes.
+    sanitized_kind = "init?fail?"
+    assert _kind_count(metric_reader, sanitized_kind) == 1.0
+    # The structured log line carries the sanitized strings — no raw
+    # CR/LF/null bytes in either field.
+    matched = [
+        rec for rec in caplog.records
+        if "Frontend observability init failure reported" in rec.message
+    ]
+    assert matched, [rec.message for rec in caplog.records]
+    extras_kind = getattr(matched[0], "client_error_kind", "")
+    extras_message = getattr(matched[0], "client_error_message", "")
+    for ch in ("\r", "\n", "\x00", "\x07"):
+        assert ch not in extras_kind, (ch, extras_kind)
+        assert ch not in extras_message, (ch, extras_message)
+
+
 def test_endpoint_accepts_anonymous_request(
     client: TestClient,
 ) -> None:

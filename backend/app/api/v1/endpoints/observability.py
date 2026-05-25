@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Request, status
@@ -46,6 +47,17 @@ from app.core.observability import FRONTEND_OBS_FAILURES
 from app.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
+
+# Strip ASCII control characters from anonymous-browser strings before they
+# reach a log line. structlog's JSONRenderer escapes CR/LF correctly so
+# log-injection into Loki itself is mitigated, but a malicious sender within
+# the 30/min anonymous rate limit can post messages containing non-printable
+# bytes that downstream Grafana annotations, Slack-bridge pipelines, or
+# third-party log forwarders may not handle. Replace with '?' rather than
+# strip to preserve the field's length (truncation cap is enforced
+# elsewhere by Pydantic; preserving the count helps the operator notice
+# tampered input).
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _anonymous_rate_limit() -> str:
@@ -124,12 +136,15 @@ async def report_client_observability_failure(
         FRONTEND_OBS_FAILURES.add(1, attributes={"kind": "malformed_beacon"})
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    # Defensive truncation in case a future client sends an over-
-    # length payload that slips past the Pydantic cap (e.g. a
-    # framework-level transformation that doubles the byte count).
-    kind = payload.kind[:_MAX_KIND_LEN]
-    message = payload.message[:_MAX_MESSAGE_LEN]
-    user_agent = (request.headers.get("user-agent") or "")[:_MAX_MESSAGE_LEN]
+    # Truncate again post-validate so a future schema relaxation can't
+    # accidentally widen the field. Strip ASCII control characters from
+    # both anonymous strings — see _CONTROL_CHARS_RE block at module top
+    # for the rationale.
+    kind = _CONTROL_CHARS_RE.sub("?", payload.kind[:_MAX_KIND_LEN])
+    message = _CONTROL_CHARS_RE.sub("?", payload.message[:_MAX_MESSAGE_LEN])
+    user_agent = _CONTROL_CHARS_RE.sub(
+        "?", (request.headers.get("user-agent") or "")[:_MAX_MESSAGE_LEN]
+    )
     logger.warning(
         "Frontend observability init failure reported via beacon.",
         extra={
