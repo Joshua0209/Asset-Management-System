@@ -77,13 +77,16 @@ def get_manager_dashboard(
         # Order by count desc then category asc — deterministic for equal
         # buckets so tests and the UI render the same sequence.
         category_rows = db.execute(
-            select(Asset.category, func.count().label("count"))
+            # Label is `category_count` (not `count`) to avoid shadowing
+            # SQLAlchemy `Row.count()` — `row.count` would resolve to the
+            # bound method instead of the aggregate value under mypy strict.
+            select(Asset.category, func.count().label("category_count"))
             .where(non_disposed)
             .group_by(Asset.category)
-            .order_by(desc("count"), Asset.category.asc())
+            .order_by(desc("category_count"), Asset.category.asc())
         ).all()
         asset_categories = [
-            AssetCategoryCount(category=row.category, count=row.count)
+            AssetCategoryCount(category=row.category, count=row.category_count)
             for row in category_rows
         ]
 
