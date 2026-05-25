@@ -82,6 +82,15 @@ async function performApproveFlowWithoutCost(user: User): Promise<void> {
   await clickLastButton(user, 'Approve');
 }
 
+async function performApproveFlowWithoutRepairDetails(user: User): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+  });
+
+  await clickButton(user, 'Approve');
+  await clickLastButton(user, 'Approve');
+}
+
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
   return {
     id: 'rr-1',
@@ -213,6 +222,23 @@ describe('ReviewDetail', () => {
     });
   });
 
+  it('allows approval without repair detail fields', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildRequest('pending_review'))
+      .mockResolvedValueOnce(buildRequest('under_repair'));
+
+    await renderDetailPage();
+
+    await performApproveFlowWithoutRepairDetails(user);
+
+    await waitFor(() => {
+      expect(mockApproveRepairRequest).toHaveBeenCalledWith('rr-1', {
+        version: 1,
+      });
+    });
+  });
+
   it('moves reject operation to review details page and submits payload', async () => {
     const user = userEvent.setup({ delay: null });
     mockGetRepairRequestById
@@ -288,7 +314,31 @@ describe('ReviewDetail', () => {
     });
   });
 
-  it('requires core repair plan fields when updating repair details', async () => {
+  it('allows updating a single repair detail field', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildRequest('under_repair'))
+      .mockResolvedValueOnce(buildRequest('under_repair'));
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update Details' })).toBeInTheDocument();
+    });
+
+    await clickButton(user, 'Update Details');
+    await typeLabel(user, 'Repair Vendor', 'Vendor B');
+    await clickButton(user, 'Save');
+
+    await waitFor(() => {
+      expect(mockUpdateRepairRequestDetails).toHaveBeenCalledWith('rr-1', {
+        version: 1,
+        repair_vendor: 'Vendor B',
+      });
+    });
+  });
+
+  it('requires at least one field when updating repair details', async () => {
     const user = userEvent.setup({ delay: null });
     mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('under_repair'));
 
@@ -299,11 +349,10 @@ describe('ReviewDetail', () => {
     });
 
     await clickButton(user, 'Update Details');
-    await typeLabel(user, 'Fault Description','Connector issue');
     await clickButton(user, 'Save');
 
     await waitFor(() => {
-      expect(screen.getAllByText('This field is required')).toHaveLength(3);
+      expect(screen.getByText('Enter at least one repair detail')).toBeInTheDocument();
     });
     expect(mockUpdateRepairRequestDetails).not.toHaveBeenCalled();
   });
