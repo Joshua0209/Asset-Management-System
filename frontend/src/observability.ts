@@ -120,8 +120,23 @@ function reportInitFailure(err: unknown): void {
     // is in the simple-CORS set so cross-origin sendBeacon skips
     // preflight (preflight + fire-and-forget don't compose).
     navigator.sendBeacon(_CLIENT_ERROR_BEACON_URL, body);
-  } catch {
-    // Never let the failure-reporter itself crash the app.
+  } catch (beaconErr) {
+    // Never let the failure-reporter itself crash the app — but a
+    // throw here (not the false-return path) means sendBeacon
+    // refused: CSP connect-src violation, browser extension shim
+    // (Brave / uBlock Origin / similar), TypeError on an
+    // overly-large body, or a future-runtime-only regression. The
+    // dev console is the only diagnostic surface available (the
+    // app is otherwise functional and we don't want to retry —
+    // sendBeacon is fire-and-forget by design). Log so a regression
+    // shows up in DevTools even when initObservability ITSELF was
+    // succeeding before this branch was reached. M5 from the
+    // third review: an empty catch here would silently hide a
+    // class of CSP misconfigurations from FE devs.
+    console.warn(
+      "[observability] sendBeacon threw; init-failure report dropped",
+      beaconErr,
+    );
   }
 }
 
