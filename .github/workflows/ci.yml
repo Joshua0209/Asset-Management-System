@@ -714,10 +714,11 @@ jobs:
 
       - name: Run migration task
         # Executes `alembic upgrade head` as a one-off task using the new
-        # image. Blocks until the task stops. If it fails (exit code != 0),
-        # this job fails and `deploy-backend` is skipped — preventing
-        # the app from booting against an old schema. Forward-only:
-        # rollback to a prior schema needs a manual revert migration.
+        # image. Blocks until the task stops. If it fails (exit code != 0
+        # or the container never reached STOPPED cleanly) this job fails
+        # and `deploy-backend` is skipped — preventing the app from
+        # booting against an old schema. Forward-only: rollback to a
+        # prior schema needs a manual revert migration.
         env:
           ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
           ECS_MIGRATION_SUBNETS: ${{ vars.ECS_MIGRATION_SUBNETS }}
@@ -734,28 +735,61 @@ jobs:
             echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
             exit 1
           fi
+          # Shape check: a CSV ("subnet-abc,subnet-def") would silently produce
+          # broken JSON at jq -cn time and a downstream aws-cli error message
+          # that doesn't name the variable. Refuse early with a clear pointer.
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SUBNETS}"; then
+            echo "::error::ECS_MIGRATION_SUBNETS must be a JSON array (got: ${ECS_MIGRATION_SUBNETS})"
+            exit 1
+          fi
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SECURITY_GROUPS}"; then
+            echo "::error::ECS_MIGRATION_SECURITY_GROUPS must be a JSON array (got: ${ECS_MIGRATION_SECURITY_GROUPS})"
+            exit 1
+          fi
           network_config=$(jq -cn \
             --argjson subnets "${ECS_MIGRATION_SUBNETS}" \
             --argjson sgs "${ECS_MIGRATION_SECURITY_GROUPS}" \
             '{awsvpcConfiguration: {subnets: $subnets, securityGroups: $sgs, assignPublicIp: "DISABLED"}}')
-          task_arn=$(aws ecs run-task \
+          # Capture the full run-task JSON so we can inspect `failures[]`.
+          # ECS returns HTTP 200 with `tasks: []` and a populated `failures[]`
+          # whenever it cannot launch (capacity-provider exhaustion, ENI
+          # shortage, IAM denial, image pull at launch time). The previous
+          # `--query 'tasks[0].taskArn' --output text` would emit the literal
+          # string "None" and `aws ecs wait` would then fail with an opaque
+          # "task not found" instead of the real reason.
+          run_task_output=$(aws ecs run-task \
             --cluster "${ECS_CLUSTER}" \
             --task-definition "${TASK_DEFINITION}" \
             --launch-type FARGATE \
             --network-configuration "${network_config}" \
             --overrides '{"containerOverrides":[{"name":"backend","command":["alembic","upgrade","head"]}]}' \
-            --query 'tasks[0].taskArn' \
-            --output text)
+            --output json)
+          if [ "$(jq '.failures | length' <<<"$run_task_output")" -gt 0 ]; then
+            failures_compact=$(jq -c '.failures' <<<"$run_task_output")
+            echo "::error::run-task could not launch the migration task. failures: ${failures_compact}"
+            exit 1
+          fi
+          task_arn=$(jq -r '.tasks[0].taskArn' <<<"$run_task_output")
           echo "Migration task ARN: $task_arn"
-          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn"
-          exit_code=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)
-          if [ "$exit_code" != "0" ]; then
-            # `exitCode` is `None` when the container never started (e.g.
-            # Secrets Manager fetch failure → no log stream is created and
-            # CloudWatch is useless). Surface `stoppedReason` so the operator
-            # sees the real cause without spelunking through describe-tasks.
-            stopped_reason=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --query 'tasks[0].stoppedReason' --output text)
-            echo "::error::Migration failed with exit code ${exit_code}. stoppedReason: ${stopped_reason}. Check CloudWatch logs for task $task_arn."
+          # `wait || true` so a wait timeout (PROVISIONING → STOPPED stalled
+          # past the waiter's 100×6s budget) or a TaskFailedToStart status
+          # falls through to the describe-tasks dump below. `set -e` would
+          # otherwise abort here and the operator would see a bare
+          # "Max attempts exceeded" with no stoppedReason, containerReason,
+          # or task ARN — exactly the diagnostic gap this script exists to close.
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn" || true
+          task_state=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --output json)
+          last_status=$(jq -r '.tasks[0].lastStatus // "UNKNOWN"' <<<"$task_state")
+          exit_code=$(jq -r '.tasks[0].containers[0].exitCode // "null"' <<<"$task_state")
+          stopped_reason=$(jq -r '.tasks[0].stoppedReason // "none"' <<<"$task_state")
+          container_reason=$(jq -r '.tasks[0].containers[0].reason // "none"' <<<"$task_state")
+          echo "Migration task final state: lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}"
+          if [ "$last_status" != "STOPPED" ] || [ "$exit_code" != "0" ]; then
+            # exitCode is null when the container never started (Secrets
+            # Manager fetch, image pull, ENI shortage). The CloudWatch log
+            # stream is also absent in that case — stoppedReason and
+            # containerReason printed above are the only diagnostic surface.
+            echo "::error::Migration failed. lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}. Check CloudWatch logs for task $task_arn."
             exit 1
           fi
 
@@ -968,6 +1002,15 @@ jobs:
             echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
             exit 1
           fi
+          # Shape check — see migrate-database for the rationale.
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SUBNETS}"; then
+            echo "::error::ECS_MIGRATION_SUBNETS must be a JSON array (got: ${ECS_MIGRATION_SUBNETS})"
+            exit 1
+          fi
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SECURITY_GROUPS}"; then
+            echo "::error::ECS_MIGRATION_SECURITY_GROUPS must be a JSON array (got: ${ECS_MIGRATION_SECURITY_GROUPS})"
+            exit 1
+          fi
           network_config=$(jq -cn \
             --argjson subnets "${ECS_MIGRATION_SUBNETS}" \
             --argjson sgs "${ECS_MIGRATION_SECURITY_GROUPS}" \
@@ -976,7 +1019,8 @@ jobs:
           # scripts/seed_demo_data.py). The seed will abort without it
           # even when invoked directly. Set as an env override here so
           # the rendered task definition stays unchanged from the one
-          # `deploy-backend` registered.
+          # `deploy-backend` registered. (containerOverrides.environment
+          # is additive, not replacing — the task-def env block survives.)
           overrides=$(jq -cn '{
             containerOverrides: [{
               name: "backend",
@@ -984,20 +1028,35 @@ jobs:
               environment: [{name: "AMS_SEED_CONFIRM", value: "1"}]
             }]
           }')
-          task_arn=$(aws ecs run-task \
+          # Capture run-task JSON to inspect failures[] — see migrate-database
+          # for the rationale on why `--query 'tasks[0].taskArn' --output text`
+          # is unsafe (silent "None" task ARN swallows ECS launch failures).
+          run_task_output=$(aws ecs run-task \
             --cluster "${ECS_CLUSTER}" \
             --task-definition "${TASK_DEFINITION}" \
             --launch-type FARGATE \
             --network-configuration "${network_config}" \
             --overrides "${overrides}" \
-            --query 'tasks[0].taskArn' \
-            --output text)
+            --output json)
+          if [ "$(jq '.failures | length' <<<"$run_task_output")" -gt 0 ]; then
+            failures_compact=$(jq -c '.failures' <<<"$run_task_output")
+            echo "::error::run-task could not launch the seed task. failures: ${failures_compact}"
+            exit 1
+          fi
+          task_arn=$(jq -r '.tasks[0].taskArn' <<<"$run_task_output")
           echo "Seed task ARN: $task_arn"
-          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn"
-          exit_code=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)
-          if [ "$exit_code" != "0" ]; then
-            stopped_reason=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --query 'tasks[0].stoppedReason' --output text)
-            echo "::error::Seed failed with exit code ${exit_code}. stoppedReason: ${stopped_reason}. Check CloudWatch logs for task $task_arn."
+          # `wait || true` + unconditional describe — same rationale as
+          # migrate-database. A wait timeout or TaskFailedToStart must still
+          # surface stoppedReason / containerReason on the failure path.
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn" || true
+          task_state=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --output json)
+          last_status=$(jq -r '.tasks[0].lastStatus // "UNKNOWN"' <<<"$task_state")
+          exit_code=$(jq -r '.tasks[0].containers[0].exitCode // "null"' <<<"$task_state")
+          stopped_reason=$(jq -r '.tasks[0].stoppedReason // "none"' <<<"$task_state")
+          container_reason=$(jq -r '.tasks[0].containers[0].reason // "none"' <<<"$task_state")
+          echo "Seed task final state: lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}"
+          if [ "$last_status" != "STOPPED" ] || [ "$exit_code" != "0" ]; then
+            echo "::error::Seed failed. lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}. Check CloudWatch logs for task $task_arn."
             exit 1
           fi
 
