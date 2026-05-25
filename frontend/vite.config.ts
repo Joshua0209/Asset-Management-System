@@ -42,6 +42,10 @@ export default defineConfig({
         minForks: 1,
       },
     },
+    // Keep vitest scoped to unit/integration tests under `src/`. The Playwright
+    // E2E suite under `e2e/` also uses *.spec.ts and would otherwise be picked
+    // up here, where its `test.describe` collides with vitest's API.
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
