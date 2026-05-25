@@ -515,7 +515,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "ams-backend",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "ECS Service CPU (Production)",
@@ -571,7 +574,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "ams-backend",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "ECS Service Memory (Production)",

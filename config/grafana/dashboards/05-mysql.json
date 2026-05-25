@@ -35,7 +35,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "connections",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "Connections (Current)",
@@ -57,7 +60,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "cpu",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "CPU (Average)",
@@ -79,7 +85,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "freeable",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "Freeable Memory",
@@ -101,7 +110,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "queue depth",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "Disk Queue Depth",
@@ -123,7 +135,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "cpu-avg",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         },
         {
           "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
@@ -134,7 +149,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "cpu-max",
-          "refId": "B"
+          "refId": "B",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "CPU Over Time",
@@ -156,7 +174,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "connections-avg",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         },
         {
           "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
@@ -167,7 +188,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "connections-max",
-          "refId": "B"
+          "refId": "B",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "Connections Over Time",
@@ -189,7 +213,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "queue-depth",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "Disk Queue Depth Over Time",
@@ -212,7 +239,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "freeable",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         },
         {
           "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
@@ -223,7 +253,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "free-storage",
-          "refId": "B"
+          "refId": "B",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "Memory + Storage Over Time",
