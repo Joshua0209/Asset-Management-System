@@ -206,7 +206,15 @@ class TestDashboardRepairSummary:
 
         _make_repair_request(db_session, asset, holder, created_at=now)
         _make_repair_request(db_session, asset, holder, created_at=now)
-        _make_repair_request(db_session, asset, holder, created_at=yesterday)
+        # Older pending row — used to confirm `pending_review` is a
+        # snapshot (status-only) and not time-bounded by "today".
+        _make_repair_request(
+            db_session,
+            asset,
+            holder,
+            status=RepairRequestStatus.REJECTED,
+            created_at=yesterday,
+        )
 
         _make_repair_request(
             db_session, asset, holder, status=RepairRequestStatus.UNDER_REPAIR, created_at=yesterday
