@@ -67,3 +67,24 @@ runs:
           echo "::error::Unsubstituted placeholder left in $TASK_DEF_PATH"
           exit 1
         fi
+        # Post-substitution lint. Catches typos that sed wouldn't notice:
+        # a stray space in a placeholder name silently substitutes nothing,
+        # a value containing a JSON-meta character corrupts the file, or a
+        # secrets-name var that holds the bare secret name (no AWS-side
+        # suffix) leaves a `valueFrom` that is not an ARN. Each of these
+        # would otherwise only surface at ECS RegisterTaskDefinition time
+        # — far from the offending var.
+        if ! jq -e . "$TASK_DEF_PATH" >/dev/null; then
+          echo "::error::$TASK_DEF_PATH is not valid JSON after substitution"
+          exit 1
+        fi
+        # Every secrets[].valueFrom must reference a real AWS ARN. We
+        # accept both `arn:aws:secretsmanager:` and `arn:aws:ssm:` since
+        # the same task-def shape supports either backend. `?` after the
+        # `[]` makes the query a no-op for containers without secrets
+        # (frontend), so this guard is safe to run on every task-def.
+        bad_secrets=$(jq -r '[.containerDefinitions[]?.secrets[]? | select((.valueFrom | startswith("arn:aws:secretsmanager:")) or (.valueFrom | startswith("arn:aws:ssm:")) | not) | .name] | join(",")' "$TASK_DEF_PATH")
+        if [ -n "$bad_secrets" ]; then
+          echo "::error::secrets entries with non-ARN valueFrom in $TASK_DEF_PATH: $bad_secrets. Each value must be a Secrets Manager or SSM Parameter Store ARN — check the matching repository variable includes the full AWS-side suffix."
+          exit 1
+        fi
