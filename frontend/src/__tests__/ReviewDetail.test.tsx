@@ -37,6 +37,13 @@ const mockUpdateRepairRequestDetails = vi.mocked(
 );
 const mockCompleteRepairRequest = vi.mocked(apiModule.repairRequestsApi.completeRepairRequest);
 type User = ReturnType<typeof userEvent.setup>;
+type RepairDetailInputs = {
+  repairDate: string;
+  faultDescription: string;
+  repairPlan: string;
+  repairCost: string;
+  repairVendor: string;
+};
 
 async function clickButton(user: User, name: string): Promise<void> {
   await act(async () => {
@@ -89,6 +96,23 @@ async function performApproveFlowWithoutRepairDetails(user: User): Promise<void>
 
   await clickButton(user, 'Approve');
   await clickLastButton(user, 'Approve');
+}
+
+async function fillRepairDetails(user: User, details: RepairDetailInputs): Promise<void> {
+  await typeLabel(user, 'Repair Date', details.repairDate);
+  await typeLabel(user, 'Fault Description', details.faultDescription);
+  await typeLabel(user, 'Repair Plan', details.repairPlan);
+  await typeLabel(user, 'Repair Cost', details.repairCost);
+  await typeLabel(user, 'Repair Vendor', details.repairVendor);
+}
+
+async function submitApproveWithError(error: unknown): Promise<void> {
+  const user = userEvent.setup({ delay: null });
+  mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
+  mockApproveRepairRequest.mockRejectedValueOnce(error);
+
+  await renderDetailPage();
+  await performApproveFlow(user);
 }
 
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
@@ -277,11 +301,13 @@ describe('ReviewDetail', () => {
     });
 
     await clickButton(user, 'Update Details');
-    await typeLabel(user, 'Repair Date', '2026-04-21');
-    await typeLabel(user, 'Fault Description','Connector issue');
-    await typeLabel(user, 'Repair Plan', 'Reseat connector');
-    await typeLabel(user, 'Repair Cost', '1500');
-    await typeLabel(user, 'Repair Vendor', 'Vendor B');
+    await fillRepairDetails(user, {
+      repairDate: '2026-04-21',
+      faultDescription: 'Connector issue',
+      repairPlan: 'Reseat connector',
+      repairCost: '1500',
+      repairVendor: 'Vendor B',
+    });
     await clickButton(user, 'Save');
 
     await waitFor(() => {
@@ -296,11 +322,13 @@ describe('ReviewDetail', () => {
     });
 
     await clickButton(user, 'Complete');
-    await typeLabel(user, 'Repair Date', '2026-04-28');
-    await typeLabel(user, 'Fault Description','Resolved');
-    await typeLabel(user, 'Repair Plan', 'Replaced part');
-    await typeLabel(user, 'Repair Cost', '1800');
-    await typeLabel(user, 'Repair Vendor', 'Vendor C');
+    await fillRepairDetails(user, {
+      repairDate: '2026-04-28',
+      faultDescription: 'Resolved',
+      repairPlan: 'Replaced part',
+      repairCost: '1800',
+      repairVendor: 'Vendor C',
+    });
     await clickLastButton(user, 'Complete');
 
     await waitFor(() => {
@@ -449,15 +477,7 @@ describe('ReviewDetail', () => {
   });
 
   it('shows a generic error toast for other ApiErrors during action', async () => {
-    const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
-    mockApproveRepairRequest.mockRejectedValueOnce(
-      new apiModule.ApiError(400, 'validation_error', 'Bad request'),
-    );
-
-    await renderDetailPage();
-
-    await performApproveFlow(user);
+    await submitApproveWithError(new apiModule.ApiError(400, 'validation_error', 'Bad request'));
 
     await waitFor(() => {
       expect(mockApi.error).toHaveBeenCalledWith(
@@ -470,13 +490,7 @@ describe('ReviewDetail', () => {
   });
 
   it('does nothing if error is not an ApiError in showActionError', async () => {
-    const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
-    mockApproveRepairRequest.mockRejectedValueOnce(new Error('Non-API error'));
-
-    await renderDetailPage();
-
-    await performApproveFlow(user);
+    await submitApproveWithError(new Error('Non-API error'));
 
     await waitFor(() => {
       expect(mockApi.error).not.toHaveBeenCalled();
