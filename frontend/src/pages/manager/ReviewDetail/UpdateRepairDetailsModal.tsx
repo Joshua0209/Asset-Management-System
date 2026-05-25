@@ -42,7 +42,20 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
     } catch {
       return;
     }
-    await onSubmit(values);
+    const normalizedValues: RepairDetailsValues = {
+      repair_date: values.repair_date,
+      repair_plan: values.repair_plan?.trim(),
+      repair_vendor: values.repair_vendor?.trim(),
+    };
+    const faultContent = values.fault_content?.trim();
+    if (faultContent) {
+      normalizedValues.fault_content = faultContent;
+    }
+    const repairCost = values.repair_cost?.trim();
+    if (repairCost) {
+      normalizedValues.repair_cost = repairCost;
+    }
+    await onSubmit(normalizedValues);
   };
 
   return (
@@ -57,13 +70,21 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
       destroyOnHidden
     >
       <Form form={form} layout="vertical">
-        <Form.Item name="repair_date" label={t('reviews.form.repairDate')}>
+        <Form.Item
+          name="repair_date"
+          label={t('reviews.form.repairDate')}
+          rules={[{ required: true, message: t('validation.required') }]}
+        >
           <Input type="date" />
         </Form.Item>
         <Form.Item name="fault_content" label={t('reviews.form.faultContent')}>
           <Input.TextArea rows={3} />
         </Form.Item>
-        <Form.Item name="repair_plan" label={t('reviews.form.repairPlan')}>
+        <Form.Item
+          name="repair_plan"
+          label={t('reviews.form.repairPlan')}
+          rules={[{ required: true, message: t('validation.required') }]}
+        >
           <Input.TextArea rows={3} />
         </Form.Item>
         <Form.Item
@@ -73,7 +94,11 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
         >
           <Input type="number" min={0} step="0.01" />
         </Form.Item>
-        <Form.Item name="repair_vendor" label={t('reviews.form.repairVendor')}>
+        <Form.Item
+          name="repair_vendor"
+          label={t('reviews.form.repairVendor')}
+          rules={[{ required: true, message: t('validation.required') }]}
+        >
           <Input />
         </Form.Item>
       </Form>
