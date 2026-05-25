@@ -512,7 +512,15 @@ jobs:
       - pip-audit
       - npm-audit
       - trivy
-      - sonarqube
+    # SonarQube is intentionally NOT in `needs:` so the image build runs in
+    # parallel with the SonarQube scan (~1m16s saved on every main deploy).
+    # The quality gate is preserved by adding `sonarqube` to the `needs:`
+    # of each deploy-side job (migrate-database, deploy-frontend) with an
+    # explicit `needs.sonarqube.result == 'success'` check - a SonarQube
+    # failure still blocks the ECS rollout, but no longer blocks the image
+    # build. Worst case on a SonarQube failure: a single unused image sits
+    # in ECR (cents in storage) and is overwritten by the next deploy.
+    #
     # always() + !failure() + !cancelled() allows skipped upstream jobs
     # (e.g. the path-filtered `frontend` lint/build job skipped on a
     # backend-only main push) to pass the gate without firing the deploy
@@ -653,15 +661,35 @@ jobs:
 
   migrate-database:
     name: Run migrations (Alembic upgrade)
-    needs: [changes, build-and-push]
+    needs: [changes, build-and-push, sonarqube]
     runs-on: ubuntu-latest
     # Path-filtered to backend changes only. On a docs- or frontend-only
     # main push there is no new schema to apply, so spinning up a Fargate
     # task just to no-op `alembic upgrade head` wastes ~1-2 min and ECR
-    # pull bandwidth — and `deploy-backend` would be skipped anyway by
+    # pull bandwidth - and `deploy-backend` would be skipped anyway by
     # its own backend-side gate. workflow_dispatch forces backend=true
     # via the `changes` aggregate, so manual hot-fixes still migrate.
-    if: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
+    #
+    # The `always() && needs.<job>.result == 'success'` form is required
+    # for the same reason `deploy-backend` carries it (see the long
+    # explanation on that job's `if:` below). A bare
+    # `if: ((push && main) || dispatch) && needs.changes.outputs.backend == 'true'`
+    # compiles to an implicit `success() && ...`, and the implicit
+    # success() returns false whenever any transitive ancestor was
+    # skipped (e.g. `frontend` / `npm-audit` path-filtered out on a
+    # backend-only main push) - even though `build-and-push` itself
+    # succeeded via its own `always()` clause. That quirk skipped the
+    # whole migrate -> deploy chain on commit 3e9b3dc (PR #100, the
+    # OTLP HTTP exporter fix), exactly the symptom PR #81 thought it
+    # had eliminated by adding the explicit form to deploy-backend.
+    # The fix has to land here too; otherwise every backend-only main
+    # push silently no-ops the deploy.
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      needs.sonarqube.result == 'success' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') &&
+      needs.changes.outputs.backend == 'true'
     # Bound the job so a stuck `aws ecs wait tasks-stopped` (or a
     # never-launching task held in PROVISIONING by an ENI shortage)
     # fails the workflow loudly instead of inheriting the 360-min
@@ -908,15 +936,22 @@ jobs:
 
   deploy-frontend:
     name: Deploy frontend (ECS rolling update)
-    needs: [changes, build-and-push]
+    needs: [changes, build-and-push, sonarqube]
     runs-on: ubuntu-latest
     # Per-side gate: see deploy-backend for the same rationale, including
     # why the explicit `build-and-push.result == 'success'` check (rather
     # than `!contains(failure/cancelled)`) is what keeps PR runs from
     # rolling a deploy with no image to ship.
+    #
+    # `sonarqube` is now a direct dependency (previously it gated
+    # build-and-push, which transitively gated this job). Decoupled so
+    # the image build can run in parallel with the SonarQube scan; the
+    # quality gate is preserved by checking `sonarqube.result == 'success'`
+    # here. deploy-backend inherits the gate via migrate-database.
     if: |
       always() &&
       needs.build-and-push.result == 'success' &&
+      needs.sonarqube.result == 'success' &&
       needs.changes.outputs.frontend == 'true'
     concurrency:
       group: deploy-${{ github.ref }}
