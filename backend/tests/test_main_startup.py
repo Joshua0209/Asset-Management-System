@@ -257,6 +257,60 @@ def test_no_warn_when_rate_limit_disabled(
     ), "Expected no FORWARDED_ALLOW_IPS WARN when rate limiting is disabled"
 
 
+def test_warn_when_database_configured_via_components(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WARN when DB is set via DB_HOST/DB_NAME/DB_USER/DB_PASSWORD instead of DATABASE_URL.
+
+    `conftest` seeds DATABASE_URL into the test environment, and the
+    `backend/.env` file also sets it for local dev. Strip both: clear
+    the env var with monkeypatch, and pass `_env_file=None` to disable
+    pydantic-settings' .env loading for this instance. Without either
+    one, `database_url` ends up truthy regardless of what we pass.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    from app.core.config import Settings
+    from app.main import _warn_if_database_config_is_legacy
+
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]  # pydantic-settings runtime kwarg
+        db_host="localhost",
+        db_name="ams",
+        db_user="ams",
+        db_password="ams",  # noqa: S106
+        jwt_secret="x" * 32,  # noqa: S106
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _warn_if_database_config_is_legacy(settings)
+
+    assert any(
+        "DATABASE_URL" in rec.message and rec.levelno == logging.WARNING
+        for rec in caplog.records
+    ), f"Expected legacy-DB WARN. Got: {[r.message for r in caplog.records]}"
+
+
+def test_no_warn_when_database_url_is_set(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No WARN when DATABASE_URL is set — that is the canonical production path."""
+    from app.core.config import Settings
+    from app.main import _warn_if_database_config_is_legacy
+
+    settings = Settings(
+        database_url="mysql+pymysql://u:p@host:3306/ams",
+        jwt_secret="x" * 32,  # noqa: S106
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _warn_if_database_config_is_legacy(settings)
+
+    assert not any(
+        "DATABASE_URL" in rec.message for rec in caplog.records
+    ), "Expected no legacy-DB WARN when DATABASE_URL is set"
+
+
 def test_invariant_tolerates_malformed_values() -> None:
     """Garbled values should not crash startup with ValueError.
 

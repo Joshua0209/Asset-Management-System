@@ -23,6 +23,7 @@ See `CLAUDE.md` §"Health endpoints (Week 5+)" for the code-level distinction be
 **Database migration strategy:**
 - Use backward-compatible migrations only (add columns, never remove or rename in the same release)
 - Two-phase migration for breaking changes: (1) add new column, deploy app that writes to both, (2) migrate data, deploy app that uses only new column, (3) drop old column
+- **Automation (Phase 2+):** the `migrate-database` job in `.github/workflows/ci.yml` runs `alembic upgrade head` as a one-off Fargate task against the rendered backend task definition before `deploy-backend` starts the rolling update. The deploy is blocked on the migration job's exit code, so step (1) "add new column" lands automatically pre-deploy and the new task set never boots against an unmigrated schema. The job is forward-only: a rollback to a prior schema still needs a hand-written revert migration. Manual seeding (operator-triggered, destructive) is the sibling `seed-database` job, fired only via `workflow_dispatch` with the `run_seed` input checked.
 
 ---
 
@@ -92,7 +93,21 @@ gunicorn app.main:app \
 
 `--proxy-headers` is deliberately omitted: it is a uvicorn-CLI-only flag, and uvicorn's proxy-header handling is on by default under `UvicornWorker`. Adding `--proxy-headers` would either no-op or fail depending on the version — both are noisier than just relying on the default.
 
-`--forwarded-allow-ips` is the trust gate: uvicorn's `ProxyHeadersMiddleware` only rewrites `request.client.host` from `X-Forwarded-For` when the immediate TCP peer is in this allowlist. Without it, an attacker hitting the task directly could spoof XFF and inject any IP they like into the bucket key. Use the **VPC CIDR of the ALB subnets** (e.g. `10.0.0.0/16`), not `*` and not the public ALB IP — public IPs rotate, the VPC CIDR is stable. The image default is `127.0.0.1` so local prod-image runs behave like uvicorn's own default; production ECS task definitions MUST override `FORWARDED_ALLOW_IPS` to the ALB-subnet VPC CIDR. The startup WARN in `app/main.py` flags the default when rate limiting is enabled.
+`--forwarded-allow-ips` is the trust gate: uvicorn's `ProxyHeadersMiddleware` only rewrites `request.client.host` from `X-Forwarded-For` when the immediate TCP peer is in this allowlist. Without it, an attacker hitting the task directly could spoof XFF and inject any IP they like into the bucket key.
+
+In production, we set `FORWARDED_ALLOW_IPS` to `*`. The honest framing of this choice:
+
+- **Trust scope is the VPC, not the ALB.** `*` tells uvicorn to accept `X-Forwarded-For` from any immediate TCP peer. The previous VPC-CIDR value had the same trust scope in practice (anything inside the VPC that could reach the task could already spoof XFF), so `*` does not broaden trust beyond what the CIDR form allowed — it just makes the boundary explicit.
+- **The actual enforcement boundary is the Security Group.** The SG attached to the backend tasks only permits ingress from the ALB's SG on the application port. Anything else inside the VPC (a bastion, a sidecar, a future internal service) is blocked at the SG before it can even open a TCP connection, regardless of what `FORWARDED_ALLOW_IPS` is set to.
+
+The supporting invariants that make this configuration acceptable:
+1. The ECS tasks are in **private subnets** with no public IP.
+2. The only entry point for external traffic is the **Application Load Balancer**.
+3. Ingress to the task SG is restricted to the ALB SG (point above).
+
+If any of those three invariants change — in particular, if the task SG is ever loosened to admit a second source — re-tighten `FORWARDED_ALLOW_IPS` at the same time. The startup WARN in `app/main.py` only catches the unset / `127.0.0.1` case; a deliberately-broadened SG does not trip it.
+
+This avoids operational issues with CIDR notation parsing while maintaining the "fail-closed" posture described below. The image default is `127.0.0.1` so local prod-image runs behave like uvicorn's own default; production ECS task definitions MUST override `FORWARDED_ALLOW_IPS` to `*`. The startup WARN in `app/main.py` flags the default when rate limiting is enabled.
 
 `backend/app/core/rate_limit.py` deliberately does **not** add an application-layer XFF reader on top. That would not be defense-in-depth — the two readers share a single precondition (the immediate hop is a trusted proxy), so they are one layer wearing two coats. The asymmetry matters:
 

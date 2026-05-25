@@ -19,10 +19,7 @@ work across environments.
 | `__REGION__`             | `${{ vars.AWS_REGION }}`                                                                 |
 | `PLACEHOLDER_IMAGE`      | Replaced by `aws-actions/amazon-ecs-render-task-definition`                              |
 | `__REPAIR_S3_BUCKET__`   | `${{ vars.REPAIR_S3_BUCKET }}`                                                           |
-| `__ALB_VPC_CIDR__`       | `${{ vars.ALB_VPC_CIDR }}` (becomes `FORWARDED_ALLOW_IPS`)                               |
-| `__DB_HOST__`            | `${{ vars.DB_HOST }}` (RDS endpoint)                                                     |
-| `__DB_NAME__`            | `${{ vars.DB_NAME }}` (database name, e.g. `ams`)                                        |
-| `__RDS_SECRET_NAME__`    | `${{ vars.RDS_SECRET_NAME }}` (system-managed RDS secret name, must include 6-char ARN suffix — see below) |
+| `__DATABASE_URL_SECRET_NAME__` | `${{ vars.DATABASE_URL_SECRET_NAME }}` (application secret name for DATABASE_URL, must include 6-char ARN suffix) |
 | `__APP_SECRET_NAME__`    | `${{ vars.APP_SECRET_NAME }}` (application secret name, must include 6-char ARN suffix — see below) |
 | `__BOOTSTRAP_MANAGER_EMAIL__` | `${{ vars.BOOTSTRAP_MANAGER_EMAIL }}` (email of the seeded first manager)           |
 | `__GC_OTLP_ENDPOINT__`   | `${{ secrets.GC_OTLP_ENDPOINT }}` (Grafana Cloud OTLP gateway URL, e.g. `https://otlp-gateway-prod-eu-west-3.grafana.net/otlp`) |
@@ -39,15 +36,14 @@ job's `required-vars:` list (and to its `env:` block, mapping to the matching
 GitHub secret or variable).
 
 1. **Use `__NAME__` sentinels**, not bare `NAME`. Bare tokens collide with
-   real values in the JSON: `{"name": "DB_HOST", "value": "DB_HOST"}` would
+   real values in the JSON: `{"name": "REPAIR_S3_BUCKET", "value": "REPAIR_S3_BUCKET"}` would
    rewrite the env-var **name** as well as the value, and the container would
-   not see `DB_HOST` at all. The double-underscore wrapper makes the placeholder
+   not see `REPAIR_S3_BUCKET` at all. The double-underscore wrapper makes the placeholder
    unambiguous. The action substitutes `__NAME__` from the env var named `NAME`,
    so the names must match exactly.
 2. **Use `|` as the `sed` delimiter**, not `/`. Several injected values
-   legitimately contain `/`: CIDRs (`10.0.0.0/16`), secret paths
-   (`ams/prod/app`). `/` as delimiter breaks `sed` parsing. The action uses
-   `|` for this reason; do not change it.
+   legitimately contain `/`: secret paths (`ams/prod/app`). `/` as delimiter
+   breaks `sed` parsing. The action uses `|` for this reason; do not change it.
 3. **Reference values via `env:`**, not inline `${{ ... }}` expressions. Avoids
    GitHub Actions expression-injection patterns and keeps the script auditable.
    The action reads via `${!name}` indirect expansion, so the caller's `env:`
@@ -60,7 +56,7 @@ GitHub secret or variable).
 
 AWS Secrets Manager appends a 6-character random suffix to every secret
 ARN (e.g. `ams/prod/app-AbCdEf`). The task definition references the
-full ARN, so `vars.RDS_SECRET_NAME` and `vars.APP_SECRET_NAME` MUST be
+full ARN, so `vars.DATABASE_URL_SECRET_NAME` and `vars.APP_SECRET_NAME` MUST be
 set to the name **with** the suffix. Looking up a secret by bare name
 (`ams/prod/app`) yields a `ResourceNotFoundException` at task launch.
 
@@ -68,10 +64,10 @@ The suffix is visible in the AWS console (Secret details → ARN) or via
 `aws secretsmanager describe-secret --secret-id ams/prod/app --query
 'ARN'`. Example correct value: `ams/prod/app-Xy12Ab`.
 
-`DB_PORT` is intentionally not parameterised — it is pinned to MySQL's default
-`3306` in `backend/app/core/config.py`. If a future RDS instance uses a non-
-default port, add `DB_PORT` to the task-def `environment` block (no secret
-indirection needed) and to the placeholder list above.
+`DB_PORT` is intentionally not parameterised. When using `DATABASE_URL` (the
+production default), the port is included in the secret string. If a future
+need arises for individual components, ensure `DB_PORT` is pinned to MySQL's
+default `3306` in `backend/app/core/config.py` or overridden in the task-def.
 
 `WEB_CONCURRENCY=1` is set explicitly in the task definition even though
 the image default also pins it — operators reading the task-def should
@@ -104,15 +100,14 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 |-----------------------|--------------------------------------------------|
 | `AWS_REGION`          | e.g. `ap-northeast-1`                            |
 | `REPAIR_S3_BUCKET`    | Name of the S3 bucket for repair images          |
-| `ALB_VPC_CIDR`        | VPC CIDR of the ALB subnets (e.g. `10.0.0.0/16`) |
 | `ECR_REPOSITORY_BACKEND`  | e.g. `ams-backend`                           |
 | `ECR_REPOSITORY_FRONTEND` | e.g. `ams-frontend`                          |
 | `ECS_CLUSTER`         | e.g. `ams-prod`                                  |
 | `ECS_SERVICE_BACKEND` | e.g. `ams-backend`                               |
 | `ECS_SERVICE_FRONTEND`| e.g. `ams-frontend`                              |
-| `DB_HOST`             | RDS instance endpoint                            |
-| `DB_NAME`             | e.g. `ams`                                       |
-| `RDS_SECRET_NAME`     | Name of the managed RDS secret, **including the 6-char ARN suffix** (e.g. `rds!db-AbCdEf`) |
+| `ECS_MIGRATION_SUBNETS` | JSON array of subnet IDs for one-off tasks (e.g. `["subnet-123", "subnet-456"]`) |
+| `ECS_MIGRATION_SECURITY_GROUPS` | JSON array of security group IDs for one-off tasks (e.g. `["sg-123"]`) |
+| `DATABASE_URL_SECRET_NAME` | Name of the database secret, **including the 6-char ARN suffix** (e.g. `ams/prod/db-AbCdEf`) |
 | `APP_SECRET_NAME`     | Name of the application secret, **including the 6-char ARN suffix** (e.g. `ams/prod/app-Xy12Ab`) |
 | `BOOTSTRAP_MANAGER_EMAIL` | Email of the seeded first manager (e.g. `admin@ams.example.com`) |
 | `VITE_API_BASE_URL`   | Optional. Build-time API base for the frontend bundle. Defaults to `/api/v1` (same-origin via ALB path routing) — override only if FE and BE are on separate domains |
@@ -128,7 +123,7 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 > the *Variables* tab and recreate them as *Secrets* with the same value.
 
 **GitHub vs AWS secrets.** Items in *Repository secrets* and *Repository
-variables* tables live in GitHub Actions settings. `RDS_SECRET_NAME` /
+variables* tables live in GitHub Actions settings. `DATABASE_URL_SECRET_NAME` /
 `APP_SECRET_NAME` / `GC_SECRET_NAME` only carry the *names* of secrets that
 live in **AWS Secrets Manager** — the credentials themselves never enter
 GitHub. The task-def's `secrets:` block resolves those names to live values
@@ -256,6 +251,32 @@ The `iam:PassRole` permission is required because
 without `PassRole`, the API call fails. The `PassedToService`
 condition prevents the deploy role from handing those ARNs to anything
 other than ECS tasks (e.g. attaching them to an EC2 instance).
+
+## Required: configure the `production-destructive` environment
+
+The `seed-database` workflow job is gated on a GitHub environment of
+this name (Settings → Environments). The environment provides a
+manual-approval gate on top of the in-script `AMS_SEED_CONFIRM=1`
+check: a workflow_dispatch with `run_seed` ticked queues the job in a
+`waiting` state until one of the configured required reviewers
+clicks Approve. Without the reviewer list, a single operator with
+dispatch access can wipe all four core tables; with it, the operator
+who clicks `Run workflow` cannot also self-approve.
+
+Setup (one-time, per repo):
+
+1. Settings → Environments → New environment → name it
+   `production-destructive`.
+2. Under "Deployment protection rules" enable "Required reviewers"
+   and add at least one user or team that is NOT the typical
+   workflow_dispatch operator.
+3. Save. No secrets or variables need to be added to the environment;
+   the job inherits repo-level secrets and variables.
+
+If the environment is not configured, the job still runs but without
+any approval gate — GitHub auto-creates an unprotected environment on
+first reference. Check Settings → Environments after the first
+seed-database dispatch to confirm the protection is in place.
 
 ## Required: enable deployment circuit breaker on each ECS service
 
