@@ -113,7 +113,7 @@ globalThis.Request = class extends OriginalRequest {
     }
     super(input, init);
   }
-} as typeof OriginalRequest;
+};
 
 // Global Ant Design notification mock
 vi.mock("antd", async () => {
