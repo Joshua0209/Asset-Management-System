@@ -255,7 +255,7 @@ def list_assets(
     except HTTPException:
         raise
     except SQLAlchemyError as exc:
-        logger.error("Failed to list assets: %s", exc, exc_info=True)
+        logger.exception("Failed to list assets")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to retrieve assets. Please try again later.",
@@ -289,10 +289,8 @@ def register_asset(
             if not _is_asset_code_uniqueness_violation(exc):
                 # A non-asset_code constraint violation will keep failing on retry;
                 # surface it as a validation error instead of a misleading 409.
-                logger.error(
-                    "Non-uniqueness IntegrityError during asset registration: %s",
-                    exc,
-                    exc_info=True,
+                logger.exception(
+                    "Non-uniqueness IntegrityError during asset registration"
                 )
                 raise _validation_error(
                     "Asset registration violates database constraints."
@@ -306,7 +304,7 @@ def register_asset(
             )
         except SQLAlchemyError as exc:
             db.rollback()
-            logger.error("Failed to register asset: %s", exc, exc_info=True)
+            logger.exception("Failed to register asset")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Unable to register asset. Please try again later.",
@@ -352,7 +350,7 @@ def list_my_assets(
     except HTTPException:
         raise
     except SQLAlchemyError as exc:
-        logger.error("Failed to list assigned assets: %s", exc, exc_info=True)
+        logger.exception("Failed to list assigned assets")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to retrieve assets. Please try again later.",
@@ -389,7 +387,7 @@ def get_asset(
     except HTTPException:
         raise
     except SQLAlchemyError as exc:
-        logger.error("Failed to get asset %s: %s", asset_id, exc, exc_info=True)
+        logger.exception("Failed to get asset %s", asset_id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to retrieve asset. Please try again later.",
@@ -458,11 +456,9 @@ def list_asset_history(
     except HTTPException:
         raise
     except SQLAlchemyError as exc:
-        logger.error(
-            "Failed to list history for asset %s: %s",
+        logger.exception(
+            "Failed to list history for asset %s",
             _safe_log(asset_id),
-            exc,
-            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -517,7 +513,7 @@ def update_asset(
         raise _validation_error("Asset update violates database constraints.") from exc
     except SQLAlchemyError as exc:
         db.rollback()
-        logger.error("Failed to update asset %s: %s", asset_id, exc, exc_info=True)
+        logger.exception("Failed to update asset %s", asset_id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to update asset. Please try again later.",

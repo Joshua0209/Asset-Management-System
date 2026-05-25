@@ -19,14 +19,14 @@ describe("createAmountValidator", () => {
   it("resolves on an empty value when not required", async () => {
     const validate = createAmountValidator(t);
     await expect(validate(null, "")).resolves.toBeUndefined();
-    await expect(validate(null, undefined)).resolves.toBeUndefined();
+    await expect(validate(null)).resolves.toBeUndefined();
     await expect(validate(null, "   ")).resolves.toBeUndefined();
   });
 
   it("throws validation.required on empty value when required is true", async () => {
     const validate = createAmountValidator(t, { required: true });
     await expect(validate(null, "")).rejects.toThrow("validation.required");
-    await expect(validate(null, undefined)).rejects.toThrow("validation.required");
+    await expect(validate(null)).rejects.toThrow("validation.required");
     await expect(validate(null, "   ")).rejects.toThrow("validation.required");
   });
 

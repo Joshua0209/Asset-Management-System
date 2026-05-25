@@ -46,7 +46,7 @@ for (const name of ['localStorage', 'sessionStorage'] as const) {
 }
 
 // Mock matchMedia for Ant Design
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(globalThis, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
     matches: false,
@@ -113,7 +113,7 @@ globalThis.Request = class extends OriginalRequest {
     }
     super(input, init);
   }
-} as typeof OriginalRequest;
+};
 
 // Global Ant Design notification mock
 vi.mock("antd", async () => {

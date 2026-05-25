@@ -3,7 +3,6 @@ import { vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import RepairRequestDetail from "@/pages/holder/RepairRequestDetail";
 import i18n from "@/i18n";
-import type { RepairRequestRecord } from "@/api/repair-requests/types";
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
@@ -60,7 +59,7 @@ describe("RepairRequestDetail", () => {
   });
 
   it("renders repair request details and timeline", async () => {
-    mockGetRepairRequestById.mockResolvedValueOnce(mockRequest as RepairRequestRecord);
+    mockGetRepairRequestById.mockResolvedValueOnce(mockRequest);
 
     render(
       <MemoryRouter
@@ -102,7 +101,7 @@ describe("RepairRequestDetail", () => {
       rejection_reason: "Cannot reproduce",
       completed_at: null,
     };
-    mockGetRepairRequestById.mockResolvedValueOnce(rejectedRequest as RepairRequestRecord);
+    mockGetRepairRequestById.mockResolvedValueOnce(rejectedRequest);
 
     render(
       <MemoryRouter

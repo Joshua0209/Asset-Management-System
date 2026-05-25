@@ -76,13 +76,13 @@ describe("api/assets/queries", () => {
     });
 
     it("listMyAssets returns only assets for current holder when IDs match", async () => {
-      saveSession(sessionFor(DUMMY_HOLDERS[1]!.id, "holder"));
+      saveSession(sessionFor(DUMMY_HOLDERS[1].id, "holder"));
 
       const result = await mod.listMyAssets({ page: 1, perPage: 20 });
 
       expect(mockRequest).not.toHaveBeenCalled();
       expect(result.meta.total).toBeGreaterThan(0);
-      expect(result.data.every((asset) => asset.responsible_person_id === DUMMY_HOLDERS[1]!.id)).toBe(
+      expect(result.data.every((asset) => asset.responsible_person_id === DUMMY_HOLDERS[1].id)).toBe(
         true,
       );
     });
@@ -93,7 +93,7 @@ describe("api/assets/queries", () => {
       const result = await mod.listMyAssets({ page: 1, perPage: 20 });
 
       expect(result.meta.total).toBeGreaterThan(0);
-      expect(result.data.every((asset) => asset.responsible_person_id === DUMMY_HOLDERS[0]!.id)).toBe(
+      expect(result.data.every((asset) => asset.responsible_person_id === DUMMY_HOLDERS[0].id)).toBe(
         true,
       );
     });

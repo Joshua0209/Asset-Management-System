@@ -122,10 +122,11 @@ describe('ReviewDetail', () => {
     mockCompleteRepairRequest.mockReset();
     mockApi.success.mockReset();
     mockApi.error.mockReset();
-    mockApproveRepairRequest.mockResolvedValue({} as RepairRequestRecord);
-    mockRejectRepairRequest.mockResolvedValue({} as RepairRequestRecord);
-    mockUpdateRepairRequestDetails.mockResolvedValue({} as RepairRequestRecord);
-    mockCompleteRepairRequest.mockResolvedValue({} as RepairRequestRecord);
+    const defaultRequest = buildRequest('pending_review');
+    mockApproveRepairRequest.mockResolvedValue(defaultRequest);
+    mockRejectRepairRequest.mockResolvedValue(defaultRequest);
+    mockUpdateRepairRequestDetails.mockResolvedValue(defaultRequest);
+    mockCompleteRepairRequest.mockResolvedValue(defaultRequest);
 
     await act(async () => {
       await i18n.changeLanguage('en');

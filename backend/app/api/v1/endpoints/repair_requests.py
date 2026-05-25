@@ -364,7 +364,7 @@ def _commit_repair_change(
     except OperationalError as exc:
         # Transient — caller may retry.
         db.rollback()
-        logger.error("%s transient DB error: %s", log_context, exc, exc_info=True)
+        logger.exception("%s transient DB error", log_context)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to update repair request. Please try again later.",
@@ -389,7 +389,7 @@ def _commit_repair_change(
     except SQLAlchemyError as exc:
         # Programmer bug — generic 500.
         db.rollback()
-        logger.error("%s unexpected DB error: %s", log_context, exc, exc_info=True)
+        logger.exception("%s unexpected DB error", log_context)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal database error.",
@@ -649,7 +649,7 @@ def list_repair_requests(
     except HTTPException:
         raise
     except SQLAlchemyError as exc:
-        logger.error("Failed to list repair requests: %s", exc, exc_info=True)
+        logger.exception("Failed to list repair requests")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to retrieve repair requests. Please try again later.",
@@ -676,11 +676,7 @@ def get_repair_request(
     except SQLAlchemyError as exc:
         # Read-only handler — no rollback needed; consistent with list_assets,
         # list_repair_requests, get_asset, list_asset_history.
-        logger.error(
-            "Failed to get repair request: %s",
-            exc,
-            exc_info=True,
-        )
+        logger.exception("Failed to get repair request")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to retrieve repair request. Please try again later.",
@@ -1112,14 +1108,14 @@ async def submit_repair_request(
         raise _conflict(_ASSET_VERSION_CONFLICT_MESSAGE) from exc
     except (ImageStorageError, OSError) as exc:
         db.rollback()
-        logger.error("Failed to persist repair-request image: %s", exc, exc_info=True)
+        logger.exception("Failed to persist repair-request image")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to store repair images. Please try again later.",
         ) from exc
     except SQLAlchemyError as exc:
         db.rollback()
-        logger.error("Failed to submit repair request: %s", exc, exc_info=True)
+        logger.exception("Failed to submit repair request")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to submit repair request. Please try again later.",

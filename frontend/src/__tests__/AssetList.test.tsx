@@ -160,7 +160,6 @@ describe("AssetList", () => {
     mockCreateAsset.mockReset();
     mockListUsers.mockReset();
     mockNavigate.mockReset();
-    mockCreateAsset.mockResolvedValue({} as never);
     mockListUsers.mockResolvedValue({
       data: [
         {

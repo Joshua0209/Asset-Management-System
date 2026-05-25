@@ -267,7 +267,7 @@ app.add_middleware(
 #   Pinned by tests/test_observability.py::test_access_log_runs_inside_otel_layer.
 setup_metrics_exporter(settings)
 setup_metrics(app, settings)
-setup_tracing(app, settings)
+setup_tracing(settings)
 maybe_setup_profiling(settings)
 setup_access_log(app)
 # Fail-fast smoke test: in non-local envs, refuse to boot if any OTLP

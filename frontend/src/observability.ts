@@ -190,7 +190,7 @@ function derivePropagateUrlsFromEnv(): (string | RegExp)[] | undefined {
     // or end-of-string so ``https://api.example.com`` and
     // ``https://api.example.com/api/v1`` both match while
     // ``https://api.example.com.evil.com/...`` doesn't.
-    const escapedOrigin = origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedOrigin = origin.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
     return [new RegExp(`^${escapedOrigin}(/|$)`)];
   } catch (err) {
     // A typo in VITE_API_BASE_URL would silently disable trace-header

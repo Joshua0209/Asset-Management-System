@@ -626,7 +626,7 @@ def setup_metrics_exporter(settings: Settings) -> None:
     _METRICS_EXPORTER_INSTALLED = True
 
 
-def setup_tracing(app: FastAPI, settings: Settings) -> None:
+def setup_tracing(settings: Settings) -> None:
     """Wire OTLP tracing for FastAPI + SQLAlchemy.
 
     No-op when ``settings.otel_enabled`` is False — keeps the dev image
@@ -757,6 +757,44 @@ def maybe_setup_profiling(settings: Settings) -> None:
         PROFILING_INIT_FAILURES.add(1, attributes={"reason": "configure_error"})
 
 
+def _missing_exporters() -> list[str]:
+    """Return labels of signals whose ``setup_*_exporter`` never installed.
+
+    Hoisted out of ``verify_observability_exports`` so the main probe
+    function stays under SonarQube's cognitive-complexity threshold.
+    """
+    missing: list[str] = []
+    if not _METRICS_EXPORTER_INSTALLED:
+        missing.append("metrics")
+    if not _TRACING_INSTALLED:
+        missing.append("traces")
+    if not _LOG_EXPORTER_INSTALLED:
+        missing.append("logs")
+    return missing
+
+
+def _guard_probe_step(label: str, action: Callable[[], object], failures: list[str]) -> None:
+    """Run a probe step and record any failure into ``failures``.
+
+    A broken instrument (proxy not yet swapped, SDK API drift, exporter
+    shutdown race) must surface as a structured failure on the RuntimeError
+    in ``verify_observability_exports``, not as a bare stack trace.
+    """
+    try:
+        action()
+    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
+        failures.append(f"{label} ({exc!r})")
+
+
+def _guard_flush(label: str, flush: Callable[[int], bool], failures: list[str]) -> None:
+    """Call ``force_flush`` and record both ``False`` returns and raises."""
+    try:
+        if not flush(5_000):
+            failures.append(label)
+    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
+        failures.append(f"{label} ({exc!r})")
+
+
 def verify_observability_exports(settings: Settings) -> None:
     """Smoke-test the OTLP exporters at startup; fail-loud on failure.
 
@@ -794,13 +832,7 @@ def verify_observability_exports(settings: Settings) -> None:
     # place — the exact silent-export-failure class this function exists
     # to catch. If a signal's ``setup_*_exporter`` raised or never ran, the
     # task must crash here, not boot with that signal dark.
-    missing: list[str] = []
-    if not _METRICS_EXPORTER_INSTALLED:
-        missing.append("metrics")
-    if not _TRACING_INSTALLED:
-        missing.append("traces")
-    if not _LOG_EXPORTER_INSTALLED:
-        missing.append("logs")
+    missing = _missing_exporters()
     if missing:
         raise RuntimeError(
             f"OTLP exporter not installed for: {', '.join(missing)}. "
@@ -815,16 +847,10 @@ def verify_observability_exports(settings: Settings) -> None:
     from opentelemetry import trace as otel_trace
     from opentelemetry._logs import get_logger_provider
 
-    # --- Synthetic emit: one signal of each kind. ----------------------
     probe_attrs = {"ams.probe": "startup"}
     failures: list[str] = []
 
-    # Each synthetic emit is independently guarded — a broken instrument
-    # (proxy not yet swapped, SDK API drift, exporter shutdown race) must
-    # surface as a structured failure on the RuntimeError below, not as a
-    # bare stack trace that crashes the container before the diagnostic
-    # message renders. Same fail-loud contract; richer error payload.
-    try:
+    def _emit_metric() -> None:
         probe_counter = _meter.create_counter(
             "ams_observability_probe_total",
             description=(
@@ -834,56 +860,44 @@ def verify_observability_exports(settings: Settings) -> None:
             ),
         )
         probe_counter.add(1, attributes=probe_attrs)
-    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
-        failures.append(f"metrics-emit ({exc!r})")
 
-    try:
+    def _emit_trace() -> None:
         tracer = otel_trace.get_tracer("ams.backend.probe")
         with tracer.start_as_current_span("observability_probe") as span:
             for key, value in probe_attrs.items():
                 span.set_attribute(key, value)
-    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
-        failures.append(f"traces-emit ({exc!r})")
 
-    try:
+    def _emit_log() -> None:
         logger.info(
             "Observability startup probe — synthetic signal for OTLP export check.",
             extra=probe_attrs,
         )
-    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
-        failures.append(f"logs-emit ({exc!r})")
 
-    # --- Flush and fail loudly if any signal failed to push. -----------
+    _guard_probe_step("metrics-emit", _emit_metric, failures)
+    _guard_probe_step("traces-emit", _emit_trace, failures)
+    _guard_probe_step("logs-emit", _emit_log, failures)
+
     # The installed-flag assertions above already proved each provider is
     # real, not the global no-op ProxyProvider, so ``force_flush`` is
-    # guaranteed to exist as a callable. A missing attribute now is a
-    # programming error (SDK version regression) and surfaces as
-    # AttributeError — which would crash with a raw stack trace before
-    # the structured RuntimeError below renders. Wrap each flush so
-    # an SDK-internal raise (transient network blip surfacing on the
-    # foreground flush, async-export-thread teardown race, etc.)
-    # becomes a structured failure in the same RuntimeError payload
-    # operators expect, instead of an opaque traceback.
-    meter_provider = otel_metrics.get_meter_provider()
-    try:
-        if not meter_provider.force_flush(5_000):  # type: ignore[attr-defined]
-            failures.append("metrics-flush")
-    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
-        failures.append(f"metrics-flush ({exc!r})")
-
-    tracer_provider = otel_trace.get_tracer_provider()
-    try:
-        if not tracer_provider.force_flush(5_000):  # type: ignore[attr-defined]
-            failures.append("traces-flush")
-    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
-        failures.append(f"traces-flush ({exc!r})")
-
-    logger_provider = get_logger_provider()
-    try:
-        if not logger_provider.force_flush(5_000):  # type: ignore[attr-defined]
-            failures.append("logs-flush")
-    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
-        failures.append(f"logs-flush ({exc!r})")
+    # guaranteed to exist as a callable. Any SDK-internal raise (transient
+    # network blip on the foreground flush, async-export-thread teardown
+    # race, etc.) becomes a structured failure in the same RuntimeError
+    # payload via ``_guard_flush``.
+    _guard_flush(
+        "metrics-flush",
+        otel_metrics.get_meter_provider().force_flush,  # type: ignore[attr-defined]
+        failures,
+    )
+    _guard_flush(
+        "traces-flush",
+        otel_trace.get_tracer_provider().force_flush,  # type: ignore[attr-defined]
+        failures,
+    )
+    _guard_flush(
+        "logs-flush",
+        get_logger_provider().force_flush,  # type: ignore[attr-defined]
+        failures,
+    )
 
     if failures:
         raise RuntimeError(

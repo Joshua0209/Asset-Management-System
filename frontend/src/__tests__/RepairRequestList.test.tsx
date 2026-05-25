@@ -18,6 +18,10 @@ vi.mock("@/api", async () => {
 const apiModule = await import("@/api");
 const mockListRepairRequests = vi.mocked(apiModule.repairRequestsApi.listRepairRequests);
 
+// Minimal fixture: only the fields the list view actually renders. The
+// double cast through `unknown` records that this is a deliberate partial
+// stand-in for the full PaginatedRepairRequestResponse, not an unintended
+// shape mismatch.
 const mockRequests = {
   data: [
     {
@@ -39,7 +43,7 @@ const mockRequests = {
     per_page: 20,
     total_pages: 1,
   },
-};
+} as unknown as PaginatedRepairRequestResponse;
 
 describe("RepairRequestList", () => {
   beforeEach(async () => {
@@ -48,7 +52,7 @@ describe("RepairRequestList", () => {
   });
 
   it("renders the list of repair requests", async () => {
-    mockListRepairRequests.mockResolvedValueOnce(mockRequests as PaginatedRepairRequestResponse);
+    mockListRepairRequests.mockResolvedValueOnce(mockRequests);
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
