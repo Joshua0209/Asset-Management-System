@@ -63,7 +63,7 @@ def list_users(
             meta=PaginationMeta(total=total, page=page, per_page=per_page),
         )
     except SQLAlchemyError as exc:
-        logger.error("Failed to list users: %s", exc, exc_info=True)
+        logger.exception("Failed to list users")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to retrieve users. Please try again later.",

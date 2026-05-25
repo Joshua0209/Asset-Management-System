@@ -110,9 +110,7 @@ def register(
     except IntegrityError as exc:
         db.rollback()
         if not _is_email_uniqueness_violation(exc):
-            logger.error(
-                "Unexpected IntegrityError on user create: %s", exc, exc_info=True
-            )
+            logger.exception("Unexpected IntegrityError on user create")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=_USER_CREATE_UNAVAILABLE,
@@ -123,7 +121,7 @@ def register(
         ) from exc
     except SQLAlchemyError as exc:
         db.rollback()
-        logger.error("Failed to register user: %s", exc, exc_info=True)
+        logger.exception("Failed to register user")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to register user. Please try again later.",
@@ -234,9 +232,7 @@ def admin_create_user(
     except IntegrityError as exc:
         db.rollback()
         if not _is_email_uniqueness_violation(exc):
-            logger.error(
-                "Unexpected IntegrityError on user create: %s", exc, exc_info=True
-            )
+            logger.exception("Unexpected IntegrityError on user create")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=_USER_CREATE_UNAVAILABLE,
@@ -247,7 +243,7 @@ def admin_create_user(
         ) from exc
     except SQLAlchemyError as exc:
         db.rollback()
-        logger.error("Failed to create user via admin endpoint: %s", exc, exc_info=True)
+        logger.exception("Failed to create user via admin endpoint")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=_USER_CREATE_UNAVAILABLE,
