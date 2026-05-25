@@ -414,10 +414,18 @@ def setup_log_exporter(settings: Settings) -> None:
     )
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
     set_logger_provider(provider)
+    # Flip the install flag IMMEDIATELY after the irreversible
+    # set_logger_provider call (OTel's set_logger_provider is process-wide
+    # set-once; a second call silently no-ops). If the subsequent
+    # addHandler raises (root logger in a degenerate state — rare), we
+    # want a retry to early-return rather than re-running set_logger_provider
+    # against a now-leaked second LoggerProvider. The lost addHandler is
+    # surfaced as an uncaught exception to the caller, not silently
+    # swallowed under a half-installed state.
+    _LOG_EXPORTER_INSTALLED = True
 
     handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
     logging.getLogger().addHandler(handler)
-    _LOG_EXPORTER_INSTALLED = True
 
 
 def setup_metrics(app: FastAPI, settings: Settings) -> None:
@@ -562,6 +570,16 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
     otel_trace.set_tracer_provider(provider)
+    # Flip the install flag IMMEDIATELY after set_tracer_provider — that's
+    # the irreversible step (OTel's set_tracer_provider is process-wide
+    # set-once and warns + no-ops on re-call). If the subsequent
+    # SQLAlchemyInstrumentor instrument raises (engine already
+    # instrumented from a prior test, dependency version mismatch), we
+    # want a retry to early-return rather than re-running
+    # set_tracer_provider against a leaked second TracerProvider AND
+    # double-instrumenting the SQLAlchemy engine. The exception from
+    # instrument() propagates to the caller.
+    _TRACING_INSTALLED = True
 
     # SQLAlchemy instrumentation hooks into the engine; importing the
     # engine here (rather than at module top) avoids the circular
@@ -569,7 +587,6 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     from app.db.session import engine
 
     SQLAlchemyInstrumentor().instrument(engine=engine)
-    _TRACING_INSTALLED = True
 
 
 def maybe_setup_profiling(settings: Settings) -> None:
