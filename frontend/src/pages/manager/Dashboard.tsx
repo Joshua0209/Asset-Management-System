@@ -42,7 +42,6 @@ const Dashboard: React.FC = () => {
         err instanceof ApiError ? getApiErrorMessage(err, t) : t("dashboard.loadError");
       // Preserve the raw error in the console so developers see network
       // failures or parse errors instead of just the localised string.
-      // eslint-disable-next-line no-console
       console.error("Failed to load manager dashboard", err);
       setError(message);
     } finally {

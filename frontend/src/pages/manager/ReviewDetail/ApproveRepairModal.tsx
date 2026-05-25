@@ -42,7 +42,6 @@ const ApproveRepairModal: React.FC<ApproveRepairModalProps> = ({
       values = await form.validateFields();
     } catch (err) {
       if (!isAntdValidationError(err)) {
-        // eslint-disable-next-line no-console
         console.error('Unexpected error in approve-repair form validation', err);
       }
       return;

@@ -35,7 +35,6 @@ export async function getManagerDashboard(): Promise<ManagerDashboardResult> {
   if (USE_MOCK_AUTH) {
     // Mock mode has no aggregation backend; return a zero-state payload
     // so the UI renders without 404s. Real numbers come from the API.
-    // eslint-disable-next-line no-console
     console.warn(
       "[dashboard] VITE_USE_MOCK_AUTH=true — returning zeroed mock payload, " +
         "not live data. Disable mock auth to see real metrics.",

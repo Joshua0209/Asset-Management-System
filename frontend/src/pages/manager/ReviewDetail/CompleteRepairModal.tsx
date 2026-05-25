@@ -43,7 +43,6 @@ const CompleteRepairModal: React.FC<CompleteRepairModalProps> = ({
       values = await form.validateFields();
     } catch (err) {
       if (!isAntdValidationError(err)) {
-        // eslint-disable-next-line no-console
         console.error('Unexpected error in complete-repair form validation', err);
       }
       return;
