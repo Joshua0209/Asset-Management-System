@@ -890,6 +890,112 @@ jobs:
           wait-for-service-stability: true
           wait-for-minutes: 10
 
+  # DESTRUCTIVE: wipes all four core tables and re-seeds demo data. Only
+  # fires on workflow_dispatch with the `run_seed` input ticked; never on
+  # push events. Runs after `deploy-backend` so the freshly seeded data
+  # matches the schema of the running image. The container image gates
+  # the seed script behind AMS_SEED_CONFIRM=1 (see CLAUDE.md §"Local dev
+  # environment"); this job sets that env override explicitly so a stray
+  # re-run of the rendered task definition can never accidentally re-seed.
+  seed-database:
+    name: Seed demo data (DESTRUCTIVE)
+    needs: [changes, build-and-push, migrate-database, deploy-backend]
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_seed == true }}
+    # Same bound as migrate-database. The seed itself completes in seconds
+    # but `aws ecs wait tasks-stopped` can poll for ~10 min before failing
+    # loudly if the task hangs.
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Fill placeholders in backend task definition
+        uses: ./.github/actions/render-task-def
+        with:
+          task-def-path: infra/ecs/backend-task-def.json
+          required-vars: |
+            ACCOUNT_ID
+            REGION
+            REPAIR_S3_BUCKET
+            DATABASE_URL_SECRET_NAME
+            APP_SECRET_NAME
+            BOOTSTRAP_MANAGER_EMAIL
+            GC_OTLP_ENDPOINT
+            GC_PYROSCOPE_ENDPOINT
+            GC_SECRET_NAME
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          REGION: ${{ vars.AWS_REGION }}
+          REPAIR_S3_BUCKET: ${{ vars.REPAIR_S3_BUCKET }}
+          DATABASE_URL_SECRET_NAME: ${{ vars.DATABASE_URL_SECRET_NAME }}
+          APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
+          BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
+          GC_OTLP_ENDPOINT: ${{ secrets.GC_OTLP_ENDPOINT }}
+          GC_PYROSCOPE_ENDPOINT: ${{ secrets.GC_PYROSCOPE_ENDPOINT }}
+          GC_SECRET_NAME: ${{ vars.GC_SECRET_NAME }}
+
+      - name: Render seed task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/backend-task-def.json
+          container-name: backend
+          image: ${{ needs.build-and-push.outputs.backend-image }}
+
+      - name: Run seed task
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_MIGRATION_SUBNETS: ${{ vars.ECS_MIGRATION_SUBNETS }}
+          ECS_MIGRATION_SECURITY_GROUPS: ${{ vars.ECS_MIGRATION_SECURITY_GROUPS }}
+          TASK_DEFINITION: ${{ steps.render.outputs.task-definition }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ECS_MIGRATION_SUBNETS}" ] || [ -z "${ECS_MIGRATION_SECURITY_GROUPS}" ]; then
+            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
+            exit 1
+          fi
+          network_config=$(jq -cn \
+            --argjson subnets "${ECS_MIGRATION_SUBNETS}" \
+            --argjson sgs "${ECS_MIGRATION_SECURITY_GROUPS}" \
+            '{awsvpcConfiguration: {subnets: $subnets, securityGroups: $sgs, assignPublicIp: "DISABLED"}}')
+          # AMS_SEED_CONFIRM=1 is the in-script safety gate (see
+          # scripts/seed_demo_data.py). The seed will abort without it
+          # even when invoked directly. Set as an env override here so
+          # the rendered task definition stays unchanged from the one
+          # `deploy-backend` registered.
+          overrides=$(jq -cn '{
+            containerOverrides: [{
+              name: "backend",
+              command: ["python", "scripts/seed_demo_data.py"],
+              environment: [{name: "AMS_SEED_CONFIRM", value: "1"}]
+            }]
+          }')
+          task_arn=$(aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --task-definition "${TASK_DEFINITION}" \
+            --launch-type FARGATE \
+            --network-configuration "${network_config}" \
+            --overrides "${overrides}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          echo "Seed task ARN: $task_arn"
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn"
+          exit_code=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$exit_code" != "0" ]; then
+            stopped_reason=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --query 'tasks[0].stoppedReason' --output text)
+            echo "::error::Seed failed with exit code ${exit_code}. stoppedReason: ${stopped_reason}. Check CloudWatch logs for task $task_arn."
+            exit 1
+          fi
+
   # CD: upsert the dashboard JSONs into Grafana Cloud on every main commit
   # that touches the dashboard set. Blocks on failure - a half-applied
   # dashboard tree silently drifts from the repo, which is the failure
