@@ -9,7 +9,7 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ApiError, repairRequestsApi } from '@/api';
 import { getApiErrorMessage } from '@/utils/apiErrors';
@@ -26,14 +26,30 @@ import type {
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20];
 
+const STATUS_FILTER_VALUES: RepairRequestStatus[] = [
+  'pending_review',
+  'under_repair',
+  'completed',
+  'rejected',
+];
+
+function parseStatusParam(raw: string | null): RepairRequestStatus | undefined {
+  // Reject unknown strings so a stray ?status=foo can't poison the API
+  // request — the backend would 422 and the table would silently empty.
+  return raw && (STATUS_FILTER_VALUES as string[]).includes(raw)
+    ? (raw as RepairRequestStatus)
+    : undefined;
+}
+
 const Reviews: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusFilter = parseStatusParam(searchParams.get('status'));
   const [requests, setRequests] = useState<RepairRequestRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
-  const [statusFilter, setStatusFilter] = useState<RepairRequestStatus | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,7 +154,18 @@ const Reviews: React.FC = () => {
           value={statusFilter}
           onChange={(value) => {
             setPage(1);
-            setStatusFilter(value);
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                if (value) {
+                  next.set('status', value);
+                } else {
+                  next.delete('status');
+                }
+                return next;
+              },
+              { replace: true },
+            );
           }}
           style={{ width: 220 }}
           options={[

@@ -1,9 +1,18 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 import Reviews from "@/pages/manager/Reviews";
 import i18n from "@/i18n";
+
+function renderWithRouter(initialEntries: string[] = ["/reviews"]) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <Reviews />
+    </MemoryRouter>,
+  );
+}
 
 const { mockNavigate } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
@@ -79,7 +88,7 @@ describe("Reviews", () => {
 
   it("renders repair list and status badge", async () => {
     await act(async () => {
-      render(<Reviews />);
+      renderWithRouter();
     });
 
     await waitFor(() => {
@@ -100,7 +109,7 @@ describe("Reviews", () => {
     mockListRepairRequests.mockResolvedValueOnce(buildResponse("completed"));
 
     await act(async () => {
-      render(<Reviews />);
+      renderWithRouter();
     });
 
     await waitFor(() => {
@@ -114,11 +123,25 @@ describe("Reviews", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/reviews/rr-1");
   });
 
+  it("initializes the status filter from the URL query string", async () => {
+    await act(async () => {
+      renderWithRouter(["/reviews?status=pending_review"]);
+    });
+
+    await waitFor(() => {
+      expect(mockListRepairRequests).toHaveBeenCalledWith({
+        page: 1,
+        perPage: 5,
+        status: "pending_review",
+      });
+    });
+  });
+
   it("applies status filter and reloads list", async () => {
     const user = userEvent.setup({ delay: null });
 
     await act(async () => {
-      render(<Reviews />);
+      renderWithRouter();
     });
 
     await waitFor(() => {

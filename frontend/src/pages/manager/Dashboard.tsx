@@ -200,7 +200,7 @@ const Dashboard: React.FC = () => {
       <Card
         title={t("dashboard.recentPending.title")}
         extra={
-          <Button type="link" onClick={() => navigate("/reviews")}>
+          <Button type="link" onClick={() => navigate("/reviews?status=pending_review")}>
             {t("dashboard.recentPending.viewAll")}
           </Button>
         }
