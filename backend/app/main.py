@@ -159,10 +159,12 @@ def _warn_if_proxy_trust_misconfigured(
     ``X-Forwarded-For``. Every anonymous request then collapses into one
     bucket keyed on the ALB IP, and the limiter silently self-DoSes.
 
-    The fix is to set ``FORWARDED_ALLOW_IPS`` to the ALB-subnet VPC CIDR in
-    the ECS task definition. This WARN gives operators a CloudWatch
-    breadcrumb when the override is missing — mirroring the existing
-    ``RATE_LIMIT_ENABLED=false`` WARN.
+    The fix is to set ``FORWARDED_ALLOW_IPS=*`` in the ECS task definition,
+    which is safe so long as the task security group restricts ingress to
+    the ALB (the SG, not ``*``, is what enforces ALB-only traffic — see
+    ``docs/system-design/08-deployment-operations.md`` §"Behind the ALB").
+    This WARN gives operators a CloudWatch breadcrumb when the override is
+    missing — mirroring the existing ``RATE_LIMIT_ENABLED=false`` WARN.
 
     Skipped when rate limiting is off, since the rate-limit-disabled WARN
     already covers that case loudly.
@@ -175,10 +177,10 @@ def _warn_if_proxy_trust_misconfigured(
             "enabled. Behind an ALB this collapses every anonymous request "
             "into the load-balancer's private-IP bucket and silently defeats "
             "credential-stuffing protection on /auth/login. Set "
-            "FORWARDED_ALLOW_IPS to '*' in the ECS task definition (safe when "
-            "tasks are in private subnets behind an ALB). See "
+            "FORWARDED_ALLOW_IPS in the ECS task definition. See "
             "docs/system-design/08-deployment-operations.md §'Behind the ALB: "
-            "client-IP resolution'."
+            "client-IP resolution' for the value to use and the SG-ingress "
+            "precondition that keeps it safe."
         )
 
 
