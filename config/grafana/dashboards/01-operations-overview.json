@@ -422,7 +422,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "backend-cpu-avg",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         },
         {
           "datasource": {
@@ -439,7 +442,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "backend-cpu-max",
-          "refId": "B"
+          "refId": "B",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "ECS Backend CPU (Production)",
@@ -495,7 +501,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "backend-mem-avg",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         },
         {
           "datasource": {
@@ -512,7 +521,10 @@
           "region": "ap-east-2",
           "period": "60",
           "legendFormat": "backend-mem-max",
-          "refId": "B"
+          "refId": "B",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "ECS Backend Memory (Production)",
@@ -603,7 +615,10 @@
           "period": "60",
           "matchExact": false,
           "legendFormat": "requests/min",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         },
         {
           "datasource": {
@@ -620,7 +635,10 @@
           "period": "60",
           "matchExact": false,
           "legendFormat": "5xx/min",
-          "refId": "B"
+          "refId": "B",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "ALB Request Volume + 5xx (Production)",
@@ -676,7 +694,10 @@
           "period": "60",
           "matchExact": false,
           "legendFormat": "p95",
-          "refId": "A"
+          "refId": "A",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         },
         {
           "datasource": {
@@ -693,7 +714,10 @@
           "period": "60",
           "matchExact": false,
           "legendFormat": "p99",
-          "refId": "B"
+          "refId": "B",
+          "metricEditorMode": 0,
+          "metricQueryType": 0,
+          "queryMode": "Metrics"
         }
       ],
       "title": "ALB Target Response Time (Production)",
