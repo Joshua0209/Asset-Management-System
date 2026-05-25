@@ -5,6 +5,7 @@ const MAX_DIGITS = 15;
 
 export interface AmountValidatorOptions {
   required?: boolean;
+  allowZero?: boolean;
   formatKey?: ParseKeys;
   positiveKey?: ParseKeys;
 }
@@ -28,7 +29,8 @@ export function createAmountValidator(
       throw new Error(t(formatKey));
     }
     const numeric = Number.parseFloat(raw);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
+    const isInvalidAmount = opts.allowZero ? numeric < 0 : numeric <= 0;
+    if (!Number.isFinite(numeric) || isInvalidAmount) {
       throw new Error(t(positiveKey));
     }
     const digitCount = raw.replace('.', '').replace(/^0+/, '').length;

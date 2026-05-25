@@ -30,6 +30,7 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
   }, [open, initialValues, form]);
 
   const validateRepairCost = createAmountValidator(t, {
+    allowZero: true,
     formatKey: 'validation.repairCostFormat',
     positiveKey: 'validation.repairCostPositive',
   });

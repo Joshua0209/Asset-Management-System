@@ -30,7 +30,7 @@ const ApproveRepairModal: React.FC<ApproveRepairModalProps> = ({
   }, [open, initialValues, form]);
 
   const validateRepairCost = createAmountValidator(t, {
-    required: true,
+    allowZero: true,
     formatKey: 'validation.repairCostFormat',
     positiveKey: 'validation.repairCostPositive',
   });
@@ -42,7 +42,12 @@ const ApproveRepairModal: React.FC<ApproveRepairModalProps> = ({
     } catch {
       return;
     }
-    await onSubmit(values);
+    const { repair_cost, ...rest } = values;
+    const normalizedCost = repair_cost?.trim();
+    const normalizedValues = normalizedCost
+      ? { ...rest, repair_cost: normalizedCost }
+      : rest;
+    await onSubmit(normalizedValues);
   };
 
   return (

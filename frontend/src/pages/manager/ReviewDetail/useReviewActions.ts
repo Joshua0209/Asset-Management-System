@@ -6,7 +6,7 @@ import { useSubmitAction } from '@/hooks/useSubmitAction';
 export interface ApproveValues {
   repair_plan: string;
   repair_vendor: string;
-  repair_cost: string;
+  repair_cost?: string;
   planned_date: string;
 }
 

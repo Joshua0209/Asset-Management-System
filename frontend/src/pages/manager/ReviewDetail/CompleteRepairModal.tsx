@@ -31,6 +31,7 @@ const CompleteRepairModal: React.FC<CompleteRepairModalProps> = ({
 
   const validateRepairCost = createAmountValidator(t, {
     required: true,
+    allowZero: true,
     formatKey: 'validation.repairCostFormat',
     positiveKey: 'validation.repairCostPositive',
   });
@@ -81,6 +82,7 @@ const CompleteRepairModal: React.FC<CompleteRepairModalProps> = ({
         <Form.Item
           name="repair_cost"
           label={t('reviews.form.repairCost')}
+          required
           rules={[{ validator: validateRepairCost }]}
         >
           <Input type="number" min={0} step="0.01" />

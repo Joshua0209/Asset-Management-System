@@ -86,6 +86,7 @@ const AssetFormFields: React.FC<AssetFormFieldsProps> = ({
       <Form.Item
         name="purchase_amount"
         label={t('assetList.form.purchaseAmount')}
+        required
         rules={[{ validator: validatePurchaseAmount }]}
       >
         <Input type="number" min={0} step="0.01" />
