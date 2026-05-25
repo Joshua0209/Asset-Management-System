@@ -933,6 +933,18 @@ jobs:
   # re-run of the rendered task definition can never accidentally re-seed.
   seed-database:
     name: Seed demo data (DESTRUCTIVE)
+    # `deploy-backend` is in `needs:` so the seed runs against the
+    # already-rolled-out task set — the freshly seeded rows therefore land
+    # while the new code is serving traffic, not while the previous image
+    # is still on the ALB. Note this implies the seed can ONLY fire on a
+    # workflow_dispatch event: `deploy-backend` is gated on
+    # `changes.outputs.backend == 'true'` which is forced to `true` on
+    # workflow_dispatch (see the `changes` job's aggregate step), so the
+    # backend deploys unconditionally on dispatch. On a `push` event,
+    # deploy-backend may be skipped (frontend-only commit) and `needs:`
+    # would silently skip this job too — but the `if:` guard below
+    # already restricts the trigger to workflow_dispatch with run_seed
+    # ticked, so the silent-skip path is unreachable in practice.
     needs: [changes, build-and-push, migrate-database, deploy-backend]
     runs-on: ubuntu-latest
     # `inputs.run_seed` is declared `type: boolean` but reaches the workflow
