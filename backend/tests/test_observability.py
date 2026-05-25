@@ -1612,6 +1612,100 @@ def test_verify_observability_exports_emits_synthetic_signals_before_flush(
     )
     attrs = probe_spans[0].attributes or {}
     assert attrs.get("ams.probe") == "startup", attrs
+def test_verify_observability_exports_surfaces_synthetic_emit_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken instrument during the synthetic-emit phase surfaces as a
+    structured RuntimeError, not a raw stacktrace.
+
+    Locks the L5 contract. The synthetic emit block at
+    ``observability.py:669-696`` exists so ``force_flush`` has data to
+    push (without it, an empty buffer returns True trivially and the
+    probe gives false confidence). Each emit is wrapped in
+    ``try/except Exception: failures.append(...)`` precisely so a
+    broken instrument (proxy not yet swapped, SDK API drift, exporter
+    shutdown race) cannot crash the container before the diagnostic
+    message renders. A regression that stripped the noqa+except would
+    fail here.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
+    _patch_all_providers(monkeypatch)
+    # Drive the metrics-emit arm into the exception path by making the
+    # synthetic counter's add raise. Patching create_counter to return
+    # a mock whose add raises is the cleanest way; the existing
+    # PROFILING_INIT_FAILURES / FRONTEND_OBS_FAILURES module-level
+    # counters are unaffected.
+    broken_counter = MagicMock()
+    broken_counter.add = MagicMock(side_effect=RuntimeError("simulated SDK drift"))
+    with patch.object(obs._meter, "create_counter", return_value=broken_counter):
+        with pytest.raises(RuntimeError, match=r"metrics-emit \(.*simulated SDK drift"):
+            obs.verify_observability_exports(settings)
+
+
+def test_trace_context_lock_serialises_concurrent_first_warnings(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``_TRACE_CONTEXT_LOCK`` makes the once-and-quiet contract hold
+    under concurrent failures.
+
+    The processor's check-then-set on ``_TRACE_CONTEXT_WARNED`` is
+    NOT atomic across threads even with CPython's GIL — two threads
+    can both read False, both flip True, both emit "first failure"
+    warnings. The lock around the check-then-set was added
+    specifically for this case (uvicorn's thread-pool executor runs
+    sync routes concurrently even with WEB_CONCURRENCY=1). Without
+    the lock, an unlucky concurrent burst would spam multiple "first
+    failure" warnings — exactly the spam the once-and-quiet
+    contract is supposed to prevent.
+
+    The existing single-threaded test ("warns only once on repeated
+    get-span failures") proves the sentinel works sequentially, not
+    that the lock prevents the documented race. This test spawns 8
+    threads that all call the processor with a broken
+    _get_current_span; asserts exactly one warning lands in caplog
+    despite 8 concurrent first-failure attempts. A regression that
+    removed the lock would fail here.
+    """
+    import threading
+
+    from app.core import observability as obs
+
+    # Per the global conftest autouse fixture, _TRACE_CONTEXT_WARNED
+    # starts False.
+    assert obs._TRACE_CONTEXT_WARNED is False
+
+    barrier = threading.Barrier(8)
+
+    def _broken_get_span() -> Any:
+        raise RuntimeError("simulated concurrent first failure")
+
+    def _hit_processor() -> None:
+        barrier.wait()
+        obs._structlog_processor_trace_context(
+            None,
+            "info",
+            {"event": "concurrent"},
+            _get_current_span=_broken_get_span,
+        )
+
+    threads = [threading.Thread(target=_hit_processor) for _ in range(8)]
+    with caplog.at_level(logging.WARNING, logger="app.core.observability"):
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+    matching = [
+        rec for rec in caplog.records
+        if "structlog trace_id stamping disabled" in rec.getMessage()
+    ]
+    assert len(matching) == 1, [rec.getMessage() for rec in matching]
+
+
 def test_setup_metrics_exporter_is_idempotent_within_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

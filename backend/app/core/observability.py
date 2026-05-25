@@ -61,14 +61,18 @@ _TRACE_CONTEXT_LOCK = threading.Lock()
 _METRICS_EXPORTER_INSTALLED: bool = False
 _LOG_EXPORTER_INSTALLED: bool = False
 _TRACING_INSTALLED: bool = False
-# Bounded LRU-style cache for the Resource. The cache is keyed by the
+# Bounded FIFO cache for the Resource. The cache is keyed by the
 # resource-identifying tuple; in prod the same tuple is computed three
 # times during startup (once per ``setup_*_exporter``) and the cache
 # saves three calls into OTel's host/process auto-detection. The test
 # suite cycles through a handful of (replica_id, app_version,
 # environment) combinations — the explicit upper bound keeps a
 # pathological future test that loops over many combos from growing
-# the cache unboundedly.
+# the cache unboundedly. Eviction is FIFO (oldest insertion is dropped
+# on overflow) rather than true LRU because cache hits in production
+# are confined to the three same-tuple lookups during a single boot —
+# move-to-end on hit would add complexity without any measurable
+# benefit. See _build_resource for the eviction code.
 _RESOURCE_CACHE_MAX = 8
 _RESOURCE_CACHE: dict[tuple[str, str, str, str], Any] = {}
 
@@ -317,9 +321,12 @@ def _build_resource(settings: Settings) -> Any:
     process auto-detection doesn't run three times at boot (once per
     setup_*_exporter call site). The cache has an explicit upper
     bound (``_RESOURCE_CACHE_MAX``); on overflow the oldest entry is
-    evicted — keeps a pathological future test that loops over many
-    (replica_id, app_version, environment) combinations from growing
-    the cache unboundedly.
+    evicted (FIFO, NOT LRU — production hits are bounded to the three
+    same-tuple lookups during a single boot, so promotion-on-hit
+    would add complexity without changing the working set). Keeps a
+    pathological future test that loops over many (replica_id,
+    app_version, environment) combinations from growing the cache
+    unboundedly.
     """
     key = (
         "ams-backend",
@@ -788,18 +795,32 @@ def verify_observability_exports(settings: Settings) -> None:
     # real, not the global no-op ProxyProvider, so ``force_flush`` is
     # guaranteed to exist as a callable. A missing attribute now is a
     # programming error (SDK version regression) and surfaces as
-    # AttributeError — which is what we want.
+    # AttributeError — which would crash with a raw stack trace before
+    # the structured RuntimeError below renders. Wrap each flush so
+    # an SDK-internal raise (transient network blip surfacing on the
+    # foreground flush, async-export-thread teardown race, etc.)
+    # becomes a structured failure in the same RuntimeError payload
+    # operators expect, instead of an opaque traceback.
     meter_provider = otel_metrics.get_meter_provider()
-    if not meter_provider.force_flush(5_000):  # type: ignore[attr-defined]
-        failures.append("metrics-flush")
+    try:
+        if not meter_provider.force_flush(5_000):  # type: ignore[attr-defined]
+            failures.append("metrics-flush")
+    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
+        failures.append(f"metrics-flush ({exc!r})")
 
     tracer_provider = otel_trace.get_tracer_provider()
-    if not tracer_provider.force_flush(5_000):  # type: ignore[attr-defined]
-        failures.append("traces-flush")
+    try:
+        if not tracer_provider.force_flush(5_000):  # type: ignore[attr-defined]
+            failures.append("traces-flush")
+    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
+        failures.append(f"traces-flush ({exc!r})")
 
     logger_provider = get_logger_provider()
-    if not logger_provider.force_flush(5_000):  # type: ignore[attr-defined]
-        failures.append("logs-flush")
+    try:
+        if not logger_provider.force_flush(5_000):  # type: ignore[attr-defined]
+            failures.append("logs-flush")
+    except Exception as exc:  # noqa: BLE001 - structured failure aggregation
+        failures.append(f"logs-flush ({exc!r})")
 
     if failures:
         raise RuntimeError(
