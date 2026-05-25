@@ -295,19 +295,28 @@
         "type": "custom"
       },
       {
-        "current": {"selected": false, "text": "ams-prod-mysql", "value": "ams-prod-mysql"},
+        "datasource": {"type": "cloudwatch", "uid": "cfmzw3p1ziebkb"},
+        "definition": "dimension_values(ap-east-2,AWS/RDS,CPUUtilization,DBInstanceIdentifier)",
         "hide": 0,
         "includeAll": false,
         "label": "RDS Instance",
         "multi": false,
         "name": "dbinstance",
-        "options": [
-          {"selected": true, "text": "ams-prod-mysql", "value": "ams-prod-mysql"}
-        ],
-        "query": "ams-prod-mysql",
-        "queryValue": "",
+        "options": [],
+        "query": {
+          "attributeName": "DBInstanceIdentifier",
+          "dimensionFilters": {},
+          "metricName": "CPUUtilization",
+          "namespace": "AWS/RDS",
+          "queryType": "dimensionValues",
+          "refId": "CloudWatchVariableQueryEditor-VariableQuery",
+          "region": "ap-east-2"
+        },
+        "refresh": 1,
+        "regex": "",
         "skipUrlSync": false,
-        "type": "custom"
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
