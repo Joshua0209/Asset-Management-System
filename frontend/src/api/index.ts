@@ -13,3 +13,4 @@ export * as authApi from "./auth";
 export * as assetsApi from "./assets";
 export * as usersApi from "./users";
 export * as repairRequestsApi from "./repair-requests";
+export * as dashboardApi from "./dashboard";
