@@ -302,7 +302,7 @@ def _parse_otlp_headers(raw: str) -> dict[str, str] | None:
 
     The OTLP exporter SDK accepts both shapes — a raw ``key=value,key=value``
     string OR a pre-parsed ``dict[str, str]`` — but which one is the default
-    has flipped across the ``opentelemetry-exporter-otlp-proto-grpc`` minor
+    has flipped across the ``opentelemetry-exporter-otlp-proto-http`` minor
     versions in the pinned range (``>=1.27,<2.0``). Today the string-parser
     path is wired; a 1.28+ minor that flips the default surfaces as
     ``TypeError: 'str' object has no attribute 'items'`` from inside the
@@ -351,6 +351,23 @@ def _parse_otlp_headers(raw: str) -> dict[str, str] | None:
         key, _, value = kv.partition("=")
         out[key.strip()] = value.strip()
     return out or None
+
+
+def _signal_endpoint(base: str, signal: str) -> str:
+    """Append the OTLP/HTTP signal path to a base endpoint.
+
+    GC's OTLP gateway exposes signal-specific URLs under the base ``/otlp``
+    path (``/otlp/v1/traces``, ``/otlp/v1/metrics``, ``/otlp/v1/logs``).
+    The HTTP/protobuf exporter only auto-appends ``/v1/<signal>`` when it
+    reads ``OTEL_EXPORTER_OTLP_ENDPOINT`` from the environment itself; when
+    it's constructed with an explicit ``endpoint=`` kwarg (as we do, because
+    ``settings.otel_endpoint`` is read from our legacy ``OTEL_ENDPOINT``
+    name, not the spec env var), the URL is used verbatim. Without this
+    helper every signal would POST to the bare ``/otlp`` root and the
+    gateway would return 404 — the same silent-export-failure class that
+    motivated the gRPC → HTTP switch in the first place.
+    """
+    return f"{base.rstrip('/')}/v1/{signal}"
 
 
 def _build_resource(settings: Settings) -> Any:
@@ -499,13 +516,13 @@ def setup_log_exporter(settings: Settings) -> None:
         return
 
     from opentelemetry._logs import set_logger_provider
-    from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+    from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
     from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
     from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
     provider = LoggerProvider(resource=_build_resource(settings))
     exporter = OTLPLogExporter(
-        endpoint=settings.otel_endpoint,
+        endpoint=_signal_endpoint(settings.otel_endpoint, "logs"),
         headers=_parse_otlp_headers(settings.otel_exporter_otlp_headers.get_secret_value()),
     )
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
@@ -592,7 +609,7 @@ def setup_metrics_exporter(settings: Settings) -> None:
         logger.debug("MeterProvider already installed; skipping re-install.")
         return
 
-    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+    from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk.metrics.view import View
@@ -613,7 +630,7 @@ def setup_metrics_exporter(settings: Settings) -> None:
     ]
 
     exporter = OTLPMetricExporter(
-        endpoint=settings.otel_endpoint,
+        endpoint=_signal_endpoint(settings.otel_endpoint, "metrics"),
         headers=_parse_otlp_headers(settings.otel_exporter_otlp_headers.get_secret_value()),
     )
     reader = PeriodicExportingMetricReader(exporter)
@@ -647,7 +664,7 @@ def setup_tracing(settings: Settings) -> None:
         return
 
     from opentelemetry import trace as otel_trace
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
         OTLPSpanExporter,
     )
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
@@ -656,7 +673,7 @@ def setup_tracing(settings: Settings) -> None:
 
     provider = TracerProvider(resource=_build_resource(settings))
     exporter = OTLPSpanExporter(
-        endpoint=settings.otel_endpoint,
+        endpoint=_signal_endpoint(settings.otel_endpoint, "traces"),
         headers=_parse_otlp_headers(settings.otel_exporter_otlp_headers.get_secret_value()),
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))

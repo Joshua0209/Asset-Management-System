@@ -676,7 +676,7 @@ def test_setup_metrics_exporter_installs_working_meter_provider(
 
     with (
         patch(
-            "opentelemetry.exporter.otlp.proto.grpc.metric_exporter.OTLPMetricExporter",
+            "opentelemetry.exporter.otlp.proto.http.metric_exporter.OTLPMetricExporter",
             return_value=fake_exporter,
         ),
         patch.object(otel_metrics, "set_meter_provider", _capture),
@@ -1070,6 +1070,42 @@ def test_parse_otlp_headers_trims_whitespace() -> None:
 
     parsed = _parse_otlp_headers("  Authorization = Basic dGVzdA== ,  X = Y ")
     assert parsed == {"Authorization": "Basic dGVzdA==", "X": "Y"}
+
+
+def test_signal_endpoint_appends_v1_signal_path() -> None:
+    """`_signal_endpoint` appends ``/v1/<signal>`` to the OTLP base URL.
+
+    The HTTP/protobuf exporter only auto-appends the signal path when it
+    reads ``OTEL_EXPORTER_OTLP_ENDPOINT`` from the environment itself —
+    when we pass ``endpoint=`` explicitly (which we must, because our
+    settings load from the legacy ``OTEL_ENDPOINT`` name, not the spec
+    env var), the URL is used verbatim. Without this helper every signal
+    would POST to the bare ``/otlp`` root and the GC gateway would 404
+    silently — the exact silent-export-failure class that motivated the
+    gRPC → HTTP exporter switch.
+    """
+    from app.core.observability import _signal_endpoint
+
+    base = "https://otlp-gateway-prod-ap-northeast-0.grafana.net/otlp"
+    assert _signal_endpoint(base, "traces") == f"{base}/v1/traces"
+    assert _signal_endpoint(base, "metrics") == f"{base}/v1/metrics"
+    assert _signal_endpoint(base, "logs") == f"{base}/v1/logs"
+
+
+def test_signal_endpoint_normalises_trailing_slash() -> None:
+    """A trailing ``/`` on the base must not produce a double slash.
+
+    The GC gateway is lenient about ``/otlp//v1/traces`` (collapses it),
+    but other OTLP collectors (Alloy, the OTel Collector) reject the
+    double slash with a 404. Strip the trailing slash so the helper works
+    against any spec-compliant gateway.
+    """
+    from app.core.observability import _signal_endpoint
+
+    assert (
+        _signal_endpoint("https://example.com/otlp/", "traces")
+        == "https://example.com/otlp/v1/traces"
+    )
 
 
 def test_build_resource_cache_evicts_oldest_at_capacity(
@@ -1910,7 +1946,7 @@ def test_setup_metrics_exporter_is_idempotent_within_process(
         provider.shutdown()
     with (
         patch(
-            "opentelemetry.exporter.otlp.proto.grpc.metric_exporter.OTLPMetricExporter",
+            "opentelemetry.exporter.otlp.proto.http.metric_exporter.OTLPMetricExporter",
             return_value=fake_exporter,
         ),
         patch.object(otel_metrics, "set_meter_provider", _capture),
