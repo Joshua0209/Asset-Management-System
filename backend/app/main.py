@@ -29,11 +29,15 @@ from app.schemas.repair_request import RepairRequestCreate
 
 settings = get_settings()
 
-# Configure structlog BEFORE any logger.warning() below so the boot-time
-# rate-limit / proxy-trust warnings (and the single-worker guard's
-# RuntimeError chain) land as structured records, not pre-config plaintext.
-# Idempotent for re-imports under pytest.
+# Configure structlog AND attach the OTel log exporter BEFORE any
+# logger.warning() below so the boot-time rate-limit / proxy-trust
+# warnings (and the single-worker guard's RuntimeError chain) land in
+# Grafana Cloud Loki as structured records, not pre-config plaintext on
+# the container stderr where only CloudWatch can find them. The exporter
+# is a no-op when OTEL_ENABLED is false (pytest / dev default), so this
+# is safe for non-prod boots too. Idempotent for re-imports under pytest.
 setup_logging(settings)
+setup_log_exporter(settings)
 
 logger = logging.getLogger(__name__)
 
@@ -196,23 +200,20 @@ app.add_middleware(
 )
 
 # Observability (W6 Phase 3, OTLP-native):
-#   Ordering — log_exporter → metrics → metrics_exporter → tracing →
-#   profiling. setup_log_exporter attaches the OTel ``LoggingHandler``
-#   BEFORE any further log call so early startup events still reach
-#   Grafana Cloud Loki. setup_metrics installs the FastAPI instrumentor
-#   (an ASGI middleware) before app startup; FastAPI rejects middleware
-#   added after startup. setup_metrics_exporter then makes the
-#   ``MeterProvider`` real — module-level counters created at import
-#   time start writing into the new provider on the next ``.add()``
-#   because OTel counters resolve the provider lazily on each call.
-#   Every setup_* is a no-op when OTEL_ENABLED=false (pytest default),
-#   so the suite stays free of OTLP exporter threads.
+#   Ordering after setup_logging + setup_log_exporter (above): metrics →
+#   metrics_exporter → tracing → profiling. setup_metrics installs the
+#   FastAPI instrumentor (an ASGI middleware) before app startup;
+#   FastAPI rejects middleware added after startup. setup_metrics_exporter
+#   then makes the ``MeterProvider`` real — module-level counters created
+#   at import time start writing into the new provider on the next
+#   ``.add()`` because OTel counters resolve the provider lazily on each
+#   call. Every setup_* is a no-op when OTEL_ENABLED=false (pytest
+#   default), so the suite stays free of OTLP exporter threads.
 #
 #   maybe_setup_profiling is enabled in production as of Phase 3 (locked
 #   decision 5 reversed by the prod migration plan). The
 #   ``WEB_CONCURRENCY=1`` invariant above plus no ``gunicorn --preload``
 #   means the sampling thread starts inside the worker post-fork.
-setup_log_exporter(settings)
 setup_metrics(app, settings)
 setup_metrics_exporter(settings)
 setup_tracing(app, settings)
