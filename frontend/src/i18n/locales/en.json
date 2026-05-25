@@ -11,10 +11,10 @@
     },
     "nav": {
       "dashboard": "Dashboard",
-      "assets": "Assets",
+      "assets": "Asset Management",
       "myAssets": "My Assets",
       "repairs": "Repair Requests",
-      "reviews": "Reviews",
+      "reviews": "Repair Management",
       "users": "Users",
       "logout": "Log out"
     },
@@ -213,7 +213,7 @@
     "demoNotice": "Dashboard metrics are reserved for the demo data pass."
   },
   "reviews": {
-    "title": "Repair Reviews",
+    "title": "Repair Requests",
     "description": "Review, process, and complete repair requests.",
     "loadError": "Failed to load repair requests. Please try again later.",
     "empty": "No repair requests found.",
