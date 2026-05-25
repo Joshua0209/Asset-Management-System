@@ -56,14 +56,16 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     # Database connection: two mutually exclusive modes.
     #
-    # 1. **Full URL** (dev / docker-compose): set ``DATABASE_URL`` to a complete
-    #    SQLAlchemy URL like ``mysql+pymysql://user:pass@host:3306/ams``. This
-    #    is what ``.env`` and the local stack use.
-    # 2. **Component parts** (production / ECS): set ``DB_HOST``, ``DB_NAME``,
-    #    ``DB_USER``, ``DB_PASSWORD`` (the last two come from the
-    #    RDS-managed Secrets Manager entry; see ``infra/ecs/README.md``).
-    #    Letting ECS reference the RDS secret directly avoids manually
-    #    copying the rotated password into a second secret.
+    # 1. **Full URL** (production / dev / docker-compose): set ``DATABASE_URL``
+    #    to a complete SQLAlchemy URL like
+    #    ``mysql+pymysql://user:pass@host:3306/ams``. Production ECS pulls
+    #    this from the ``DATABASE_URL_SECRET_NAME`` Secrets Manager entry
+    #    (see ``infra/ecs/backend-task-def.json``); local dev reads it from
+    #    ``.env``. This is the canonical path.
+    # 2. **Component parts** (legacy / local fallback): set ``DB_HOST``,
+    #    ``DB_NAME``, ``DB_USER``, ``DB_PASSWORD``. Retained so existing
+    #    local setups that predate the ``DATABASE_URL`` migration continue
+    #    to boot, but new environments should use the full-URL form.
     #
     # When ``DATABASE_URL`` is set it wins; otherwise the component parts
     # are required and validated together by ``_require_database_config``.
@@ -215,9 +217,11 @@ class Settings(BaseSettings):
     def _require_database_config(self) -> "Settings":
         """Fail fast when DB configuration is incomplete.
 
-        Either ``DATABASE_URL`` *or* the full ``DB_HOST`` / ``DB_NAME`` /
-        ``DB_USER`` / ``DB_PASSWORD`` set must be supplied. We refuse to
-        boot with partial config (e.g. ``DB_HOST`` missing because of a
+        Production passes ``DATABASE_URL`` from Secrets Manager
+        (``DATABASE_URL_SECRET_NAME`` → ``infra/ecs/backend-task-def.json``).
+        Legacy local setups may still supply the full ``DB_HOST`` /
+        ``DB_NAME`` / ``DB_USER`` / ``DB_PASSWORD`` set instead. We refuse
+        to boot with partial config (e.g. ``DB_HOST`` missing because of a
         broken placeholder substitution) instead of falling through to a
         bogus default that would silently try to connect to localhost.
         Same posture as the wildcard-CORS check above and the required
