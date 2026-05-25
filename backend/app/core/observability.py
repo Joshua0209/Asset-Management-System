@@ -626,7 +626,7 @@ def setup_metrics_exporter(settings: Settings) -> None:
     _METRICS_EXPORTER_INSTALLED = True
 
 
-def setup_tracing(app: FastAPI, settings: Settings) -> None:
+def setup_tracing(settings: Settings) -> None:
     """Wire OTLP tracing for FastAPI + SQLAlchemy.
 
     No-op when ``settings.otel_enabled`` is False — keeps the dev image
