@@ -392,6 +392,47 @@ describe("initObservability", () => {
     vi.unstubAllGlobals();
   });
 
+  it("does not throw when navigator.sendBeacon synchronously throws (CSP / extension shim)", async () => {
+    // The browser is allowed to make ``sendBeacon`` throw rather than
+    // return false in several real-world scenarios:
+    //   * CSP ``connect-src`` rejects the URL — Chromium throws
+    //     ``TypeError: Failed to execute 'sendBeacon'``.
+    //   * Brave / uBlock Origin / NoScript shim sendBeacon and may
+    //     throw to surface a block decision to the page.
+    //   * An oversized body can throw ``RangeError`` on some browsers.
+    //
+    // The M5 fix replaces the previous empty ``catch {}`` with
+    // ``catch (beaconErr) { console.warn(...) }`` — locked here so a
+    // future regression that re-empties the catch (or, worse, lets
+    // the throw propagate) would fail this test. The app stays
+    // running; the dev sees a clear DevTools warning.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sendBeacon = vi.fn<(url: string, body: string) => boolean>(() => {
+      throw new TypeError("Refused to connect (CSP)");
+    });
+    vi.stubGlobal("navigator", { sendBeacon });
+    providerRegister.mockImplementationOnce(() => {
+      throw new Error("init failure under CSP-blocked beacon");
+    });
+    const { initObservability } = await importFreshModule();
+
+    // initObservability MUST resolve — the page does not crash.
+    const result = await initObservability({ enabled: true });
+    expect(result).toBe(false);
+    // sendBeacon was attempted exactly once (no retry — fire-and-forget).
+    expect(sendBeacon).toHaveBeenCalledTimes(1);
+    // The dev sees two warnings: the init-failure warn AND the
+    // M5 sendBeacon-threw warn. Both must fire for full diagnostic
+    // surface.
+    const warnings = warn.mock.calls.map((c) => String(c[0]));
+    expect(
+      warnings.some((m) => m.includes("sendBeacon threw")),
+    ).toBe(true);
+
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
   it("does not throw when navigator.sendBeacon is absent (older runtimes)", async () => {
     // The catch block in the catch block must never crash the app. A
     // jsdom runtime without sendBeacon (or a browser variant that

@@ -29,9 +29,11 @@ from __future__ import annotations
 
 import itertools
 import logging
+import os
 from collections.abc import Callable, Iterable
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -1267,6 +1269,89 @@ def test_verify_observability_exports_raises_on_flush_failure(
 
     with pytest.raises(RuntimeError, match="metrics-flush"):
         obs.verify_observability_exports(settings)
+
+
+def test_app_main_import_crashes_when_verify_observability_exports_raises(
+    tmp_path: Path,
+) -> None:
+    """Boot-crash contract: ``import app.main`` MUST propagate the RuntimeError.
+
+    ``verify_observability_exports`` is called at the module-import
+    top level of ``app.main`` with no surrounding try/except. The
+    silent-failure regression risk: a future refactor that wrapped
+    the call in ``try/except`` (or moved it behind a feature flag
+    that defaults off) would silently re-open the export-failure
+    gap — a wrong OTLP API key in prod would let the container boot
+    and pass the ALB health check while every trace / metric / log
+    was being dropped on the floor.
+
+    No existing test pinned the "no try-wrap; the container DOES
+    crash" contract. This one does it via subprocess isolation: the
+    test process already has ``app.main`` imported (conftest pulled
+    it in), so an in-process ``importlib.reload`` would entangle
+    fixtures + the test's own global state. A clean subprocess
+    booted with the right env vars + a monkeypatch site for the
+    verify probe is the cheapest honest way to verify the
+    fail-loud contract end-to-end.
+    """
+    import subprocess
+    import sys
+    import textwrap
+
+    # Build a tiny sitecustomize.py that monkeypatches the verify probe
+    # to raise BEFORE app.main's module-level call runs. Drop it into
+    # tmp_path and prepend tmp_path to PYTHONPATH so it loads first.
+    sitecustomize = tmp_path / "sitecustomize.py"
+    sitecustomize.write_text(
+        textwrap.dedent(
+            """
+            # Force verify_observability_exports to raise so we can
+            # observe whether app.main propagates or swallows.
+            import app.core.observability as _obs
+
+            def _explode(_settings):
+                raise RuntimeError(
+                    "synthetic failure: simulated OTLP wrong-API-key"
+                )
+
+            _obs.verify_observability_exports = _explode
+            """
+        )
+    )
+
+    # Repo root for PYTHONPATH so ``import app.main`` resolves the
+    # backend package — anchored on this test file's location so the
+    # test runs regardless of pytest's CWD.
+    backend_root = Path(__file__).resolve().parent.parent
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{tmp_path}{os.pathsep}{backend_root}"
+    # ``app.main`` reads these at import; pass minimal valid values so
+    # nothing else fails before our synthetic verify probe runs.
+    env.setdefault("DATABASE_URL", "sqlite:///:memory:")
+    env.setdefault("JWT_SECRET", "x")
+    env.setdefault("BOOTSTRAP_MANAGER_EMAIL", "boot@test.example")
+    env.setdefault("BOOTSTRAP_MANAGER_PASSWORD", "Password123")
+    env.setdefault("RATE_LIMIT_ENABLED", "false")  # skip the worker-count guard
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.main"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    # The contract: import MUST fail, returncode MUST be non-zero,
+    # and the synthetic RuntimeError message MUST appear in stderr
+    # so an operator reading container logs can identify the cause.
+    assert result.returncode != 0, (
+        f"app.main imported cleanly even though verify_observability_exports "
+        f"raised — the boot-crash contract is broken. stdout={result.stdout!r} "
+        f"stderr={result.stderr!r}"
+    )
+    assert "synthetic failure" in result.stderr, result.stderr
+    assert "RuntimeError" in result.stderr, result.stderr
 
 
 def test_verify_observability_exports_passes_on_successful_flush(

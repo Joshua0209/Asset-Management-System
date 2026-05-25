@@ -203,6 +203,45 @@ def test_empty_body_returns_204_without_counter_tick(
     assert _kind_count(metric_reader, "malformed_beacon") == before_malformed
 
 
+def test_user_agent_control_characters_are_stripped(
+    client: TestClient,
+    metric_reader: InMemoryMetricReader,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The User-Agent header is also passed through ``_CONTROL_CHARS_RE``.
+
+    The existing control-character test covers ``kind`` and ``message``
+    but not the third sanitised field. A regression that dropped the
+    UA sanitisation (e.g. by removing the line entirely or replacing
+    ``_CONTROL_CHARS_RE.sub`` with ``[:N]``) would land raw CR/LF in
+    Loki labels — log injection into the operator's terminal /
+    annotation viewer / Slack-bridge log forwarder. Pin the contract
+    so a future refactor cannot quietly drop the UA scrubbing.
+    """
+    import logging as stdlib_logging
+
+    poisoned_ua = "Mozilla/5.0\r\n\x00injected: fake-user-agent"
+    with caplog.at_level(stdlib_logging.WARNING):
+        response = client.post(
+            "/api/v1/observability/client-error",
+            json={"kind": "ua-probe", "message": "x"},
+            headers={"User-Agent": poisoned_ua},
+        )
+    assert response.status_code == 204, response.text
+    matched = [
+        rec for rec in caplog.records
+        if "Frontend observability init failure reported" in rec.message
+    ]
+    assert matched, [rec.message for rec in caplog.records]
+    extras_ua = getattr(matched[0], "user_agent", "")
+    for ch in ("\r", "\n", "\x00"):
+        assert ch not in extras_ua, (ch, extras_ua)
+    # The User-Agent's printable prefix is preserved (sanitisation is
+    # one-to-one with '?', not strip — locks the length-preserving
+    # contract documented at _CONTROL_CHARS_RE).
+    assert "Mozilla/5.0" in extras_ua, extras_ua
+
+
 def test_control_characters_are_stripped_from_logged_fields(
     client: TestClient,
     metric_reader: InMemoryMetricReader,
