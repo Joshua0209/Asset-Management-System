@@ -437,24 +437,25 @@ def test_main_aborts_on_consecutive_transport_failures(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Two consecutive 599 (URLError) returns from post_dashboard must
+    """N consecutive 599 (URLError) returns from post_dashboard must
     short-circuit the loop and report the unattempted dashboards as
-    skipped.
+    skipped. N matches ``_CONSECUTIVE_TRANSPORT_FAIL_LIMIT``.
 
     Without this fail-fast, a network outage against GC would produce
     ``len(dashboards) * HTTP_TIMEOUT_SECONDS`` of CI hang (6 × 30 s =
     3 min today, scaling with the dashboard count). The operator should
-    see the failure summary immediately. HTTPError-class failures
-    (4xx/5xx) do NOT trip the abort because they imply GC is reachable
-    and the issue is request-level.
+    see the failure summary at the threshold rather than after a long
+    CI hang. HTTPError-class failures (4xx/5xx) do NOT trip the abort
+    because they imply GC is reachable and the issue is request-level.
     """
-    _write_dashboard(tmp_path, "ams-1", "First")
-    _write_dashboard(tmp_path, "ams-2", "Second")
-    _write_dashboard(tmp_path, "ams-3", "Third")
-    _write_dashboard(tmp_path, "ams-4", "Fourth")
-    # First two are 599 (transport failure); after the second the loop
-    # aborts and the remaining two are never attempted.
-    mock_post = MagicMock(side_effect=[599, 599])
+    limit = sync_module._CONSECUTIVE_TRANSPORT_FAIL_LIMIT
+    # Need enough dashboards to surface the post-abort skip behavior.
+    total_dashboards = limit + 2
+    for i in range(1, total_dashboards + 1):
+        _write_dashboard(tmp_path, f"ams-{i}", f"#{i}")
+    # First ``limit`` are 599 (transport failure); after the limit-th
+    # the loop aborts and the remaining dashboards are never attempted.
+    mock_post = MagicMock(side_effect=[599] * limit)
     monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
     monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
 
@@ -463,16 +464,51 @@ def test_main_aborts_on_consecutive_transport_failures(
     )
 
     assert exit_code == 1
-    # Only two posts were attempted; the rest were skipped on abort.
-    assert mock_post.call_count == 2, mock_post.call_args_list
+    # Only ``limit`` posts were attempted; the rest were skipped on abort.
+    assert mock_post.call_count == limit, mock_post.call_args_list
     err = capsys.readouterr().err
     assert "ABORT" in err
     assert "consecutive transport failures" in err
-    # Summary mentions all four uids — two failed, two skipped after abort.
-    assert "4 of 4 dashboard" in err
-    assert "2 skipped after abort" in err
-    for uid in ("ams-1", "ams-2", "ams-3", "ams-4"):
-        assert uid in err, uid
+    skipped = total_dashboards - limit
+    assert f"{total_dashboards} of {total_dashboards} dashboard" in err
+    assert f"{skipped} skipped after abort" in err
+    for i in range(1, total_dashboards + 1):
+        assert f"ams-{i}" in err, f"ams-{i}"
+
+
+def test_main_isolated_transport_blip_does_not_abort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An isolated 599 followed by a success must NOT trip the abort.
+
+    Pins the L3 contract: the threshold-3 fail-fast is for genuine
+    outage detection, not for any single transient. The counter
+    must reset on the first non-599 status so a network blip in
+    the middle of an otherwise-healthy sync doesn't cause a false
+    abort.
+    """
+    _write_dashboard(tmp_path, "ams-1", "First")
+    _write_dashboard(tmp_path, "ams-2", "Second")
+    _write_dashboard(tmp_path, "ams-3", "Third")
+    _write_dashboard(tmp_path, "ams-4", "Fourth")
+    # Pattern: 599, 200, 599, 200 — counter resets on each 200, so
+    # the run completes with two failures + two successes, not an
+    # abort.
+    mock_post = MagicMock(side_effect=[599, 200, 599, 200])
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--stack-url", "https://x.grafana.net"]
+    )
+
+    # Two failures means non-zero exit, but ABORT must not appear.
+    assert exit_code == 1
+    assert mock_post.call_count == 4, mock_post.call_args_list
+    err = capsys.readouterr().err
+    assert "ABORT" not in err, err
 
 
 def test_main_does_not_abort_on_consecutive_http_4xx_failures(

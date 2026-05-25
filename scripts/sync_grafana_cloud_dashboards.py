@@ -44,7 +44,15 @@ HTTP_TIMEOUT_SECONDS = 30
 # wait out ``len(dashboards) * HTTP_TIMEOUT_SECONDS`` (6 × 30 s = 3 min
 # on a network outage). Operator gets the partial-failure summary
 # immediately instead of after a long CI hang.
-_CONSECUTIVE_TRANSPORT_FAIL_LIMIT = 2
+#
+# Raised from 2 to 3 (PR review LOW): with threshold 2, a single bad
+# dashboard transient at iteration 1 followed by a coincidental
+# transient at iteration 2 aborts the remaining four dashboards even
+# though GC is reachable. Threshold 3 keeps the bound on the
+# pathological-outage hang at 3 × 30s = 90s (still well under CI job
+# step timeouts) while letting an isolated double-blip recover via
+# the counter-reset on the next non-599 status.
+_CONSECUTIVE_TRANSPORT_FAIL_LIMIT = 3
 
 
 def load_dashboards(

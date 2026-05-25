@@ -155,7 +155,19 @@ function derivePropagateUrlsFromEnv(): (string | RegExp)[] | undefined {
   if (apiBase.startsWith("/")) return undefined;
   try {
     const origin = new URL(apiBase).origin;
-    return [origin];
+    // Anchor the matcher to the origin AS A PREFIX FOLLOWED BY PATH
+    // BOUNDARY, not as a bare prefix. The OTel fetch instrumentor's
+    // string-matcher form does ``url.startsWith(entry)`` — so
+    // ``[origin]`` (string) would match ``https://api.example.com``
+    // against ``https://api.example.com.evil.com`` (which startsWith
+    // the trusted origin but is a different host). VITE_API_BASE_URL
+    // is operator-controlled so the practical risk is low, but the
+    // regex form is correct-by-construction. Path boundary is ``/``
+    // or end-of-string so ``https://api.example.com`` and
+    // ``https://api.example.com/api/v1`` both match while
+    // ``https://api.example.com.evil.com/...`` doesn't.
+    const escapedOrigin = origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return [new RegExp(`^${escapedOrigin}(/|$)`)];
   } catch (err) {
     // A typo in VITE_API_BASE_URL would silently disable trace-header
     // propagation across the FE → BE boundary — spans on each side would

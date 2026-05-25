@@ -50,29 +50,15 @@ logger = logging.getLogger(__name__)
 _TRACE_CONTEXT_WARNED: bool = False
 # Lock around the check-then-set on ``_TRACE_CONTEXT_WARNED``. CPython's
 # GIL makes a bare assignment atomic, but the *check-then-set* pattern
-# (``if not _TRACE_CONTEXT_WARNED: _TRACE_CONTEXT_WARNED = True``)
 # is not — two threads can both read False and both emit "first
-# failure" warnings. The file's TODO at ``maybe_setup_profiling``
-# contemplates relaxing ``WEB_CONCURRENCY=1``, after which this
-# would matter; uvicorn also runs sync routes on a thread-pool
-# executor today, so concurrent failures are technically possible
-# even single-worker. Cheap insurance.
+# failure" warnings. uvicorn runs sync routes on a thread-pool executor
+# even with WEB_CONCURRENCY=1, so concurrent failures are reachable;
+# see test_trace_context_lock_serialises_concurrent_first_warnings.
 _TRACE_CONTEXT_LOCK = threading.Lock()
 _METRICS_EXPORTER_INSTALLED: bool = False
 _LOG_EXPORTER_INSTALLED: bool = False
 _TRACING_INSTALLED: bool = False
-# Bounded FIFO cache for the Resource. The cache is keyed by the
-# resource-identifying tuple; in prod the same tuple is computed three
-# times during startup (once per ``setup_*_exporter``) and the cache
-# saves three calls into OTel's host/process auto-detection. The test
-# suite cycles through a handful of (replica_id, app_version,
-# environment) combinations — the explicit upper bound keeps a
-# pathological future test that loops over many combos from growing
-# the cache unboundedly. Eviction is FIFO (oldest insertion is dropped
-# on overflow) rather than true LRU because cache hits in production
-# are confined to the three same-tuple lookups during a single boot —
-# move-to-end on hit would add complexity without any measurable
-# benefit. See _build_resource for the eviction code.
+# Bounded FIFO cache. See _build_resource docstring for rationale.
 _RESOURCE_CACHE_MAX = 8
 _RESOURCE_CACHE: dict[tuple[str, str, str, str], Any] = {}
 

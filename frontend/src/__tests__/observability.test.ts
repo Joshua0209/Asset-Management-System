@@ -158,11 +158,22 @@ describe("initObservability", () => {
     const { initObservability } = await importFreshModule();
     await initObservability();
     const config = lastInstrumentationConfig();
-    expect(config?.["@opentelemetry/instrumentation-fetch"]).toEqual(
-      expect.objectContaining({
-        propagateTraceHeaderCorsUrls: ["http://localhost:8000"],
-      }),
-    );
+    const urls =
+      config?.["@opentelemetry/instrumentation-fetch"]?.propagateTraceHeaderCorsUrls;
+    // The matcher is a path-anchored regex (not a bare prefix string)
+    // so a lookalike origin like ``http://localhost:8000.evil.com``
+    // cannot match. Pin both the structural shape (length 1, RegExp)
+    // and the matching behavior on representative URLs.
+    expect(Array.isArray(urls)).toBe(true);
+    expect(urls).toHaveLength(1);
+    const matcher = urls?.[0];
+    expect(matcher).toBeInstanceOf(RegExp);
+    const re = matcher as RegExp;
+    expect(re.test("http://localhost:8000")).toBe(true);
+    expect(re.test("http://localhost:8000/api/v1/assets")).toBe(true);
+    // Path-boundary anchor rejects lookalike hosts.
+    expect(re.test("http://localhost:8000.evil.com/x")).toBe(false);
+    expect(re.test("http://localhost:8000evil/x")).toBe(false);
   });
 
   it("does not derive propagation URLs when VITE_API_BASE_URL is relative", async () => {

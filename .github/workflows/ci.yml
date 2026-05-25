@@ -474,8 +474,6 @@ jobs:
   # Path-filtered CI gate for the Grafana Cloud dashboard JSONs. Runs on
   # every PR + main push when dashboards change so a malformed dashboard
   # (missing `uid`, invalid JSON) is caught before the real sync below.
-  # --dry-run is network-free and dep-free - the script is stdlib only,
-  # so no pip install step is needed.
   dashboards-validate:
     name: Dashboards - dry-run sync
     runs-on: ubuntu-latest
