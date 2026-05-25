@@ -705,21 +705,46 @@ jobs:
         # Executes `alembic upgrade head` as a one-off task using the new
         # image. Blocks until the task stops. If it fails (exit code != 0),
         # this job fails and `deploy-backend` is skipped — preventing
-        # the app from booting against an old schema.
+        # the app from booting against an old schema. Forward-only:
+        # rollback to a prior schema needs a manual revert migration.
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_MIGRATION_SUBNETS: ${{ vars.ECS_MIGRATION_SUBNETS }}
+          ECS_MIGRATION_SECURITY_GROUPS: ${{ vars.ECS_MIGRATION_SECURITY_GROUPS }}
+          TASK_DEFINITION: ${{ steps.render.outputs.task-definition }}
         run: |
+          set -euo pipefail
+          # Fail fast on missing infra vars. The previous fallback to
+          # hardcoded subnet / security-group IDs leaked VPC topology into
+          # source control AND silently routed migrations into a VPC that
+          # might not match ECS_CLUSTER. Matches the `required-vars` posture
+          # used by the render-task-def action above.
+          if [ -z "${ECS_MIGRATION_SUBNETS}" ] || [ -z "${ECS_MIGRATION_SECURITY_GROUPS}" ]; then
+            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
+            exit 1
+          fi
+          network_config=$(jq -cn \
+            --argjson subnets "${ECS_MIGRATION_SUBNETS}" \
+            --argjson sgs "${ECS_MIGRATION_SECURITY_GROUPS}" \
+            '{awsvpcConfiguration: {subnets: $subnets, securityGroups: $sgs, assignPublicIp: "DISABLED"}}')
           task_arn=$(aws ecs run-task \
-            --cluster ${{ vars.ECS_CLUSTER }} \
-            --task-definition ${{ steps.render.outputs.task-definition }} \
+            --cluster "${ECS_CLUSTER}" \
+            --task-definition "${TASK_DEFINITION}" \
             --launch-type FARGATE \
-            --network-configuration '{"awsvpcConfiguration":{"subnets":${{ vars.ECS_MIGRATION_SUBNETS || '["subnet-012ee50b4bcc6f025", "subnet-03671ffdc6d6b7dfc"]' }},"securityGroups":${{ vars.ECS_MIGRATION_SECURITY_GROUPS || '["sg-06c4f6205c2295403"]' }},"assignPublicIp":"DISABLED"}}' \
+            --network-configuration "${network_config}" \
             --overrides '{"containerOverrides":[{"name":"backend","command":["alembic","upgrade","head"]}]}' \
             --query 'tasks[0].taskArn' \
             --output text)
           echo "Migration task ARN: $task_arn"
-          aws ecs wait tasks-stopped --cluster ${{ vars.ECS_CLUSTER }} --tasks "$task_arn"
-          exit_code=$(aws ecs describe-tasks --cluster ${{ vars.ECS_CLUSTER }} --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn"
+          exit_code=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)
           if [ "$exit_code" != "0" ]; then
-            echo "::error::Migration failed with exit code $exit_code. Check CloudWatch logs for task $task_arn."
+            # `exitCode` is `None` when the container never started (e.g.
+            # Secrets Manager fetch failure → no log stream is created and
+            # CloudWatch is useless). Surface `stoppedReason` so the operator
+            # sees the real cause without spelunking through describe-tasks.
+            stopped_reason=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --query 'tasks[0].stoppedReason' --output text)
+            echo "::error::Migration failed with exit code ${exit_code}. stoppedReason: ${stopped_reason}. Check CloudWatch logs for task $task_arn."
             exit 1
           fi
 
