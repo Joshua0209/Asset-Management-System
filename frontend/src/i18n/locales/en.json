@@ -74,6 +74,7 @@
     "purchaseAmountFormat": "Purchase amount must be a positive number with up to 2 decimal places and 15 digits",
     "repairCostPositive": "Repair cost must be 0 or greater",
     "repairCostFormat": "Repair cost must be a non-negative number with up to 2 decimal places and 15 digits",
+    "atLeastOneRepairDetail": "Enter at least one repair detail",
     "purchaseDateNotFuture": "Purchase date cannot be in the future",
     "warrantyAfterPurchase": "Warranty expiry must be after purchase date",
     "warrantyAfterActivation": "Warranty expiry must be after activation date",

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Form, Input, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
 
@@ -22,10 +22,12 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm<RepairDetailsValues>();
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       form.setFieldsValue(initialValues);
+      setDetailError(null);
     }
   }, [open, initialValues, form]);
 
@@ -42,11 +44,19 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
     } catch {
       return;
     }
-    const normalizedValues: RepairDetailsValues = {
-      repair_date: values.repair_date,
-      repair_plan: values.repair_plan?.trim(),
-      repair_vendor: values.repair_vendor?.trim(),
-    };
+    const normalizedValues: RepairDetailsValues = {};
+    const repairDate = values.repair_date?.trim();
+    if (repairDate) {
+      normalizedValues.repair_date = repairDate;
+    }
+    const repairPlan = values.repair_plan?.trim();
+    if (repairPlan) {
+      normalizedValues.repair_plan = repairPlan;
+    }
+    const repairVendor = values.repair_vendor?.trim();
+    if (repairVendor) {
+      normalizedValues.repair_vendor = repairVendor;
+    }
     const faultContent = values.fault_content?.trim();
     if (faultContent) {
       normalizedValues.fault_content = faultContent;
@@ -55,6 +65,11 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
     if (repairCost) {
       normalizedValues.repair_cost = repairCost;
     }
+    if (Object.keys(normalizedValues).length === 0) {
+      setDetailError(t('validation.atLeastOneRepairDetail'));
+      return;
+    }
+    setDetailError(null);
     await onSubmit(normalizedValues);
   };
 
@@ -73,7 +88,6 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
         <Form.Item
           name="repair_date"
           label={t('reviews.form.repairDate')}
-          rules={[{ required: true, message: t('validation.required') }]}
         >
           <Input type="date" />
         </Form.Item>
@@ -83,7 +97,6 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
         <Form.Item
           name="repair_plan"
           label={t('reviews.form.repairPlan')}
-          rules={[{ required: true, message: t('validation.required') }]}
         >
           <Input.TextArea rows={3} />
         </Form.Item>
@@ -97,10 +110,10 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
         <Form.Item
           name="repair_vendor"
           label={t('reviews.form.repairVendor')}
-          rules={[{ required: true, message: t('validation.required') }]}
         >
           <Input />
         </Form.Item>
+        {detailError ? <Form.ErrorList errors={[detailError]} /> : null}
       </Form>
     </Modal>
   );
