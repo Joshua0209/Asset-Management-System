@@ -201,7 +201,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"}[5m]))",
+          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", service_instance_id=~\"$replica\"}[5m]))",
           "legendFormat": "rps",
           "refId": "A"
         }
@@ -264,7 +264,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\", http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"}[5m])), 0.001)",
+          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", service_instance_id=~\"$replica\", http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", service_instance_id=~\"$replica\"}[5m])), 0.001)",
           "legendFormat": "5xx ratio",
           "refId": "A"
         }
@@ -310,7 +310,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", service_instance_id=~\"$replica\"}[5m])) by (le))",
           "legendFormat": "p95",
           "refId": "A"
         }
@@ -356,7 +356,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"}[5m]))",
+          "expr": "sum(increase(http_server_duration_seconds_count{service_name=\"ams-backend\", service_instance_id=~\"$replica\"}[5m]))",
           "legendFormat": "requests",
           "refId": "A"
         }
@@ -403,7 +403,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (http_route, http_response_status_code) (rate(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"}[1m]))",
+          "expr": "sum by (http_route, http_response_status_code) (rate(http_server_duration_seconds_count{service_name=\"ams-backend\", service_instance_id=~\"$replica\"}[1m]))",
           "legendFormat": "{{http_route}} {{http_response_status_code}}",
           "refId": "A"
         }
@@ -449,7 +449,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.50, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"}[5m])) by (le, http_route))",
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", service_instance_id=~\"$replica\"}[5m])) by (le, http_route))",
           "legendFormat": "p50 {{http_route}}",
           "refId": "A"
         },
@@ -458,7 +458,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"}[5m])) by (le, http_route))",
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\", service_instance_id=~\"$replica\"}[5m])) by (le, http_route))",
           "legendFormat": "p95 {{http_route}}",
           "refId": "B"
         }
