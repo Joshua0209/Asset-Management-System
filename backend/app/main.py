@@ -10,7 +10,6 @@ from pydantic import ValidationError
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
@@ -450,8 +449,28 @@ def readiness_check() -> JSONResponse:
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-    except SQLAlchemyError as exc:
-        logger.warning("Readiness probe failed: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — see comment block below
+        # Broad ``except`` is the right shape for a *probe* (in contrast
+        # to business logic where it would mask bugs). Three real
+        # failure modes the prior ``SQLAlchemyError``-only catch missed:
+        #
+        # 1. ``QueuePool``/``TimeoutError`` on pool exhaustion: derives
+        #    from ``Exception``, not ``SQLAlchemyError``. The container
+        #    would 500 instead of 503, ALB would kill the task instead
+        #    of draining the unhealthy target.
+        # 2. ``OSError`` / ``ConnectionRefusedError`` from the DB driver
+        #    layer (RDS Multi-AZ failover mid-probe) that the SQLAlchemy
+        #    wrapper sometimes lets through directly.
+        # 3. Any third-party driver / instrumentation that raises a
+        #    non-SQLAlchemy exception type (e.g. OTel SQLAlchemy
+        #    instrumentor edge cases under partial-shutdown).
+        #
+        # A readiness probe that 5xx's on an unexpected exception type
+        # is strictly worse than one that 503's: 503 lets ALB drain
+        # the target without killing the otherwise-fine container; 5xx
+        # gets retried by the ALB and may trip the deploy gate. Catch
+        # broadly here on purpose.
+        logger.warning("Readiness probe failed: %s", exc, exc_info=True)
         return JSONResponse(
             status_code=503,
             content={"status": "not_ready", "checks": {"database": "down"}},
