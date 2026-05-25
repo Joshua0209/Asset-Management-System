@@ -1388,13 +1388,16 @@ def test_maybe_setup_profiling_is_noop_when_disabled(
 def test_maybe_setup_profiling_logs_warning_on_missing_pyroscope(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    metric_reader: InMemoryMetricReader,
 ) -> None:
-    """PYROSCOPE_ENABLED=true + pyroscope-io not installed -> warn, do not crash.
+    """PYROSCOPE_ENABLED=true + pyroscope-io not installed -> warn, counter ticks, do not crash.
+
     The dev image deliberately omits the ``prod`` extra to keep the local
     venv slim. A developer flipping PYROSCOPE_ENABLED=true without
     installing pyroscope-io must still boot, with a clear warning in the
-    logs. Setting ``sys.modules['pyroscope'] = None`` is the documented
-    way to make ``import pyroscope`` raise ImportError.
+    logs AND a counter increment so operators can alert on
+    ``rate(ams_profiling_init_failures_total[5m]) > 0`` for the
+    missing-wheel-in-prod regression.
     """
     import sys
 
@@ -1413,14 +1416,23 @@ def test_maybe_setup_profiling_logs_warning_on_missing_pyroscope(
     assert any(
         "pyroscope-io is not installed" in rec.message for rec in caplog.records
     ), [rec.message for rec in caplog.records]
+    assert _counter_value(
+        metric_reader,
+        "ams_profiling_init_failures_total",
+        {"reason": "missing_dependency"},
+    ) == 1.0
 def test_maybe_setup_profiling_logs_warning_on_configure_failure(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    metric_reader: InMemoryMetricReader,
 ) -> None:
-    """pyroscope.configure raising must be logged, not propagated.
+    """pyroscope.configure raising must be logged + counted, not propagated.
+
     Pyroscope misconfig (bad token, unreachable profiles endpoint, dep
     version mismatch) is not worth crashing the app over. The fix wraps
-    configure() in try/except; this test holds the line.
+    configure() in narrow try/except for ``(RuntimeError, OSError,
+    ValueError)``; this test holds the line and asserts the counter
+    increments under ``reason=configure_error`` for the alert rule.
     """
     import sys
     import types
@@ -1445,6 +1457,43 @@ def test_maybe_setup_profiling_logs_warning_on_configure_failure(
     assert any(
         "Pyroscope configure failed" in rec.message for rec in caplog.records
     ), [rec.message for rec in caplog.records]
+    assert _counter_value(
+        metric_reader,
+        "ams_profiling_init_failures_total",
+        {"reason": "configure_error"},
+    ) == 1.0
+
+
+def test_maybe_setup_profiling_propagates_programmer_typeerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A TypeError out of pyroscope.configure surfaces, not silently swallowed.
+
+    The narrow except clause deliberately omits TypeError because
+    that shape implies the calling code passed the wrong kwargs —
+    a programmer bug that should crash the test suite (or boot),
+    not be hidden behind a warning + counter.
+    """
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+    fake_pyroscope = types.ModuleType("pyroscope")
+    fake_pyroscope.configure = MagicMock(  # type: ignore[attr-defined]
+        side_effect=TypeError("unexpected keyword argument 'foo'")
+    )
+    monkeypatch.setitem(sys.modules, "pyroscope", fake_pyroscope)
+    settings = _settings_with_otel(
+        monkeypatch,
+        PYROSCOPE_ENABLED="true",
+        PYROSCOPE_SERVER="https://profiles.example",
+        PYROSCOPE_AUTH_TOKEN="tok-xyz",
+        PYROSCOPE_BASIC_AUTH_USERNAME="123456",
+        ENVIRONMENT="production",
+    )
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        obs.maybe_setup_profiling(settings)
 def test_verify_observability_exports_emits_synthetic_signals_before_flush(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

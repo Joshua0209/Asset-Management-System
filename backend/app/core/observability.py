@@ -159,6 +159,25 @@ indistinguishable from ``VITE_OTEL_ENABLED=false``. Operators alert on
 catch a regression in the next deploy.
 """
 
+PROFILING_INIT_FAILURES = _meter.create_counter(
+    "ams_profiling_init_failures_total",
+    description=(
+        "Pyroscope profiling init failures during ``maybe_setup_profiling``. "
+        "Attributes: reason ('missing_dependency' when pyroscope-io is not "
+        "installed, 'configure_error' when pyroscope.configure raises)."
+    ),
+)
+"""OTel counter for backend Pyroscope profiling init failures.
+
+The pyroscope-io client runs in a background sampling thread with no
+synchronous health surface — ``verify_observability_exports`` cannot
+probe it the way it probes OTLP. Without this counter the only signal
+that profiling silently went dark in prod is one WARN line at boot,
+which scrolls off the operator's dashboard in minutes. Alert on
+``rate(ams_profiling_init_failures_total[5m]) > 0`` to catch a missing
+``pyroscope-io`` wheel or a bad token in the next deploy.
+"""
+
 
 # ---------------------------------------------------------------------------
 # Tracing helpers
@@ -584,6 +603,7 @@ def maybe_setup_profiling(settings: Settings) -> None:
             "PYROSCOPE_ENABLED=true but pyroscope-io is not installed. "
             "Install the `prod` extra to enable continuous profiling."
         )
+        PROFILING_INIT_FAILURES.add(1, attributes={"reason": "missing_dependency"})
         return
     try:
         pyroscope.configure(
@@ -592,11 +612,17 @@ def maybe_setup_profiling(settings: Settings) -> None:
             basic_auth_username=settings.pyroscope_basic_auth_username,
             auth_token=settings.pyroscope_auth_token.get_secret_value(),
         )
-    except Exception as exc:  # pyroscope-io raises various RuntimeError shapes
+    except (RuntimeError, OSError, ValueError) as exc:
+        # Narrowed from a bare ``Exception``: pyroscope-io's known failure
+        # modes are bad-token / unreachable-server (RuntimeError), socket
+        # / DNS issues (OSError), and malformed-server-URL (ValueError).
+        # A TypeError would imply this code passed wrong kwargs — a
+        # programmer bug that should propagate, not be swallowed.
         logger.warning(
             "Pyroscope configure failed; continuous profiling disabled: %s",
             exc,
         )
+        PROFILING_INIT_FAILURES.add(1, attributes={"reason": "configure_error"})
 
 
 def verify_observability_exports(settings: Settings) -> None:
