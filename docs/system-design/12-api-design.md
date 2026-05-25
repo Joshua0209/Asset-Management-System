@@ -282,7 +282,7 @@ POST /api/v1/auth/login
 ```json
 {
   "data": {
-    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "token": "<JWT-access-token>",
     "expires_at": "2026-04-15T22:30:00Z",
     "user": {
       "id": "a1b2c3d4-...",
