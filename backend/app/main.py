@@ -186,6 +186,36 @@ def _warn_if_proxy_trust_misconfigured(
 
 _warn_if_proxy_trust_misconfigured(settings, os.environ.get("FORWARDED_ALLOW_IPS"))
 
+
+def _warn_if_database_config_is_legacy(settings_obj: "object") -> None:
+    """WARN when the legacy ``DB_HOST``/``DB_NAME``/``DB_USER``/``DB_PASSWORD`` set is in use.
+
+    Per ``backend/app/core/config.py``, the canonical production path is a
+    single ``DATABASE_URL`` (typically resolved from Secrets Manager via
+    ``DATABASE_URL_SECRET_NAME`` in the ECS task definition). The
+    component-parts form is retained only for legacy local setups that
+    predate the migration. Without a startup signal an operator cannot
+    tell from outside the container which path is in use, so a botched
+    Secrets Manager fetch that silently fell through to the component
+    defaults would never be visible until the next config audit.
+
+    Logged as WARNING (not INFO) so it surfaces in CloudWatch's default
+    log-level filters — mirrors the posture of the rate-limit-disabled
+    and FORWARDED_ALLOW_IPS warnings above.
+    """
+    if getattr(settings_obj, "database_url", None):
+        return
+    logger.warning(
+        "Database configured via legacy DB_HOST/DB_NAME/DB_USER/DB_PASSWORD "
+        "env vars, not DATABASE_URL. Production deploys should pull a single "
+        "DATABASE_URL from Secrets Manager via DATABASE_URL_SECRET_NAME (see "
+        "infra/ecs/backend-task-def.json). The component-parts form remains "
+        "supported for legacy local setups only."
+    )
+
+
+_warn_if_database_config_is_legacy(settings)
+
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
 # request time and emits the X-RateLimit-* headers.
 app.state.limiter = limiter
