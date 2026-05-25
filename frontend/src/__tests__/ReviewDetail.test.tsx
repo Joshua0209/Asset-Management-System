@@ -36,6 +36,7 @@ const mockUpdateRepairRequestDetails = vi.mocked(
   apiModule.repairRequestsApi.updateRepairRequestDetails,
 );
 const mockCompleteRepairRequest = vi.mocked(apiModule.repairRequestsApi.completeRepairRequest);
+
 type User = ReturnType<typeof userEvent.setup>;
 type RepairDetailInputs = {
   repairDate: string;
@@ -60,6 +61,7 @@ const approveFields = {
   ],
   empty: [],
 } satisfies Record<string, FieldEntry[]>;
+
 const completedRepairDetails = {
   repairDate: '2026-04-28',
   faultDescription: 'Resolved',
@@ -67,6 +69,7 @@ const completedRepairDetails = {
   repairCost: '1800',
   repairVendor: 'Vendor C',
 } satisfies RepairDetailInputs;
+
 const zeroCostCompletedRepairDetails = {
   ...completedRepairDetails,
   repairCost: '0',
@@ -365,7 +368,7 @@ describe('ReviewDetail', () => {
     await clickButton(user, 'Save');
 
     await waitFor(() => {
-      expect(screen.getByText('Please fill in at least one repair field')).toBeInTheDocument();
+      expect(screen.getByText('Enter at least one repair detail')).toBeInTheDocument();
     });
     expect(mockUpdateRepairRequestDetails).not.toHaveBeenCalled();
   });
@@ -431,17 +434,14 @@ describe('ReviewDetail', () => {
     await renderWithRequests(buildRequest('pending_review'), buildRequest('pending_review'));
     await submitApprove(user);
 
-    // Wait for conflict dialog
     await waitFor(() => {
       expect(screen.getAllByText('Update Conflict')[0]).toBeInTheDocument();
     });
 
-    // Dismiss the dialog
     await act(async () => {
       await user.click(screen.getByRole('button', { name: 'OK' }));
     });
 
-    // Verify refresh
     await waitFor(() => {
       expect(mockGetRepairRequestById).toHaveBeenCalledTimes(2);
     });
@@ -466,7 +466,6 @@ describe('ReviewDetail', () => {
     await waitFor(() => {
       expect(mockApi.error).not.toHaveBeenCalled();
     });
-
   });
 
   it('allows zero repair cost when completing a repair', async () => {
