@@ -957,6 +957,18 @@ jobs:
     # but `aws ecs wait tasks-stopped` can poll for ~10 min before failing
     # loudly if the task hangs.
     timeout-minutes: 15
+    # Second-factor gate on top of the in-script AMS_SEED_CONFIRM=1 check.
+    # Required reviewers configured on the `production-destructive`
+    # environment (Settings → Environments) must approve before this job
+    # starts. Without that one-checkbox approval in the dispatch UI is
+    # enough to wipe production data; with it, the operator who clicks
+    # `Run workflow` cannot also self-approve the job.
+    #
+    # The environment is referenced by name only; if it does not yet
+    # exist in repo settings the job runs without the protection (GitHub
+    # auto-creates an unprotected environment on first reference). Add
+    # required reviewers in Settings before relying on the gate.
+    environment: production-destructive
     permissions:
       id-token: write
       contents: read

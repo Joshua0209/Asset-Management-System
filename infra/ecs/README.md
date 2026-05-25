@@ -252,6 +252,32 @@ without `PassRole`, the API call fails. The `PassedToService`
 condition prevents the deploy role from handing those ARNs to anything
 other than ECS tasks (e.g. attaching them to an EC2 instance).
 
+## Required: configure the `production-destructive` environment
+
+The `seed-database` workflow job is gated on a GitHub environment of
+this name (Settings → Environments). The environment provides a
+manual-approval gate on top of the in-script `AMS_SEED_CONFIRM=1`
+check: a workflow_dispatch with `run_seed` ticked queues the job in a
+`waiting` state until one of the configured required reviewers
+clicks Approve. Without the reviewer list, a single operator with
+dispatch access can wipe all four core tables; with it, the operator
+who clicks `Run workflow` cannot also self-approve.
+
+Setup (one-time, per repo):
+
+1. Settings → Environments → New environment → name it
+   `production-destructive`.
+2. Under "Deployment protection rules" enable "Required reviewers"
+   and add at least one user or team that is NOT the typical
+   workflow_dispatch operator.
+3. Save. No secrets or variables need to be added to the environment;
+   the job inherits repo-level secrets and variables.
+
+If the environment is not configured, the job still runs but without
+any approval gate — GitHub auto-creates an unprotected environment on
+first reference. Check Settings → Environments after the first
+seed-database dispatch to confirm the protection is in place.
+
 ## Required: enable deployment circuit breaker on each ECS service
 
 The deploy workflow uses `wait-for-service-stability: true` with
