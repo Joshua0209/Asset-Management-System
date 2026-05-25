@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import desc, func, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.functions import Function
 
 from app.api.deps import ManagerUser
 from app.db.session import get_db
@@ -48,31 +50,25 @@ def get_manager_dashboard(
         # auditability but are not part of the "currently managed" view.
         non_disposed = Asset.status != AssetStatus.DISPOSED
 
-        total_assets = db.scalar(
-            select(func.count()).select_from(Asset).where(non_disposed)
-        ) or 0
-        in_use_assets = db.scalar(
-            select(func.count())
-            .select_from(Asset)
-            .where(Asset.status == AssetStatus.IN_USE)
-        ) or 0
-        under_repair_assets = db.scalar(
-            select(func.count())
-            .select_from(Asset)
-            .where(Asset.status == AssetStatus.UNDER_REPAIR)
-        ) or 0
-        pending_repair_requests = db.scalar(
-            select(func.count())
-            .select_from(RepairRequest)
-            .where(RepairRequest.status == RepairRequestStatus.PENDING_REVIEW)
-        ) or 0
+        # One round-trip for every asset KPI. MySQL 8 doesn't support
+        # FILTER on aggregates, so use SUM(CASE WHEN ...) which is portable
+        # and lets the planner do all work in a single table pass.
+        def _bucket(predicate: ColumnElement[bool]) -> Function[int]:
+            return func.coalesce(func.sum(case((predicate, 1), else_=0)), 0)
 
-        kpis = DashboardKpis(
-            total_assets=total_assets,
-            in_use_assets=in_use_assets,
-            under_repair_assets=under_repair_assets,
-            pending_repair_requests=pending_repair_requests,
-        )
+        asset_row = db.execute(
+            select(
+                _bucket(non_disposed).label("total"),
+                _bucket(Asset.status == AssetStatus.IN_STOCK).label("in_stock"),
+                _bucket(Asset.status == AssetStatus.IN_USE).label("in_use"),
+                _bucket(Asset.status == AssetStatus.PENDING_REPAIR).label(
+                    "pending_repair"
+                ),
+                _bucket(Asset.status == AssetStatus.UNDER_REPAIR).label(
+                    "under_repair"
+                ),
+            ).select_from(Asset)
+        ).one()
 
         # Order by count desc then category asc — deterministic for equal
         # buckets so tests and the UI render the same sequence.
@@ -93,37 +89,48 @@ def get_manager_dashboard(
         # All timestamps are stored UTC; converting to local TZ here would
         # couple the API contract to the server's clock config.
         today_start = datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+        tomorrow_start = today_start + timedelta(days=1)
 
-        created_today = db.scalar(
-            select(func.count())
-            .select_from(RepairRequest)
-            .where(RepairRequest.created_at >= today_start)
-        ) or 0
-        summary_pending = db.scalar(
-            select(func.count())
-            .select_from(RepairRequest)
-            .where(RepairRequest.status == RepairRequestStatus.PENDING_REVIEW)
-        ) or 0
-        summary_under_repair = db.scalar(
-            select(func.count())
-            .select_from(RepairRequest)
-            .where(RepairRequest.status == RepairRequestStatus.UNDER_REPAIR)
-        ) or 0
-        completed_today = db.scalar(
-            select(func.count())
-            .select_from(RepairRequest)
-            .where(
-                RepairRequest.status == RepairRequestStatus.COMPLETED,
-                RepairRequest.completed_at.is_not(None),
-                RepairRequest.completed_at >= today_start,
-            )
-        ) or 0
+        # Single-pass repair-summary aggregation. The same `pending_review`
+        # value also appears under `kpis.pending_repair_requests`; both are
+        # derived from this SUM(CASE ...) row so they cannot drift apart.
+        repair_row = db.execute(
+            select(
+                _bucket(
+                    (RepairRequest.created_at >= today_start)
+                    & (RepairRequest.created_at < tomorrow_start)
+                ).label("created_today"),
+                _bucket(
+                    RepairRequest.status == RepairRequestStatus.PENDING_REVIEW
+                ).label("pending_review"),
+                _bucket(
+                    RepairRequest.status == RepairRequestStatus.UNDER_REPAIR
+                ).label("under_repair"),
+                _bucket(
+                    (RepairRequest.status == RepairRequestStatus.COMPLETED)
+                    & RepairRequest.completed_at.is_not(None)
+                    & (RepairRequest.completed_at >= today_start)
+                    & (RepairRequest.completed_at < tomorrow_start)
+                ).label("completed_today"),
+            ).select_from(RepairRequest)
+        ).one()
 
         repair_summary = RepairSummary(
-            created_today=created_today,
-            pending_review=summary_pending,
-            under_repair=summary_under_repair,
-            completed_today=completed_today,
+            created_today=int(repair_row.created_today),
+            pending_review=int(repair_row.pending_review),
+            under_repair=int(repair_row.under_repair),
+            completed_today=int(repair_row.completed_today),
+        )
+
+        kpis = DashboardKpis(
+            total_assets=int(asset_row.total),
+            in_stock_assets=int(asset_row.in_stock),
+            in_use_assets=int(asset_row.in_use),
+            pending_repair_assets=int(asset_row.pending_repair),
+            under_repair_assets=int(asset_row.under_repair),
+            # Sourced from the same row as repair_summary.pending_review so
+            # the KPI and the summary card cannot disagree.
+            pending_repair_requests=repair_summary.pending_review,
         )
 
         # Explicit join on just the columns we need avoids the N+1 lazy

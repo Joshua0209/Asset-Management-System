@@ -10,7 +10,9 @@ from app.schemas.common import APIModel, UUIDString
 
 class DashboardKpis(APIModel):
     total_assets: int = Field(ge=0)
+    in_stock_assets: int = Field(ge=0)
     in_use_assets: int = Field(ge=0)
+    pending_repair_assets: int = Field(ge=0)
     under_repair_assets: int = Field(ge=0)
     pending_repair_requests: int = Field(ge=0)
 

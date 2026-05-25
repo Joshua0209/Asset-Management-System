@@ -104,7 +104,9 @@ class TestDashboardEmpty:
         body = response.json()["data"]
         assert body["kpis"] == {
             "total_assets": 0,
+            "in_stock_assets": 0,
             "in_use_assets": 0,
+            "pending_repair_assets": 0,
             "under_repair_assets": 0,
             "pending_repair_requests": 0,
         }
