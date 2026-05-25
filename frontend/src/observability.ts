@@ -98,8 +98,12 @@ export async function initObservability(
 
 const _CLIENT_ERROR_BEACON_URL = "/api/v1/observability/client-error";
 const _MAX_MESSAGE_LEN = 500;
+const _DEFAULT_INIT_FAILURE_KIND = "observability_init_failed";
 
-function reportInitFailure(err: unknown): void {
+function reportInitFailure(
+  err: unknown,
+  kind: string = _DEFAULT_INIT_FAILURE_KIND,
+): void {
   // Bail when the runtime doesn't support sendBeacon — the page-unload
   // safety guarantee that motivated sendBeacon is the reason we use it
   // here too (a regular fetch with no `await` can be cancelled before the
@@ -112,7 +116,7 @@ function reportInitFailure(err: unknown): void {
     err instanceof Error
       ? err.message.slice(0, _MAX_MESSAGE_LEN)
       : String(err).slice(0, _MAX_MESSAGE_LEN);
-  const body = JSON.stringify({ kind: "observability_init_failed", message });
+  const body = JSON.stringify({ kind, message });
   try {
     // sendBeacon ignores all responses (the browser cannot read them
     // even if a CORS handshake succeeded). Passing a plain string sets
@@ -213,6 +217,26 @@ function safeImportMetaEnv(): Record<string, string | undefined> {
       "[observability] import.meta.env unavailable; OTEL flags disabled",
       err,
     );
+    // M7 finding (silent-failure-hunter): when env access throws,
+    // ``readEnvFlag("VITE_OTEL_ENABLED")`` returns false and
+    // ``initObservability`` early-returns BEFORE its own try/catch
+    // can fire the backend beacon — operators see no signal at all,
+    // even though browser OTel is silently disabled for 100% of
+    // users. Fire the beacon ourselves with a distinct ``env_unavailable``
+    // kind so the operator can distinguish "bundler regression"
+    // from a normal init failure on the alert dashboard.
+    try {
+      reportInitFailure(err, "env_unavailable");
+    } catch (beaconErr) {
+      // reportInitFailure itself has a try/catch; this outer guard
+      // is paranoia for the case where the runtime that lost
+      // import.meta.env ALSO lost ``navigator`` (e.g. SSR import
+      // of this module). Telemetry must never crash the app.
+      console.warn(
+        "[observability] failed to report env_unavailable beacon",
+        beaconErr,
+      );
+    }
     return {};
   }
 }
