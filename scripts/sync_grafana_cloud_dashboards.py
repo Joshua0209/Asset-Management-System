@@ -6,7 +6,9 @@ truth for dashboards.
 
 Usage:
 
-    GRAFANA_CLOUD_API_KEY=<key> python scripts/sync_grafana_cloud_dashboards.py \\
+    GRAFANA_CLOUD_API_KEY=<key> \\
+    GC_CLOUDWATCH_UID=<stack-specific-uid> \\
+        python scripts/sync_grafana_cloud_dashboards.py \\
         --stack-url https://<stack>.grafana.net
 
     python scripts/sync_grafana_cloud_dashboards.py --dry-run   # parse, no POST
@@ -15,6 +17,21 @@ Reads every `*.json` under `config/grafana/dashboards/`, wraps each in the
 dashboards-DB payload shape (`{"dashboard": ..., "overwrite": true}`), and
 POSTs to `<stack-url>/api/dashboards/db`. Idempotent: existing dashboards
 are upserted by `uid`.
+
+Datasource UID remapping
+------------------------
+
+Dashboard JSONs reference datasources by the placeholder UIDs the local
+docker-compose stack used to provision (``prometheus``, ``loki``,
+``cloudwatch``, ``tempo``, ``pyroscope``). Grafana Cloud assigns its own
+UIDs to the hosted datasources (``grafanacloud-prom``, ``grafanacloud-logs``,
+``grafanacloud-traces``, ``grafanacloud-profiles``) and the AWS CloudWatch
+connector gets an auto-generated, stack-specific UID. Before POSTing, the
+script rewrites every ``datasource.uid`` in the dashboard payload from the
+placeholder to the real GC UID, so panels resolve their datasource in the
+stack the dashboards land in. Defaults match the GC standard names; the
+stack-specific CloudWatch UID is taken from ``GC_CLOUDWATCH_UID`` and is
+required only if any dashboard references the ``cloudwatch`` placeholder.
 """
 
 from __future__ import annotations
@@ -53,6 +70,39 @@ HTTP_TIMEOUT_SECONDS = 30
 # step timeouts) while letting an isolated double-blip recover via
 # the counter-reset on the next non-599 status.
 _CONSECUTIVE_TRANSPORT_FAIL_LIMIT = 3
+
+# Placeholder UIDs the dashboard JSONs use (left over from the docker-
+# compose era when Grafana was provisioned with datasources.yml pinning
+# these names). Each maps to either a GC-standard hosted-datasource UID
+# or, for CloudWatch, an env-var lookup since the AWS connector picks an
+# auto-generated UID per stack.
+#
+# ``grafana`` is Grafana's built-in datasource (annotations, etc.) and has
+# UID literally ``grafana`` in every instance — leave it alone, never
+# substitute.
+_PLACEHOLDER_UIDS: frozenset[str] = frozenset(
+    {"prometheus", "loki", "tempo", "pyroscope", "cloudwatch"}
+)
+_DEFAULT_UID_REMAP: dict[str, str] = {
+    "prometheus": "grafanacloud-prom",
+    "loki": "grafanacloud-logs",
+    "tempo": "grafanacloud-traces",
+    "pyroscope": "grafanacloud-profiles",
+    # No default for ``cloudwatch`` — the AWS connector's UID is
+    # auto-generated per stack (e.g. ``cfmzw3p1ziebkb``) and must be
+    # supplied via ``GC_CLOUDWATCH_UID``. ``build_uid_remap`` validates
+    # this if any dashboard references the placeholder.
+}
+# Env-var names that override each default. One per placeholder so a
+# future GC stack reshuffle does not need a code change — just an env
+# var update in CI.
+_UID_REMAP_ENV: dict[str, str] = {
+    "prometheus": "GC_PROMETHEUS_UID",
+    "loki": "GC_LOKI_UID",
+    "tempo": "GC_TEMPO_UID",
+    "pyroscope": "GC_PYROSCOPE_UID",
+    "cloudwatch": "GC_CLOUDWATCH_UID",
+}
 
 
 def load_dashboards(
@@ -98,6 +148,124 @@ def load_dashboards(
 def build_payload(dashboard: dict[str, Any]) -> dict[str, Any]:
     """Wrap a dashboard JSON in the Grafana dashboards-DB envelope."""
     return {"dashboard": dashboard, "overwrite": True}
+
+
+def collect_placeholder_uids(dashboard: dict[str, Any]) -> set[str]:
+    """Return the subset of ``_PLACEHOLDER_UIDS`` that ``dashboard`` references.
+
+    Walks every ``datasource.uid`` in the tree (panels, targets, templating
+    variables, annotations) so ``build_uid_remap`` knows exactly which env
+    vars are load-bearing for this batch. Without this, missing
+    ``GC_CLOUDWATCH_UID`` would only fail at GC-side at panel-render time
+    (silently empty panels), not at sync time.
+    """
+    found: set[str] = set()
+
+    def walk(obj: Any) -> None:
+        if isinstance(obj, dict):
+            ds = obj.get("datasource")
+            if isinstance(ds, dict):
+                uid = ds.get("uid")
+                if isinstance(uid, str) and uid in _PLACEHOLDER_UIDS:
+                    found.add(uid)
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item)
+
+    walk(dashboard)
+    return found
+
+
+def build_uid_remap(
+    dashboards: Sequence[dict[str, Any]],
+    env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Resolve the placeholder-UID → real-UID mapping for this batch.
+
+    Reads ``_UID_REMAP_ENV`` from ``env`` (defaults to ``os.environ``),
+    falls back to ``_DEFAULT_UID_REMAP`` for entries with no override,
+    and raises ``SystemExit(2)`` with a clear message if any placeholder
+    used by the dashboards has no real UID configured. The error names
+    the missing env var so an operator running this from a laptop or
+    reading a CI failure can fix it without grepping the source.
+    """
+    env_map: dict[str, str] = dict(env) if env is not None else dict(os.environ)
+    used: set[str] = set()
+    for dashboard in dashboards:
+        used |= collect_placeholder_uids(dashboard)
+    remap: dict[str, str] = {}
+    missing: list[str] = []
+    for placeholder in used:
+        env_name = _UID_REMAP_ENV[placeholder]
+        env_value = env_map.get(env_name, "").strip()
+        if env_value:
+            remap[placeholder] = env_value
+            continue
+        default = _DEFAULT_UID_REMAP.get(placeholder)
+        if default is not None:
+            remap[placeholder] = default
+            continue
+        missing.append(f"{placeholder} (set {env_name})")
+    if missing:
+        sys.stderr.write(
+            "Cannot resolve datasource UID for the following placeholder(s) "
+            "referenced by dashboards: "
+            f"{', '.join(sorted(missing))}. Set the named env var(s) and re-run.\n"
+        )
+        raise SystemExit(2)
+    return remap
+
+
+def remap_datasource_uids(
+    dashboard: dict[str, Any],
+    remap: dict[str, str],
+) -> dict[str, Any]:
+    """Return a deep copy of ``dashboard`` with placeholder UIDs rewritten.
+
+    Walks the entire dashboard tree (panels, nested rows, targets,
+    templating variables, annotations) and rewrites ``datasource.uid``
+    whenever the current value appears in ``remap``. Returns a new dict
+    so the caller can keep the original around for diagnostics; the
+    input is not mutated.
+
+    The ``datasource.type`` field is left alone — GC's hosted Prometheus
+    is still type ``prometheus``, GC's Loki is still type ``loki``, etc.
+    Only the UID changes.
+    """
+    if not remap:
+        # No placeholders referenced — defensive deep copy still preserves
+        # the immutability contract callers can rely on.
+        cloned: dict[str, Any] = json.loads(json.dumps(dashboard))
+        return cloned
+
+    def walk(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            new: dict[str, Any] = {}
+            for key, value in obj.items():
+                if key == "datasource" and isinstance(value, dict):
+                    new[key] = _maybe_remap_datasource(value, remap)
+                else:
+                    new[key] = walk(value)
+            return new
+        if isinstance(obj, list):
+            return [walk(item) for item in obj]
+        return obj
+
+    walked = walk(dashboard)
+    assert isinstance(walked, dict)
+    return walked
+
+
+def _maybe_remap_datasource(
+    datasource: dict[str, Any],
+    remap: dict[str, str],
+) -> dict[str, Any]:
+    uid = datasource.get("uid")
+    if isinstance(uid, str) and uid in remap:
+        return {**datasource, "uid": remap[uid]}
+    return dict(datasource)
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -215,6 +383,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     if args.dry_run:
+        # Resolve the UID remap even in dry-run so CI catches a missing
+        # GC_CLOUDWATCH_UID before the live sync ever runs. If env vars
+        # are absent on a developer laptop the standard defaults still
+        # let the dry run finish; only ``cloudwatch`` (which has no
+        # default) can block.
+        remap = build_uid_remap(dashboards)
         if dashboards:
             print(f"DRY RUN: would POST {len(dashboards)} dashboard(s):")
             for dashboard in dashboards:
@@ -222,6 +396,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     f"  - uid={dashboard['uid']}  "
                     f"title={dashboard.get('title', '<no-title>')}"
                 )
+            if remap:
+                print("\nDatasource UID remap:")
+                for placeholder, real in sorted(remap.items()):
+                    print(f"  {placeholder} -> {real}")
         if malformed:
             sys.stderr.write(
                 f"\n{len(malformed)} dashboard(s) malformed: "
@@ -260,6 +438,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         raise SystemExit(2)
 
+    # Build the UID remap BEFORE the publish loop so a missing
+    # GC_CLOUDWATCH_UID aborts with a clear error instead of silently
+    # posting dashboards whose CloudWatch panels would render empty.
+    remap = build_uid_remap(dashboards)
+    if remap:
+        print("Datasource UID remap:")
+        for placeholder, real in sorted(remap.items()):
+            print(f"  {placeholder} -> {real}")
+        print()
+
     failed_uids: list[str] = []
     consecutive_transport_fails = 0
     skipped_after_abort: list[str] = []
@@ -271,7 +459,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             # full unattempted set, not just the loop-end snapshot.
             skipped_after_abort.append(str(dashboard.get("uid", "<unknown>")))
             continue
-        status = post_dashboard(args.stack_url, api_key, build_payload(dashboard))
+        remapped = remap_datasource_uids(dashboard, remap)
+        status = post_dashboard(args.stack_url, api_key, build_payload(remapped))
         uid = str(dashboard.get("uid", "<unknown>"))
         # Strictly 2xx is success. A 3xx redirect (e.g. GC returning a
         # 302 to a login page when the token has insufficient scope) is
