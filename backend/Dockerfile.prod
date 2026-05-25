@@ -67,6 +67,13 @@ RUN useradd --create-home --uid 1000 app \
 # Copy installed deps from the builder stage.
 COPY --from=builder /install /usr/local
 COPY --chown=app:app app ./app
+# scripts/ is required at runtime so the `seed-database` CI job can override
+# the container command to `python scripts/seed_demo_data.py` against the
+# already-deployed image. The script is destructive and refuses to run
+# without AMS_SEED_CONFIRM=1 (set as an env override only by the seed job),
+# so a stray `ecs exec` from an operator cannot accidentally trigger it.
+# Audit on change: if scripts/ ever gains anything else that touches prod
+# state, gate it the same way or move it out of the prod image.
 COPY --chown=app:app scripts ./scripts
 COPY --chown=app:app alembic ./alembic
 COPY --chown=app:app alembic.ini ./alembic.ini
