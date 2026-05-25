@@ -803,7 +803,20 @@ jobs:
     # backend image is still rebuilt (deterministically, from unchanged
     # source) but ECS keeps serving the previous task revision instead of
     # rolling a no-op deploy.
-    if: ${{ needs.changes.outputs.backend == 'true' }}
+    #
+    # always() + !contains(failure/cancelled) mirrors build-and-push above.
+    # A bare `if: needs.changes.outputs.backend == 'true'` compiles to an
+    # implicit `success() && ...`, and that success() returns false when
+    # build-and-push had any skipped need (e.g. backend-lint skipped on a
+    # frontend-only push) — even though build-and-push itself succeeded via
+    # its own always() clause. That quirk silently skipped every single-side
+    # main deploy between PR #81 and this fix; sync-dashboards uses the same
+    # form and was unaffected.
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.changes.outputs.backend == 'true'
     concurrency:
       group: deploy-${{ github.ref }}
       cancel-in-progress: false
@@ -879,8 +892,14 @@ jobs:
     name: Deploy frontend (ECS rolling update)
     needs: [changes, build-and-push]
     runs-on: ubuntu-latest
-    # Per-side gate: see deploy-backend for the same rationale.
-    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    # Per-side gate: see deploy-backend for the same rationale, including
+    # the always() + !contains(failure/cancelled) form needed to survive
+    # build-and-push having path-filtered (skipped) ancestors.
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.changes.outputs.frontend == 'true'
     concurrency:
       group: deploy-${{ github.ref }}
       cancel-in-progress: false
