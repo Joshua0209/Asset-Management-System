@@ -1,6 +1,13 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import assets, auth, images, repair_requests, users
+from app.api.v1.endpoints import (
+    assets,
+    auth,
+    images,
+    observability,
+    repair_requests,
+    users,
+)
 
 # CORS surface invariants — the defaults in `Settings.cors_allowed_methods`
 # and `Settings.cors_allowed_headers` are tightly scoped to the actual route
@@ -22,3 +29,8 @@ api_router.include_router(
     tags=["repair_requests"],
 )
 api_router.include_router(images.router, prefix="/images", tags=["images"])
+api_router.include_router(
+    observability.router,
+    prefix="/observability",
+    tags=["observability"],
+)

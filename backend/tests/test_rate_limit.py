@@ -455,3 +455,13 @@ def test_authenticated_route_inherits_default_tier_limit(
         "expected default authenticated tier (5/minute under conftest) to "
         "kick in on an undecorated authenticated route"
     )
+
+
+# NOTE: the W6 Phase 8 middleware-order regression test that lived here
+# (``test_metrics_scrape_does_not_burn_rate_limit_quota``) was deleted in
+# Phase 3 of the prod migration plan along with the ``/metrics`` HTTP
+# route. OTel pushes metrics direct to Grafana Cloud, so the
+# slowapi/instrumentator co-tenancy contract that test pinned no longer
+# exists. The exemption surface today is just ``/health`` and ``/ready``,
+# covered by ``test_health_endpoint_is_exempt_from_rate_limit`` and
+# ``test_ready_endpoint_is_exempt_from_rate_limit`` above.

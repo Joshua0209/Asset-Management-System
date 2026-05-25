@@ -61,7 +61,10 @@ class TestBootstrapManager:
         assert user.name == settings.bootstrap_manager_name
         assert user.department == settings.bootstrap_manager_department
         # Password is stored hashed, verifies against the configured plaintext.
-        assert verify_password(settings.bootstrap_manager_password, user.password_hash)
+        assert verify_password(
+            settings.bootstrap_manager_password.get_secret_value(),
+            user.password_hash,
+        )
 
     def test_build_users_contains_bootstrap_manager(self) -> None:
         settings = get_settings()
