@@ -200,7 +200,7 @@ const Dashboard: React.FC = () => {
       <Card
         title={t("dashboard.recentPending.title")}
         extra={
-          <Button type="link" onClick={() => navigate("/manager/reviews")}>
+          <Button type="link" onClick={() => navigate("/reviews")}>
             {t("dashboard.recentPending.viewAll")}
           </Button>
         }
@@ -214,7 +214,7 @@ const Dashboard: React.FC = () => {
             renderItem={(item) => (
               <List.Item
                 style={{ cursor: "pointer" }}
-                onClick={() => navigate(`/manager/reviews/${item.id}`)}
+                onClick={() => navigate(`/reviews/${item.id}`)}
               >
                 <List.Item.Meta
                   title={
