@@ -7,6 +7,7 @@ from sqlalchemy.exc import DBAPIError, OperationalError
 
 from alembic import context
 from app.core.config import get_settings
+from app.db._alembic_url import escape_for_configparser
 from app.db.base import Base
 from app.models import (  # noqa: F401
     asset,
@@ -21,14 +22,15 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 settings = get_settings()
-# Double `%` before handing the URL to alembic. The Config object is
-# backed by configparser.ConfigParser with BasicInterpolation enabled
-# (via fileConfig above), so any literal `%` in DATABASE_URL — e.g. a
-# URL-encoded `%` in an RDS-rotated password — would raise
-# InterpolationSyntaxError the next time alembic reads sqlalchemy.url
-# through engine_from_config. `%%` survives interpolation as a single
-# `%` and SQLAlchemy URL-decodes it back to the original character.
-config.set_main_option("sqlalchemy.url", settings.sqlalchemy_database_url.replace("%", "%%"))
+# Escape literal `%` so configparser's BasicInterpolation does not raise
+# InterpolationSyntaxError on the next read of sqlalchemy.url (e.g.
+# through engine_from_config). The escape itself lives in
+# app/db/_alembic_url.py so the regression test can import it directly
+# rather than mirror it inline — see that module's docstring for the
+# full rationale and the negative-case tripwire.
+config.set_main_option(
+    "sqlalchemy.url", escape_for_configparser(settings.sqlalchemy_database_url)
+)
 
 target_metadata = Base.metadata
 
