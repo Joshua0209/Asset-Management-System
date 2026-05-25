@@ -27,9 +27,13 @@ test.describe("Manager approves a pending repair request", () => {
       plannedDate: "2026-06-10",
     });
 
-    // Assert — the success notification surfaces and the status badge on the
-    // detail page now reads "Under Repair".
-    await expect(page.getByText("Repair request approved")).toBeVisible();
+    // Assert — the FSM transition is durable evidence of success. The status
+    // row now reads "Under Repair" and the action panel exposes "Complete"
+    // (which only renders for under_repair requests). Toasts auto-dismiss
+    // after ~4.5s and are unreliable to assert against; the page state is
+    // the source of truth.
+    await expect(page.getByText("Current Status")).toBeVisible();
     await expect(page.getByText("Under Repair").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Complete", exact: true })).toBeVisible();
   });
 });

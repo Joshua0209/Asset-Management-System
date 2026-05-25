@@ -8,6 +8,10 @@ const FRONTEND_BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 // See `e2e/README.md` for how to bring the backend up via docker compose.
 const isCI = Boolean(process.env.CI);
 
+// Per-action delay (ms) for headed debugging. CI stays at 0 so timing-sensitive
+// flows don't slow down. Override locally with `E2E_SLOW_MO=500 npm run test:e2e:headed`.
+const slowMoMs = Number(process.env.E2E_SLOW_MO ?? 0);
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
@@ -28,6 +32,7 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    launchOptions: { slowMo: slowMoMs },
   },
 
   projects: [

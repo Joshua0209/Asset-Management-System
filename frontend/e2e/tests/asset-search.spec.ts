@@ -7,21 +7,29 @@ test.describe("Manager searches and filters the asset list", () => {
     const assetListPage = new AssetListPage(page);
     await assetListPage.goto();
 
-    // Capture the unfiltered row count so we can assert filtering actually
-    // shrank the result set, not just "<= baseline".
+    // Capture the unfiltered row count + a search term derived from real
+    // data so the assertion is seed-agnostic (different demo seeds will
+    // ship different model names over time).
     const baseRowCount = await assetListPage.assetRows.count();
     expect(baseRowCount).toBeGreaterThan(0);
+    const firstName = await assetListPage.firstRowName();
+    // Use the first whitespace-separated token of the name as the query —
+    // this guarantees at least one row matches and avoids partial-word
+    // surprises (e.g. searching "MacBook" when the row says "MacBook Pro").
+    const query = firstName.split(/\s+/)[0];
+    expect(query.length).toBeGreaterThan(0);
 
-    // Act — search for a known seed model.
-    await assetListPage.searchFor("ThinkPad");
+    // Act — search and confirm the result set narrowed.
+    await assetListPage.searchFor(query);
     const filteredRows = assetListPage.assetRows;
     const filteredCount = await filteredRows.count();
     expect(filteredCount).toBeGreaterThan(0);
     expect(filteredCount).toBeLessThanOrEqual(baseRowCount);
-    // Every visible row should match the query (the backend filters on code,
-    // name, and model — all three render in the table).
+    // Every visible row should match the query somewhere (the backend
+    // filters on code, name, and model — all three render in the table).
+    const queryPattern = new RegExp(escapeRegExp(query), "i");
     for (let i = 0; i < filteredCount; i += 1) {
-      await expect(filteredRows.nth(i)).toContainText(/ThinkPad/i);
+      await expect(filteredRows.nth(i)).toContainText(queryPattern);
     }
 
     // Reset and confirm we're back to the unfiltered baseline.
@@ -44,3 +52,7 @@ test.describe("Manager searches and filters the asset list", () => {
     }
   });
 });
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

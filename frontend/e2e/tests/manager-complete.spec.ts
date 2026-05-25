@@ -25,9 +25,13 @@ test.describe("Manager completes an in-repair request", () => {
       repairVendor: "聯強國際維修中心",
     });
 
-    // Assert — success notification surfaces and the status reads
-    // "Completed".
-    await expect(page.getByText("Repair request completed")).toBeVisible();
+    // Assert — the page now reports the terminal state. The action panel
+    // collapses to a "-" placeholder for completed/rejected requests, so the
+    // Complete button must NOT be visible anymore. The status label is the
+    // primary assertion; the absent button is a secondary guard. Toasts
+    // auto-dismiss after ~4.5s and are unreliable to assert against.
+    await expect(page.getByText("Current Status")).toBeVisible();
     await expect(page.getByText("Completed").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Complete", exact: true })).toBeHidden();
   });
 });
