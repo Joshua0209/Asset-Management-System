@@ -141,10 +141,12 @@ def _reset_observability_module_state() -> Iterable[None]:
         otel_trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
         otel_logs_api._internal._LOGGER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
         otel_logs_api._internal._LOGGER_PROVIDER = None  # type: ignore[attr-defined]
-        # Metrics has no Once guard but the global slot persists across
-        # tests; clear it so get_meter_provider() returns the proxy fresh.
-        # Tests that need a real provider visible to get_meter_provider()
-        # write to this slot directly (see synthetic-emit test).
+        # Metrics has a once-guard (``_METER_PROVIDER_SET_ONCE``) just
+        # like traces + logs; the prior version of this fixture mis-
+        # documented that it didn't. Clear both the guard and the
+        # global slot so the next ``metrics.set_meter_provider`` call
+        # takes effect rather than logging a warning and no-op'ing.
+        otel_metrics_internal._METER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
         otel_metrics_internal._METER_PROVIDER = None  # type: ignore[attr-defined]
 
     _reset()
@@ -1727,8 +1729,6 @@ def test_verify_observability_exports_emits_synthetic_signals_before_flush(
     from unittest.mock import MagicMock
 
     from opentelemetry import trace as otel_trace
-    from opentelemetry.metrics import _internal as otel_metrics_internal
-    from opentelemetry.metrics._internal import _PROXY_METER_PROVIDER
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -1739,12 +1739,14 @@ def test_verify_observability_exports_emits_synthetic_signals_before_flush(
     settings = _settings_with_otel(monkeypatch, ENVIRONMENT="production")
     reader = InMemoryMetricReader()
     meter_provider = MeterProvider(metric_readers=[reader])
-    _PROXY_METER_PROVIDER.on_set_meter_provider(meter_provider)
-    # Also write the real MeterProvider into the global slot so
-    # ``otel_metrics.get_meter_provider()`` in verify_observability_exports
-    # returns the real provider (with force_flush) instead of the proxy.
-    # The autouse fixture clears this slot between tests.
-    otel_metrics_internal._METER_PROVIDER = meter_provider  # type: ignore[attr-defined]
+    # Use the PUBLIC API for installing the meter provider. The autouse
+    # fixture ``_reset_observability_module_state`` clears
+    # ``_METER_PROVIDER_SET_ONCE`` per test, so this call takes effect
+    # rather than warning + no-op'ing. The prior version of this test
+    # reached into the ``_METER_PROVIDER`` private slot directly — that
+    # attribute has churned across OTel ``>=1.27,<2.0`` minors, so
+    # going through ``set_meter_provider`` is rot-resistant.
+    otel_metrics.set_meter_provider(meter_provider)
     span_exp = InMemorySpanExporter()
     tracer_provider = TracerProvider()
     tracer_provider.add_span_processor(SimpleSpanProcessor(span_exp))
@@ -1764,7 +1766,11 @@ def test_verify_observability_exports_emits_synthetic_signals_before_flush(
     try:
         obs.verify_observability_exports(settings)
     finally:
-        _PROXY_METER_PROVIDER.on_set_meter_provider(otel_metrics.NoOpMeterProvider())
+        # Autouse ``_reset_observability_module_state`` will fully tear
+        # the provider down between tests; this in-test pass-through
+        # reset just protects the assertion block below in case OTel
+        # adds eager re-bind semantics in a future minor.
+        pass
     probe_value = _counter_value(
         reader,
         "ams_observability_probe_total",

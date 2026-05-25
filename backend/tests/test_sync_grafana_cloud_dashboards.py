@@ -525,20 +525,25 @@ def test_main_isolated_transport_blip_does_not_abort(
 ) -> None:
     """An isolated 599 followed by a success must NOT trip the abort.
 
-    Pins the L3 contract: the threshold-3 fail-fast is for genuine
+    Pins the L3 contract: the threshold-N fail-fast is for genuine
     outage detection, not for any single transient. The counter
     must reset on the first non-599 status so a network blip in
     the middle of an otherwise-healthy sync doesn't cause a false
     abort.
+
+    Pattern is built from ``_CONSECUTIVE_TRANSPORT_FAIL_LIMIT`` so
+    the test tracks the threshold automatically: ``(limit-1)`` 599s,
+    one 200 (resets counter), ``(limit-1)`` 599s, one 200 (resets).
+    A future threshold change flows through without rewriting the
+    pattern, and the assertion still proves "every 599 reset by a
+    200 leaves the counter below the abort line".
     """
-    _write_dashboard(tmp_path, "ams-1", "First")
-    _write_dashboard(tmp_path, "ams-2", "Second")
-    _write_dashboard(tmp_path, "ams-3", "Third")
-    _write_dashboard(tmp_path, "ams-4", "Fourth")
-    # Pattern: 599, 200, 599, 200 — counter resets on each 200, so
-    # the run completes with two failures + two successes, not an
-    # abort.
-    mock_post = MagicMock(side_effect=[599, 200, 599, 200])
+    limit = sync_module._CONSECUTIVE_TRANSPORT_FAIL_LIMIT
+    pattern = ([599] * (limit - 1) + [200]) * 2
+    dashboard_count = len(pattern)
+    for i in range(1, dashboard_count + 1):
+        _write_dashboard(tmp_path, f"ams-{i}", f"Dashboard {i}")
+    mock_post = MagicMock(side_effect=pattern)
     monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
     monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
 
@@ -546,9 +551,9 @@ def test_main_isolated_transport_blip_does_not_abort(
         ["--dashboards-dir", str(tmp_path), "--stack-url", "https://x.grafana.net"]
     )
 
-    # Two failures means non-zero exit, but ABORT must not appear.
+    # Mix of failures + successes -> non-zero exit, but ABORT must not appear.
     assert exit_code == 1
-    assert mock_post.call_count == 4, mock_post.call_args_list
+    assert mock_post.call_count == dashboard_count, mock_post.call_args_list
     err = capsys.readouterr().err
     assert "ABORT" not in err, err
 
