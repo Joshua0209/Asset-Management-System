@@ -419,7 +419,7 @@
             "ClusterName": "$ecs_cluster",
             "ServiceName": "$ecs_service"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "backend-cpu-avg",
           "refId": "A"
@@ -436,7 +436,7 @@
             "ClusterName": "$ecs_cluster",
             "ServiceName": "$ecs_service"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "backend-cpu-max",
           "refId": "B"
@@ -492,7 +492,7 @@
             "ClusterName": "$ecs_cluster",
             "ServiceName": "$ecs_service"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "backend-mem-avg",
           "refId": "A"
@@ -509,7 +509,7 @@
             "ClusterName": "$ecs_cluster",
             "ServiceName": "$ecs_service"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "backend-mem-max",
           "refId": "B"
@@ -599,7 +599,7 @@
           "dimensions": {
             "LoadBalancer": "$alb"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "matchExact": false,
           "legendFormat": "requests/min",
@@ -616,7 +616,7 @@
           "dimensions": {
             "LoadBalancer": "$alb"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "matchExact": false,
           "legendFormat": "5xx/min",
@@ -672,7 +672,7 @@
           "dimensions": {
             "LoadBalancer": "$alb"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "matchExact": false,
           "legendFormat": "p95",
@@ -689,7 +689,7 @@
           "dimensions": {
             "LoadBalancer": "$alb"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "matchExact": false,
           "legendFormat": "p99",

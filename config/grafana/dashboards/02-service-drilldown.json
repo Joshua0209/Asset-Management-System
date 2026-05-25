@@ -512,7 +512,7 @@
             "ClusterName": "$ecs_cluster",
             "ServiceName": "$ecs_service"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "ams-backend",
           "refId": "A"
@@ -568,7 +568,7 @@
             "ClusterName": "$ecs_cluster",
             "ServiceName": "$ecs_service"
           },
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "ams-backend",
           "refId": "A"
