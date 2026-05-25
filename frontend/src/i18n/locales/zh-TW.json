@@ -233,6 +233,7 @@
     "repairSummary": {
       "title": "維修工單概況",
       "createdToday": "今日新增",
+      "_comment_pendingReview": "刻意與 kpis.pendingReview 重複，相同數值但位於不同卡片。請勿在未調整版面的情況下移除其中一個。",
       "pendingReview": "待審查",
       "underRepair": "維修中",
       "completedToday": "今日完成"

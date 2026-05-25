@@ -233,6 +233,7 @@
     "repairSummary": {
       "title": "Repair workload",
       "createdToday": "Created today",
+      "_comment_pendingReview": "Intentionally duplicates kpis.pendingReview — same value, different card position. Do not 'dedupe' by removing one without restructuring the layout.",
       "pendingReview": "Pending review",
       "underRepair": "In repair",
       "completedToday": "Completed today"
