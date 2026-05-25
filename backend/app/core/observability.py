@@ -34,11 +34,13 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
 import structlog
 from opentelemetry import metrics
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -120,12 +122,12 @@ OPTIMISTIC_CONFLICTS = _meter.create_counter(
 )
 """OTel counter for 409 conflicts.
 
-* ``endpoint``: **module-scoped today** — the value is whatever the
-  per-module ``_conflict`` helper defaults to (``"assets"`` or
-  ``"repair_requests"``). Slice by ``code`` for granular dashboards.
+* ``endpoint``: the resource module that raised the conflict
+  (e.g. ``"assets"``, ``"repair_requests"``). Slice by ``code`` for
+  granular dashboards.
 * ``code``: the granular error code from the project envelope
   (``duplicate_request``, ``invalid_transition``, ``version_conflict``,
-  …). Matches ``docs/system-design/12-api-design.md`` §"409 Conflict".
+  …). Matches ``docs/system-design/12-api-design.md``.
 """
 
 FRONTEND_OBS_FAILURES = _meter.create_counter(
@@ -889,3 +891,145 @@ def verify_observability_exports(settings: Settings) -> None:
             f"Verify OTEL_ENDPOINT={settings.otel_endpoint!r} is reachable "
             "and OTEL_EXPORTER_OTLP_HEADERS authenticates against Grafana Cloud."
         )
+# ---------------------------------------------------------------------------
+# Per-request JSON access log
+# ---------------------------------------------------------------------------
+
+
+class AccessLogMiddleware:
+    """ASGI middleware: emit one structured JSON log line per HTTP request.
+
+    OTel's FastAPI instrumentor wraps the entire middleware stack via a
+    ``build_middleware_stack`` monkey-patch (not ``app.add_middleware``), so
+    ``OpenTelemetryMiddleware`` ends up OUTSIDE every user middleware
+    regardless of ``setup_*`` call order. The access log's ``finally``
+    block therefore fires while the OTel span context is still attached,
+    letting ``_structlog_processor_trace_context`` stamp ``trace_id`` /
+    ``span_id`` onto the record — which in turn drives the Loki → Tempo
+    derived-field link in Grafana Cloud. The invariant is pinned by
+    ``tests/test_observability.py::test_access_log_runs_inside_otel_layer``.
+
+    The OTel ``LoggingHandler`` installed in :func:`setup_log_exporter`
+    picks the record up off the root logger and ships it to Grafana Cloud
+    Loki over OTLP, so the access log automatically flows to the same
+    backend as every other structlog event.
+
+    Logs flow through ``logging.getLogger("app.access")`` so structlog's
+    stdlib bridge (configured in ``setup_logging``) renders them as JSON
+    in prod and as key=value in dev — matching every other log line shape.
+
+    Paths in :attr:`EXCLUDED_PATHS` are intentionally not logged. They are
+    probe targets whose volume (ECS / compose healthcheck ~10s, ALB target
+    group similar) would dominate the log stream without carrying
+    user-facing signal. Each is already covered by a dedicated metric:
+    ``/health`` by the container's healthcheck state, ``/ready`` by the
+    ALB target-group health.
+    """
+
+    EXCLUDED_PATHS: frozenset[str] = frozenset({"/health", "/ready"})
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        # structlog logger (not stdlib) so kwargs land directly in the
+        # event_dict and survive the JSON renderer. stdlib ``extra={...}``
+        # is silently dropped by ProcessorFormatter's foreign-record path
+        # because no foreign_pre_chain processor lifts record attributes
+        # into the dict — using structlog skips that gap entirely.
+        self._logger = structlog.get_logger("app.access")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("path") in self.EXCLUDED_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        start = time.perf_counter()
+        # Default to 500: if the downstream app raises before sending the
+        # response start message, no http.response.start ever fires and we
+        # still want a status_code in the access log. Starlette's exception
+        # middleware will end up returning a 500 to the client in that
+        # case, so the value matches what the user saw.
+        status_code = 500
+        exc_info: BaseException | None = None
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = int(message["status"])
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except BaseException as exc:
+            # Capture the exception so the access log can carry the failure
+            # type / message even when ServerErrorMiddleware (or whatever
+            # consumes the 500 envelope) does not emit a structured event of
+            # its own. Re-raise so the outer ASGI layer's behavior is
+            # unchanged — OTel still records the exception on its span.
+            exc_info = exc
+            raise
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            # ``scope["client"]`` is ``tuple[str, int] | None`` per the
+            # ASGI spec — the ``or`` substitutes a typed default so we
+            # can index without an inline guard.
+            #
+            # Same FORWARDED_ALLOW_IPS caveat as the rate limiter (see
+            # ``_warn_if_proxy_trust_misconfigured`` in ``app/main.py``):
+            # behind the ALB, uvicorn's ``ProxyHeadersMiddleware`` only
+            # rewrites ``scope["client"]`` from ``X-Forwarded-For`` when
+            # the immediate TCP peer is in ``FORWARDED_ALLOW_IPS``. Unset
+            # / misconfigured → ``client_ip`` collapses to the ALB
+            # private IP and Loki dashboards lose per-client pivots. The
+            # boot-time WARN already nags operators on misconfig; no
+            # additional fallback here.
+            client_host, _client_port = scope.get("client") or ("", 0)
+            # Resolve the FastAPI route template (e.g.
+            # ``/api/v1/repair-requests/{repair_request_id}/approve``) so
+            # dashboards can group by handler without exploding cardinality
+            # on the per-request raw path. Falls back to the raw path when
+            # the request did not match a route (404 before routing).
+            route = scope.get("route")
+            route_template = getattr(route, "path", scope.get("path", ""))
+            fields: dict[str, Any] = {
+                "method": scope.get("method", ""),
+                "path": scope.get("path", ""),
+                "route": route_template,
+                "status_code": status_code,
+                "duration_ms": round(duration_ms, 2),
+                "client_ip": client_host,
+            }
+            if exc_info is not None:
+                # Pivotable error fields so a Loki query can distinguish a
+                # real ServerErrorMiddleware 500 envelope from an exception
+                # that escaped above it.
+                fields["error"] = type(exc_info).__name__
+                fields["error_msg"] = str(exc_info)
+                self._logger.error("request", **fields)
+            else:
+                self._logger.info("request", **fields)
+
+
+def setup_access_log(app: FastAPI) -> None:
+    """Attach :class:`AccessLogMiddleware` idempotently.
+
+    OTel's FastAPI instrumentor wraps the entire stack via a
+    ``build_middleware_stack`` monkey-patch, so this middleware's relative
+    position vs ``setup_tracing`` is not load-bearing for ``trace_id``
+    propagation. See the class docstring for the full rationale.
+
+    Calling this twice on the same app is a no-op the second time — without
+    the guard, every request would log twice (the inner AccessLogMiddleware
+    handles the request first, then the outer one does too, since neither
+    short-circuits). Production wires this exactly once via
+    ``app/main.py``; the guard exists for the test surface (any test that
+    constructs its own app and would otherwise stack duplicates) and for
+    defence against accidental double-wiring in future setup code.
+    """
+    for middleware in app.user_middleware:
+        # Starlette types ``middleware.cls`` as ``_MiddlewareFactory[P]``
+        # (a Protocol), so mypy can't see that an installed
+        # AccessLogMiddleware satisfies it; the runtime identity check
+        # is correct.
+        if middleware.cls is AccessLogMiddleware:  # type: ignore[comparison-overlap]
+            return
+    app.add_middleware(AccessLogMiddleware)
