@@ -600,6 +600,17 @@ def setup_metrics_exporter(settings: Settings) -> None:
     the existing Grafana dashboards already query. The SDK's internal
     instrument name stays dot-style; only the exposed Prom series is
     renamed.
+
+    Naming note: Mimir's OTLP ingest auto-appends a unit suffix to every
+    histogram / gauge based on the OTel ``unit`` metadata
+    (``s`` -> ``_seconds``, ``ms`` -> ``_milliseconds``, ``By`` -> ``_bytes``).
+    The View name MUST therefore be unit-less, otherwise we end up with
+    double-suffix series like ``http_server_duration_seconds_milliseconds_*``
+    that the dashboards do not query. ``http.server.request.duration`` is
+    declared with unit ``s`` (stable semconv), so View name
+    ``http_server_duration`` becomes ``http_server_duration_seconds_*`` once
+    Mimir is done. ``http.server.active_requests`` is unit-less so the
+    ``ams_http_requests_inprogress`` View name passes through unchanged.
     """
     if not settings.otel_enabled:
         return
@@ -614,14 +625,20 @@ def setup_metrics_exporter(settings: Settings) -> None:
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk.metrics.view import View
 
+    # Keep the legacy ``http.server.duration`` View for the case where an
+    # operator removes ``OTEL_SEMCONV_STABILITY_OPT_IN=http`` from the ECS
+    # task def (the instrumentor would then fall back to the deprecated
+    # instrument). Both names rename to the same unit-less base so that
+    # whichever instrument is active, the final Prom series is
+    # ``http_server_duration_<unit>_*``.
     views = [
         View(
             instrument_name="http.server.duration",
-            name="http_server_duration_seconds",
+            name="http_server_duration",
         ),
         View(
             instrument_name="http.server.request.duration",
-            name="http_server_duration_seconds",
+            name="http_server_duration",
         ),
         View(
             instrument_name="http.server.active_requests",

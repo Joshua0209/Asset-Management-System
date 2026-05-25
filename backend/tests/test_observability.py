@@ -689,6 +689,82 @@ def test_setup_metrics_exporter_installs_working_meter_provider(
     ).__name__
 
 
+def test_setup_metrics_exporter_views_use_unit_less_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Views MUST NOT carry a unit suffix in the renamed name.
+
+    Mimir's OTLP ingest auto-appends a unit suffix derived from the OTel
+    ``unit`` metadata (``s`` -> ``_seconds``, ``ms`` -> ``_milliseconds``,
+    ``By`` -> ``_bytes``). If a View name already encodes a unit, the
+    final Prom series ends up double-suffixed
+    (``http_server_duration_seconds_milliseconds_*``) and every dashboard
+    query against the expected ``http_server_duration_seconds_*`` name
+    returns zero series.
+
+    Regression pin: the previous View name ``http_server_duration_seconds``
+    triggered exactly that bug in production, with three days of empty
+    PromQL panels until someone noticed. This test fails the moment
+    anyone reverts to a unit-bearing View name.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from opentelemetry.sdk.metrics.view import View
+
+    from app.core import observability as obs
+
+    settings = _settings_with_otel(monkeypatch)
+    captured_views: list[View] = []
+
+    def _capture_provider(provider: MeterProvider) -> None:
+        # ``MeterProvider._sdk_config.views`` is the public-but-undocumented
+        # path the SDK exposes the registered Views on. There is no stable
+        # accessor in 1.42; if a future OTel SDK relocates this attribute,
+        # the test surfaces the move as a clear AttributeError rather than
+        # silently passing on the wrong list.
+        captured_views.extend(provider._sdk_config.views)  # type: ignore[attr-defined]
+        provider.shutdown()
+
+    fake_exporter = MagicMock()
+    fake_exporter.export.return_value = None
+    fake_exporter.shutdown.return_value = None
+    fake_exporter._preferred_temporality = {}
+    fake_exporter._preferred_aggregation = {}
+
+    with (
+        patch(
+            "opentelemetry.exporter.otlp.proto.http.metric_exporter.OTLPMetricExporter",
+            return_value=fake_exporter,
+        ),
+        patch.object(otel_metrics, "set_meter_provider", _capture_provider),
+    ):
+        obs.setup_metrics_exporter(settings)
+
+    by_instrument: dict[str, str] = {
+        # ``View._instrument_name`` is the source instrument name (str when
+        # the View was constructed via the ``instrument_name=`` kwarg) and
+        # ``View._name`` is the rename target. Underscore-prefixed because
+        # neither has a stable public accessor in the 1.42 SDK; the test
+        # surfaces an AttributeError if a future SDK reshapes them.
+        v._instrument_name: v._name  # type: ignore[attr-defined]
+        for v in captured_views
+        if v._name is not None  # type: ignore[attr-defined]
+    }
+
+    # The two HTTP duration instruments (deprecated + stable semconv) both
+    # rename to the same unit-less base. Mimir then appends ``_seconds``
+    # (stable, unit=s) or ``_milliseconds`` (deprecated, unit=ms) on the
+    # ingest side, giving the dashboards their expected
+    # ``http_server_duration_seconds_*`` series only when the stable
+    # instrument is active via ``OTEL_SEMCONV_STABILITY_OPT_IN=http``.
+    assert by_instrument["http.server.duration"] == "http_server_duration"
+    assert by_instrument["http.server.request.duration"] == "http_server_duration"
+    # ``http.server.active_requests`` is unit-less so the rename passes
+    # through unchanged; encoding the name here pins the dashboard's
+    # ``ams_http_requests_inprogress`` series against future drift.
+    assert by_instrument["http.server.active_requests"] == "ams_http_requests_inprogress"
+
+
 def test_setup_metrics_exporter_is_noop_when_otel_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
