@@ -8,27 +8,17 @@ import i18n from "@/i18n";
 import { ApiError } from "@/api";
 import type { ManagerDashboard } from "@/api/dashboard";
 
-const { mockNavigate } = vi.hoisted(() => ({
-  mockNavigate: vi.fn(),
+const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }));
+
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useNavigate: () => mockNavigate,
 }));
 
-vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
-  return {
-    ...actual,
-    useNavigate: () => mockNavigate,
-  };
-});
-
-vi.mock("@/api", async () => {
-  const actual = await vi.importActual<typeof import("@/api")>("@/api");
-  return {
-    ...actual,
-    dashboardApi: {
-      getManagerDashboard: vi.fn(),
-    },
-  };
-});
+vi.mock("@/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api")>()),
+  dashboardApi: { getManagerDashboard: vi.fn() },
+}));
 
 const apiModule = await import("@/api");
 const mockGetManagerDashboard = vi.mocked(apiModule.dashboardApi.getManagerDashboard);

@@ -202,6 +202,25 @@ async function renderDetailPage(path = '/reviews/rr-1', routePath = '/reviews/:i
   });
 }
 
+// Most action tests share the same boilerplate: build a user-event, queue
+// one detail-page response per refetch, render, then wait for the action
+// button to appear. Extracted so individual test bodies focus on the
+// scenario-specific assertions instead.
+async function setupDetailPage(
+  statuses: RepairRequestRecord['status'][],
+  visibleButton: string,
+): Promise<User> {
+  const user = userEvent.setup({ delay: null });
+  for (const status of statuses) {
+    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest(status));
+  }
+  await renderDetailPage();
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: visibleButton })).toBeInTheDocument();
+  });
+  return user;
+}
+
 describe('ReviewDetail', () => {
   beforeEach(async () => {
     mockGetRepairRequestById.mockReset();
@@ -283,10 +302,7 @@ describe('ReviewDetail', () => {
   });
 
   it('moves reject operation to review details page and submits payload', async () => {
-    const user = userEvent.setup({ delay: null });
-
-    await renderWithRequests(buildRequest('pending_review'), buildRequest('rejected'));
-    await waitForAction('Reject');
+    const user = await setupDetailPage(['pending_review', 'rejected'], 'Reject');
     await clickButton(user, 'Reject');
     await typeLabel(user, 'Rejection Reason', 'Cannot reproduce');
     await clickLastButton(user, 'Reject');
@@ -300,14 +316,10 @@ describe('ReviewDetail', () => {
   });
 
   it('moves update-details and complete operations to review details page', async () => {
-    const user = userEvent.setup({ delay: null });
-
-    await renderWithRequests(
-      buildRequest('under_repair'),
-      buildRequest('under_repair'),
-      buildRequest('completed'),
+    const user = await setupDetailPage(
+      ['under_repair', 'under_repair', 'completed'],
+      'Update Details',
     );
-    await waitForAction('Update Details');
     await clickButton(user, 'Update Details');
     await fillRepairDetails(user, {
       repairDate: '2026-04-21',
@@ -343,10 +355,7 @@ describe('ReviewDetail', () => {
   });
 
   it('allows updating a single repair detail field', async () => {
-    const user = userEvent.setup({ delay: null });
-
-    await renderWithRequests(buildRequest('under_repair'), buildRequest('under_repair'));
-    await waitForAction('Update Details');
+    const user = await setupDetailPage(['under_repair', 'under_repair'], 'Update Details');
     await clickButton(user, 'Update Details');
     await typeLabel(user, 'Repair Vendor', 'Vendor B');
     await clickButton(user, 'Save');
@@ -469,9 +478,7 @@ describe('ReviewDetail', () => {
   });
 
   it('allows zero repair cost when completing a repair', async () => {
-    const user = userEvent.setup({ delay: null });
-
-    await renderWithRequests(buildRequest('under_repair'), buildRequest('completed'));
+    const user = await setupDetailPage(['under_repair', 'completed'], 'Complete');
     await submitComplete(user, zeroCostCompletedRepairDetails);
 
     await waitFor(() => {

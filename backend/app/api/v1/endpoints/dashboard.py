@@ -42,7 +42,6 @@ _RECENT_PENDING_LIMIT = 3
 @router.get(
     "/manager",
     summary="Manager dashboard summary",
-    response_model=DataResponse[ManagerDashboard],
 )
 def get_manager_dashboard(
     db: DbSession,

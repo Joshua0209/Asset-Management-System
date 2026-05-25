@@ -13,11 +13,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ApiError, repairRequestsApi } from '@/api';
 import { getApiErrorMessage } from '@/utils/apiErrors';
-import { formatDateTime } from '@/utils/format';
 import {
+  buildCreatedAtColumn,
+  buildStatusColumn,
   renderRequestAssetCell,
   renderRequestIdCell,
-  renderRequestStatusTag,
 } from '@/components/repair-requests/columns';
 import type {
   RepairRequestRecord,
@@ -107,21 +107,8 @@ const Reviews: React.FC = () => {
       render: (_: unknown, record) => record.requester.name,
       width: 160,
     },
-    {
-      title: t('reviews.columns.status'),
-      dataIndex: 'status',
-      key: 'status',
-      width: 140,
-      render: (status: RepairRequestStatus) =>
-        renderRequestStatusTag(status, t, 'reviews.status'),
-    },
-    {
-      title: t('reviews.columns.createdAt'),
-      dataIndex: 'created_at',
-      key: 'created_at',
-      width: 180,
-      render: (value: string) => <span className="tabular-nums">{formatDateTime(value)}</span>,
-    },
+    buildStatusColumn(t('reviews.columns.status'), t, 'reviews.status'),
+    buildCreatedAtColumn(t('reviews.columns.createdAt')),
     {
       title: t('reviews.columns.actions'),
       key: 'actions',

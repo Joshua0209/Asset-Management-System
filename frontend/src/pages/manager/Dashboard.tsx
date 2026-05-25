@@ -50,7 +50,7 @@ const Dashboard: React.FC = () => {
   }, [t]);
 
   useEffect(() => {
-    void load();
+    load().catch(() => undefined);
   }, [load]);
 
   // Use the largest bucket as the denominator so the bars stay comparable
@@ -82,7 +82,7 @@ const Dashboard: React.FC = () => {
           showIcon
           message={error}
           action={
-            <Button size="small" onClick={() => void load()}>
+            <Button size="small" onClick={() => { load().catch(() => undefined); }}>
               {t("dashboard.retry")}
             </Button>
           }
