@@ -94,10 +94,17 @@ gunicorn app.main:app \
 
 `--forwarded-allow-ips` is the trust gate: uvicorn's `ProxyHeadersMiddleware` only rewrites `request.client.host` from `X-Forwarded-For` when the immediate TCP peer is in this allowlist. Without it, an attacker hitting the task directly could spoof XFF and inject any IP they like into the bucket key.
 
-In production, we set `FORWARDED_ALLOW_IPS` to `*`. While less restrictive than a specific VPC CIDR, it is safe because:
+In production, we set `FORWARDED_ALLOW_IPS` to `*`. The honest framing of this choice:
+
+- **Trust scope is the VPC, not the ALB.** `*` tells uvicorn to accept `X-Forwarded-For` from any immediate TCP peer. The previous VPC-CIDR value had the same trust scope in practice (anything inside the VPC that could reach the task could already spoof XFF), so `*` does not broaden trust beyond what the CIDR form allowed — it just makes the boundary explicit.
+- **The actual enforcement boundary is the Security Group.** The SG attached to the backend tasks only permits ingress from the ALB's SG on the application port. Anything else inside the VPC (a bastion, a sidecar, a future internal service) is blocked at the SG before it can even open a TCP connection, regardless of what `FORWARDED_ALLOW_IPS` is set to.
+
+The supporting invariants that make this configuration acceptable:
 1. The ECS tasks are in **private subnets** with no public IP.
 2. The only entry point for external traffic is the **Application Load Balancer**.
-3. Direct access from other VPC resources is prevented by **Security Group** rules that only allow ingress from the ALB.
+3. Ingress to the task SG is restricted to the ALB SG (point above).
+
+If any of those three invariants change — in particular, if the task SG is ever loosened to admit a second source — re-tighten `FORWARDED_ALLOW_IPS` at the same time. The startup WARN in `app/main.py` only catches the unset / `127.0.0.1` case; a deliberately-broadened SG does not trip it.
 
 This avoids operational issues with CIDR notation parsing while maintaining the "fail-closed" posture described below. The image default is `127.0.0.1` so local prod-image runs behave like uvicorn's own default; production ECS task definitions MUST override `FORWARDED_ALLOW_IPS` to `*`. The startup WARN in `app/main.py` flags the default when rate limiting is enabled.
 
