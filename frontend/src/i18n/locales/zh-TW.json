@@ -74,7 +74,7 @@
     "purchaseAmountFormat": "採購金額需為正數，最多 15 位數且小數最多 2 位",
     "repairCostPositive": "維修金額必須大於或等於 0",
     "repairCostFormat": "維修金額需為非負數，最多 15 位數且小數最多 2 位",
-    "atLeastOneRepairDetail": "請至少填寫一項維修資訊",
+    "atLeastOneRepairDetail": "請至少填寫一個維修細節",
     "purchaseDateNotFuture": "採購日期不可為未來日期",
     "warrantyAfterPurchase": "保固到期日必須晚於採購日期",
     "warrantyAfterActivation": "保固到期日必須晚於啟用日期",

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Input, Modal, Typography } from 'antd';
+import { Form, Input, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { createAmountValidator } from '@/utils/validators';
@@ -113,7 +113,7 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
         >
           <Input />
         </Form.Item>
-        {detailError ? <Typography.Text type="danger">{detailError}</Typography.Text> : null}
+        {detailError ? <Form.ErrorList errors={[detailError]} /> : null}
       </Form>
     </Modal>
   );
