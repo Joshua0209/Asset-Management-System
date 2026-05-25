@@ -32,7 +32,7 @@
           "metricName": "DatabaseConnections",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "connections",
           "refId": "A"
@@ -54,7 +54,7 @@
           "metricName": "CPUUtilization",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "cpu",
           "refId": "A"
@@ -76,7 +76,7 @@
           "metricName": "FreeableMemory",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "freeable",
           "refId": "A"
@@ -98,7 +98,7 @@
           "metricName": "DiskQueueDepth",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "queue depth",
           "refId": "A"
@@ -120,7 +120,7 @@
           "metricName": "CPUUtilization",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "cpu-avg",
           "refId": "A"
@@ -131,7 +131,7 @@
           "metricName": "CPUUtilization",
           "statistic": "Maximum",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "cpu-max",
           "refId": "B"
@@ -153,7 +153,7 @@
           "metricName": "DatabaseConnections",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "connections-avg",
           "refId": "A"
@@ -164,7 +164,7 @@
           "metricName": "DatabaseConnections",
           "statistic": "Maximum",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "connections-max",
           "refId": "B"
@@ -186,7 +186,7 @@
           "metricName": "DiskQueueDepth",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "queue-depth",
           "refId": "A"
@@ -209,7 +209,7 @@
           "metricName": "FreeableMemory",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "freeable",
           "refId": "A"
@@ -220,7 +220,7 @@
           "metricName": "FreeStorageSpace",
           "statistic": "Average",
           "dimensions": {"DBInstanceIdentifier": "$dbinstance"},
-          "region": "default",
+          "region": "ap-east-2",
           "period": "60",
           "legendFormat": "free-storage",
           "refId": "B"
