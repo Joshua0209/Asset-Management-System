@@ -260,6 +260,51 @@ def _structlog_processor_trace_context(
     return event_dict
 
 
+def _parse_otlp_headers(raw: str) -> dict[str, str] | None:
+    """Parse the comma-separated ``OTEL_EXPORTER_OTLP_HEADERS`` string into a dict.
+
+    The OTLP exporter SDK accepts both shapes — a raw ``key=value,key=value``
+    string OR a pre-parsed ``dict[str, str]`` — but which one is the default
+    has flipped across the ``opentelemetry-exporter-otlp-proto-grpc`` minor
+    versions in the pinned range (``>=1.27,<2.0``). Today the string-parser
+    path is wired; a 1.28+ minor that flips the default surfaces as
+    ``TypeError: 'str' object has no attribute 'items'`` from inside the
+    SDK — and ``verify_observability_exports`` would catch it, but only in
+    non-local environments. Pre-parse here so the exporter receives the
+    dict shape unambiguously regardless of SDK minor version.
+
+    Returns ``None`` for an empty / whitespace-only input so the exporter
+    skips the headers arg entirely (matches the ``or None`` pattern the
+    call sites previously used to keep ``OTEL_EXPORTER_OTLP_HEADERS=""``
+    a no-op).
+
+    Format per OTel spec § "OTLP Exporter": comma-separated
+    ``key=value`` pairs. Whitespace around each token is trimmed. A
+    malformed pair (missing ``=``) is skipped with a warning rather
+    than raising — operators get the same fail-open semantics they had
+    before (where the raw string would have been forwarded to the SDK
+    and silently mis-tokenized).
+    """
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    out: dict[str, str] = {}
+    for pair in stripped.split(","):
+        kv = pair.strip()
+        if not kv:
+            continue
+        if "=" not in kv:
+            logger.warning(
+                "OTEL_EXPORTER_OTLP_HEADERS contains a malformed pair "
+                "(no '='): %r — skipped.",
+                kv,
+            )
+            continue
+        key, _, value = kv.partition("=")
+        out[key.strip()] = value.strip()
+    return out or None
+
+
 def _build_resource(settings: Settings) -> Any:
     """Common Resource for traces, metrics, and logs.
 
@@ -410,7 +455,7 @@ def setup_log_exporter(settings: Settings) -> None:
     provider = LoggerProvider(resource=_build_resource(settings))
     exporter = OTLPLogExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
+        headers=_parse_otlp_headers(settings.otel_exporter_otlp_headers.get_secret_value()),
     )
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
     set_logger_provider(provider)
@@ -523,7 +568,7 @@ def setup_metrics_exporter(settings: Settings) -> None:
 
     exporter = OTLPMetricExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
+        headers=_parse_otlp_headers(settings.otel_exporter_otlp_headers.get_secret_value()),
     )
     reader = PeriodicExportingMetricReader(exporter)
     provider = MeterProvider(
@@ -566,7 +611,7 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     provider = TracerProvider(resource=_build_resource(settings))
     exporter = OTLPSpanExporter(
         endpoint=settings.otel_endpoint,
-        headers=settings.otel_exporter_otlp_headers.get_secret_value() or None,
+        headers=_parse_otlp_headers(settings.otel_exporter_otlp_headers.get_secret_value()),
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
     otel_trace.set_tracer_provider(provider)

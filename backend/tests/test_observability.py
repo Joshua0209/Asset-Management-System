@@ -995,6 +995,55 @@ def test_settings_otel_enabled_locally_does_not_require_headers(
     Settings()  # type: ignore[call-arg]
 
 
+def test_parse_otlp_headers_handles_comma_separated_pairs() -> None:
+    """Canonical OTLP header string parses into a dict.
+
+    Pins the M3 fix: the OTLP exporter SDK accepts both raw string
+    and dict shapes across the pinned ``>=1.27,<2.0`` SDK range, but
+    the dict shape is unambiguous regardless of minor version flip.
+    """
+    from app.core.observability import _parse_otlp_headers
+
+    parsed = _parse_otlp_headers("Authorization=Basic dGVzdA==,X-Scope-OrgID=42")
+    assert parsed == {"Authorization": "Basic dGVzdA==", "X-Scope-OrgID": "42"}
+
+
+def test_parse_otlp_headers_returns_none_for_empty() -> None:
+    """Empty / whitespace input returns None so the SDK skips headers."""
+    from app.core.observability import _parse_otlp_headers
+
+    assert _parse_otlp_headers("") is None
+    assert _parse_otlp_headers("   ") is None
+
+
+def test_parse_otlp_headers_skips_malformed_pair_with_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A malformed pair (no '=') is skipped + warned, not raised.
+
+    Operators get the same fail-open semantics they had before (where
+    a bad pair would have been forwarded to the SDK and silently
+    mis-tokenized), with the addition of a structured warning so the
+    misconfig is visible in Loki.
+    """
+    from app.core.observability import _parse_otlp_headers
+
+    with caplog.at_level(logging.WARNING, logger="app.core.observability"):
+        parsed = _parse_otlp_headers("Authorization=Basic dGVzdA==,not-a-pair,X=Y")
+    assert parsed == {"Authorization": "Basic dGVzdA==", "X": "Y"}
+    assert any("malformed pair" in rec.message for rec in caplog.records), [
+        rec.message for rec in caplog.records
+    ]
+
+
+def test_parse_otlp_headers_trims_whitespace() -> None:
+    """Whitespace around tokens is trimmed (matches OTel spec)."""
+    from app.core.observability import _parse_otlp_headers
+
+    parsed = _parse_otlp_headers("  Authorization = Basic dGVzdA== ,  X = Y ")
+    assert parsed == {"Authorization": "Basic dGVzdA==", "X": "Y"}
+
+
 def test_build_resource_cache_evicts_oldest_at_capacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
