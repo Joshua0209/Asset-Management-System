@@ -1792,9 +1792,9 @@ def test_verify_observability_exports_surfaces_synthetic_emit_failure(
     """A broken instrument during the synthetic-emit phase surfaces as a
     structured RuntimeError, not a raw stacktrace.
 
-    Locks the L5 contract. The synthetic emit block at
-    ``observability.py:669-696`` exists so ``force_flush`` has data to
-    push (without it, an empty buffer returns True trivially and the
+    Locks the L5 contract. The synthetic emit block in
+    ``verify_observability_exports`` exists so ``force_flush`` has data
+    to push (without it, an empty buffer returns True trivially and the
     probe gives false confidence). Each emit is wrapped in
     ``try/except Exception: failures.append(...)`` precisely so a
     broken instrument (proxy not yet swapped, SDK API drift, exporter

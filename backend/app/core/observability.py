@@ -309,16 +309,14 @@ def _parse_otlp_headers(raw: str) -> dict[str, str] | None:
     dict shape unambiguously regardless of SDK minor version.
 
     Returns ``None`` for an empty / whitespace-only input so the exporter
-    skips the headers arg entirely (matches the ``or None`` pattern the
-    call sites previously used to keep ``OTEL_EXPORTER_OTLP_HEADERS=""``
-    a no-op).
+    skips the headers arg entirely (i.e. ``OTEL_EXPORTER_OTLP_HEADERS=""``
+    is a no-op).
 
     Format per OTel spec § "OTLP Exporter": comma-separated
     ``key=value`` pairs. Whitespace around each token is trimmed. A
     malformed pair (missing ``=``) is skipped with a warning rather
-    than raising — operators get the same fail-open semantics they had
-    before (where the raw string would have been forwarded to the SDK
-    and silently mis-tokenized).
+    than raising — operators get fail-open semantics so a single bad
+    pair doesn't take down the entire OTLP export path.
     """
     stripped = raw.strip()
     if not stripped:
@@ -505,14 +503,9 @@ def setup_log_exporter(settings: Settings) -> None:
     )
     provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
     set_logger_provider(provider)
-    # Flip the install flag IMMEDIATELY after the irreversible
-    # set_logger_provider call (OTel's set_logger_provider is process-wide
-    # set-once; a second call silently no-ops). If the subsequent
-    # addHandler raises (root logger in a degenerate state — rare), we
-    # want a retry to early-return rather than re-running set_logger_provider
-    # against a now-leaked second LoggerProvider. The lost addHandler is
-    # surfaced as an uncaught exception to the caller, not silently
-    # swallowed under a half-installed state.
+    # Flag set IMMEDIATELY after the irreversible set_logger_provider call;
+    # subsequent addHandler failures must NOT cause a retry to re-run the
+    # set-once call against a leaked second provider.
     _LOG_EXPORTER_INSTALLED = True
 
     handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
@@ -661,15 +654,10 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
     otel_trace.set_tracer_provider(provider)
-    # Flip the install flag IMMEDIATELY after set_tracer_provider — that's
-    # the irreversible step (OTel's set_tracer_provider is process-wide
-    # set-once and warns + no-ops on re-call). If the subsequent
-    # SQLAlchemyInstrumentor instrument raises (engine already
-    # instrumented from a prior test, dependency version mismatch), we
-    # want a retry to early-return rather than re-running
-    # set_tracer_provider against a leaked second TracerProvider AND
-    # double-instrumenting the SQLAlchemy engine. The exception from
-    # instrument() propagates to the caller.
+    # Flag set IMMEDIATELY after the irreversible set_tracer_provider call;
+    # subsequent SQLAlchemyInstrumentor failures must NOT cause a retry to
+    # re-run the set-once call against a leaked second provider AND
+    # double-instrument the engine.
     _TRACING_INSTALLED = True
 
     # SQLAlchemy instrumentation hooks into the engine; importing the

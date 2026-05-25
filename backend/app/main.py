@@ -184,10 +184,7 @@ def _warn_if_proxy_trust_misconfigured(
 _warn_if_proxy_trust_misconfigured(settings, os.environ.get("FORWARDED_ALLOW_IPS"))
 
 # slowapi expects the limiter on app.state; SlowAPIMiddleware reads it at
-# request time and emits the X-RateLimit-* headers. After the Phase 3
-# observability refactor there is no scrape endpoint to exempt — OTel
-# pushes metrics direct to Grafana Cloud — so the slowapi/instrumentator
-# middleware-order constraint that previously lived here is gone.
+# request time and emits the X-RateLimit-* headers.
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 
@@ -223,10 +220,10 @@ app.add_middleware(
 #   (pytest default), so the suite stays free of OTLP exporter
 #   threads.
 #
-#   maybe_setup_profiling is enabled in production as of Phase 3 (locked
-#   decision 5 reversed by the prod migration plan). The
-#   ``WEB_CONCURRENCY=1`` invariant above plus no ``gunicorn --preload``
-#   means the sampling thread starts inside the worker post-fork.
+#   maybe_setup_profiling is gated by PYROSCOPE_ENABLED (production
+#   sets it true). The ``WEB_CONCURRENCY=1`` invariant above plus no
+#   ``gunicorn --preload`` means the sampling thread starts inside
+#   the worker post-fork.
 setup_metrics_exporter(settings)
 setup_metrics(app, settings)
 setup_tracing(app, settings)
