@@ -249,6 +249,17 @@ describe("AssetList", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/assets/AST-2026-00001-id");
   });
 
+  it("marks purchase amount as required in the create form", async () => {
+    const user = await renderAsManagerWith(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
+
+    await openCreateForm(user);
+
+    const modal = screen.getByRole("dialog");
+    const purchaseAmountLabel = within(modal).getByText("Purchase Amount").closest("label");
+
+    expect(purchaseAmountLabel).toHaveClass("ant-form-item-required");
+  });
+
   it("blocks create when purchase amount is negative", async () => {
     const user = await renderAsManagerWith(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
     await openCreateForm(user);

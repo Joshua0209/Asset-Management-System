@@ -70,6 +70,18 @@ async function performApproveFlow(user: User): Promise<void> {
   await clickLastButton(user, 'Approve');
 }
 
+async function performApproveFlowWithoutCost(user: User): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+  });
+
+  await clickButton(user, 'Approve');
+  await typeLabel(user, 'Repair Plan', 'Plan');
+  await typeLabel(user, 'Repair Vendor', 'Vendor');
+  await typeLabel(user, 'Planned Date', '2026-05-01');
+  await clickLastButton(user, 'Approve');
+}
+
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
   return {
     id: 'rr-1',
@@ -165,6 +177,26 @@ describe('ReviewDetail', () => {
         repair_plan: 'Plan',
         repair_vendor: 'Vendor',
         repair_cost: '100',
+        planned_date: '2026-05-01',
+      });
+    });
+  });
+
+  it('allows approval without an estimated repair cost', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildRequest('pending_review'))
+      .mockResolvedValueOnce(buildRequest('under_repair'));
+
+    await renderDetailPage();
+
+    await performApproveFlowWithoutCost(user);
+
+    await waitFor(() => {
+      expect(mockApproveRepairRequest).toHaveBeenCalledWith('rr-1', {
+        version: 1,
+        repair_plan: 'Plan',
+        repair_vendor: 'Vendor',
         planned_date: '2026-05-01',
       });
     });
@@ -342,6 +374,38 @@ describe('ReviewDetail', () => {
 
     await waitFor(() => {
       expect(mockApi.error).not.toHaveBeenCalled();
+    });
+
+  });
+
+  it('allows zero repair cost when completing a repair', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildRequest('under_repair'))
+      .mockResolvedValueOnce(buildRequest('completed'));
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Complete' })).toBeInTheDocument();
+    });
+
+    await clickButton(user, 'Complete');
+    await typeLabel(user, 'Repair Date', '2026-04-28');
+    await typeLabel(user, 'Fault Description','Resolved');
+    await typeLabel(user, 'Repair Plan', 'Replaced part');
+    await typeLabel(user, 'Repair Cost', '0');
+    await typeLabel(user, 'Repair Vendor', 'Vendor C');
+    await clickLastButton(user, 'Complete');
+
+    await waitFor(() => {
+      expect(mockCompleteRepairRequest).toHaveBeenCalledWith(
+        'rr-1',
+        expect.objectContaining({
+          version: 1,
+          repair_cost: '0',
+        }),
+      );
     });
   });
 });

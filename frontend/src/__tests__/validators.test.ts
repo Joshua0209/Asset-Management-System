@@ -74,6 +74,20 @@ describe("createAmountValidator", () => {
     await expect(validate(null, "0")).rejects.toThrow("validation.repairCostPositive");
   });
 
+  it("accepts zero when configured for non-negative amounts", async () => {
+    const validate = createAmountValidator(t, {
+      allowZero: true,
+      required: true,
+      formatKey: "validation.repairCostFormat",
+      positiveKey: "validation.repairCostPositive",
+    });
+
+    await expect(validate(null, "0")).resolves.toBeUndefined();
+    await expect(validate(null, "0.00")).resolves.toBeUndefined();
+    await expect(validate(null, 0)).resolves.toBeUndefined();
+    await expect(validate(null, "1.25")).resolves.toBeUndefined();
+  });
+
   it("accepts numeric input (not just strings)", async () => {
     const validate = createAmountValidator(t);
     await expect(validate(null, 1.5)).resolves.toBeUndefined();
