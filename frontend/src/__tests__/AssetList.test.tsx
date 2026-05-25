@@ -4,7 +4,6 @@ import { vi } from "vitest";
 
 import AssetList from "@/pages/manager/AssetList";
 import i18n from "@/i18n";
-import type { AssetRecord } from "@/api/assets/types";
 
 const mockNavigate = vi.fn();
 
@@ -161,9 +160,6 @@ describe("AssetList", () => {
     mockCreateAsset.mockReset();
     mockListUsers.mockReset();
     mockNavigate.mockReset();
-    // Minimal default — individual tests override with mockResolvedValueOnce
-    // when they actually assert on the created asset.
-    mockCreateAsset.mockResolvedValue({} as unknown as AssetRecord);
     mockListUsers.mockResolvedValue({
       data: [
         {
