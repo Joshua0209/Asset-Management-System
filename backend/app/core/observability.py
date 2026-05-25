@@ -300,15 +300,23 @@ def _parse_otlp_headers(raw: str) -> dict[str, str] | None:
     if not stripped:
         return None
     out: dict[str, str] = {}
-    for pair in stripped.split(","):
+    for index, pair in enumerate(stripped.split(",")):
         kv = pair.strip()
         if not kv:
             continue
         if "=" not in kv:
+            # Do NOT log ``kv`` itself: a typo'd authorization pair
+            # (e.g. ``"Bearer mytoken"`` with the key omitted) would
+            # land the token VALUE verbatim in Loki / CloudWatch. Log
+            # only the index + length so an operator can locate the
+            # bad pair without disclosing whatever secret was concatenated
+            # into it. M2 finding from the third review (security-reviewer).
             logger.warning(
                 "OTEL_EXPORTER_OTLP_HEADERS contains a malformed pair "
-                "(no '='): %r — skipped.",
-                kv,
+                "(no '=') at index %d (length %d) — skipped. "
+                "Value omitted from log to avoid credential disclosure.",
+                index,
+                len(kv),
             )
             continue
         key, _, value = kv.partition("=")

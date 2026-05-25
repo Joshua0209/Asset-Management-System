@@ -1036,6 +1036,29 @@ def test_parse_otlp_headers_skips_malformed_pair_with_warning(
     ]
 
 
+def test_parse_otlp_headers_does_not_log_raw_pair_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """M2 contract: the malformed-pair value MUST NOT land in any log record.
+
+    A typo'd ``OTEL_EXPORTER_OTLP_HEADERS`` where the key is omitted
+    (e.g. ``"Bearer mytoken"`` instead of ``"Authorization=Bearer mytoken"``)
+    is a no-``=`` pair whose entire VALUE is a credential. The previous
+    ``%r`` formatter landed the literal token in Loki / CloudWatch. The
+    M2 fix replaces it with offset + length only — locked here so a
+    future refactor reintroducing the raw value would fail this test
+    rather than silently leaking the secret.
+    """
+    from app.core.observability import _parse_otlp_headers
+
+    sentinel_credential = "BearerSentinelOnly_a1b2c3d4e5f6"
+    with caplog.at_level(logging.WARNING, logger="app.core.observability"):
+        _parse_otlp_headers(f"Authorization=ok,{sentinel_credential},X=Y")
+    for rec in caplog.records:
+        assert sentinel_credential not in rec.message, rec.message
+        assert sentinel_credential not in str(getattr(rec, "args", ())), rec.args
+
+
 def test_parse_otlp_headers_trims_whitespace() -> None:
     """Whitespace around tokens is trimmed (matches OTel spec)."""
     from app.core.observability import _parse_otlp_headers
