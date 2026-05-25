@@ -181,15 +181,22 @@ def collect_placeholder_uids(dashboard: dict[str, Any]) -> set[str]:
 def build_uid_remap(
     dashboards: Sequence[dict[str, Any]],
     env: dict[str, str] | None = None,
+    *,
+    strict: bool = True,
 ) -> dict[str, str]:
     """Resolve the placeholder-UID → real-UID mapping for this batch.
 
     Reads ``_UID_REMAP_ENV`` from ``env`` (defaults to ``os.environ``),
-    falls back to ``_DEFAULT_UID_REMAP`` for entries with no override,
-    and raises ``SystemExit(2)`` with a clear message if any placeholder
-    used by the dashboards has no real UID configured. The error names
-    the missing env var so an operator running this from a laptop or
-    reading a CI failure can fix it without grepping the source.
+    falls back to ``_DEFAULT_UID_REMAP`` for entries with no override.
+
+    ``strict=True`` (the default, used by the live sync) raises
+    ``SystemExit(2)`` with a clear message if any placeholder used by
+    the dashboards has no real UID configured. The error names the
+    missing env var so an operator can fix it without grepping the
+    source. ``strict=False`` (used by the dry-run / validate path)
+    silently omits entries that cannot be resolved so the JSON
+    structure check stays portable across developer laptops and
+    fork-PR builds where ``GC_CLOUDWATCH_UID`` is unavailable.
     """
     env_map: dict[str, str] = dict(env) if env is not None else dict(os.environ)
     used: set[str] = set()
@@ -208,7 +215,7 @@ def build_uid_remap(
             remap[placeholder] = default
             continue
         missing.append(f"{placeholder} (set {env_name})")
-    if missing:
+    if missing and strict:
         sys.stderr.write(
             "Cannot resolve datasource UID for the following placeholder(s) "
             "referenced by dashboards: "
@@ -383,12 +390,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     if args.dry_run:
-        # Resolve the UID remap even in dry-run so CI catches a missing
-        # GC_CLOUDWATCH_UID before the live sync ever runs. If env vars
-        # are absent on a developer laptop the standard defaults still
-        # let the dry run finish; only ``cloudwatch`` (which has no
-        # default) can block.
-        remap = build_uid_remap(dashboards)
+        # The dry-run / validate job runs on every PR (including from
+        # forks) and on developer laptops where stack-specific env vars
+        # like GC_CLOUDWATCH_UID are not available. Resolve what we
+        # can but do not fail on missing UIDs — strict resolution is
+        # the live sync's job. This keeps the structural check
+        # (malformed JSON, missing dashboard uid) portable.
+        remap = build_uid_remap(dashboards, strict=False)
         if dashboards:
             print(f"DRY RUN: would POST {len(dashboards)} dashboard(s):")
             for dashboard in dashboards:

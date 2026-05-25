@@ -781,6 +781,57 @@ def test_build_uid_remap_aborts_when_cloudwatch_unconfigured() -> None:
     assert exc_info.value.code == 2
 
 
+def test_build_uid_remap_non_strict_tolerates_missing_cloudwatch() -> None:
+    """``strict=False`` must NOT abort on a missing CW UID.
+
+    The dry-run / validate CI job runs on every PR (and from fork PRs
+    without access to repo variables), so it cannot require
+    ``GC_CLOUDWATCH_UID``. Strict mode is reserved for the live sync.
+    """
+    dashboards = [
+        {
+            "uid": "d",
+            "panels": [
+                {"datasource": {"type": "prometheus", "uid": "prometheus"}},
+                {"datasource": {"type": "cloudwatch", "uid": "cloudwatch"}},
+            ],
+        }
+    ]
+
+    remap = sync_module.build_uid_remap(dashboards, env={}, strict=False)
+
+    # Prometheus default still resolves; CloudWatch is silently omitted.
+    assert remap == {"prometheus": "grafanacloud-prom"}
+
+
+def test_main_dry_run_does_not_require_cloudwatch_uid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: dry-run on a CW-using dashboard must succeed with no env.
+
+    Regression guard against the original strict-by-default dry-run
+    that broke the dashboards-validate CI job on PRs.
+    """
+    path = tmp_path / "d.json"
+    path.write_text(
+        json.dumps(
+            {
+                "uid": "ams-d",
+                "title": "D",
+                "panels": [
+                    {"datasource": {"type": "cloudwatch", "uid": "cloudwatch"}},
+                ],
+            }
+        )
+    )
+    monkeypatch.delenv("GC_CLOUDWATCH_UID", raising=False)
+
+    exit_code = sync_module.main(["--dashboards-dir", str(tmp_path), "--dry-run"])
+
+    assert exit_code == 0
+
+
 def test_build_uid_remap_skips_unused_placeholders() -> None:
     """An unset ``GC_CLOUDWATCH_UID`` must not block a CW-free batch.
 
