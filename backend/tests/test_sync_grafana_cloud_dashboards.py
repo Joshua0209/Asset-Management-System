@@ -206,6 +206,48 @@ def test_main_requires_stack_url_when_not_dry_run(
     assert excinfo.value.code != 0
 
 
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "http://x.grafana.net",
+        "http://169.254.169.254/latest",  # AWS EC2 metadata service
+        "ftp://x.grafana.net",
+        "file:///etc/passwd",
+        "ldap://internal/",
+        "x.grafana.net",  # scheme omitted entirely
+    ],
+)
+def test_main_rejects_non_https_stack_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    bad_url: str,
+) -> None:
+    """M3 contract: only https:// stack URLs are accepted in live mode.
+
+    The bearer token (``GRAFANA_CLOUD_API_KEY``) is added to every
+    request. A mistyped or env-driven plaintext URL would send the
+    token over the wire unprotected, or to the EC2 IMDS metadata
+    endpoint, or to any other unintended target. Fail closed BEFORE
+    any HTTP request is issued.
+    """
+    _write_dashboard(tmp_path, "ams-x", "X")
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "secret-token-do-not-leak")
+
+    with pytest.raises(SystemExit) as excinfo:
+        sync_module.main(
+            ["--dashboards-dir", str(tmp_path), "--stack-url", bad_url]
+        )
+
+    assert excinfo.value.code != 0
+    captured = capsys.readouterr()
+    assert "https://" in captured.err
+    # The credential MUST NOT appear in the error message (defensive: a
+    # future refactor that interpolated args without sanitization would
+    # leak the token to the operator's terminal).
+    assert "secret-token-do-not-leak" not in captured.err
+
+
 def test_main_missing_dashboards_dir_returns_2(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

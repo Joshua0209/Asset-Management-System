@@ -239,6 +239,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.stack_url:
         sys.stderr.write("--stack-url is required when not in --dry-run mode\n")
         raise SystemExit(2)
+    # M3 finding from the third review: refuse to send the bearer token over
+    # plaintext OR to an unexpected protocol scheme. Without this guard:
+    #   * A mistyped ``--stack-url http://...`` (or an env-var-driven runbook
+    #     that lost the ``s``) sends ``Authorization: Bearer <GC_API_KEY>``
+    #     in cleartext to anyone on the network path.
+    #   * A misconfigured stack URL pointing at the EC2 IMDS endpoint
+    #     ``http://169.254.169.254/...`` (or any internal http:// URL)
+    #     would gladly send the GC token to the wrong server.
+    #   * Non-HTTP schemes (file://, ftp://, ldap://) would surprise the
+    #     reader of any error trace without any legitimate use case here.
+    # The Grafana Cloud stack URL is always ``https://<slug>.grafana.net``
+    # — there is no test/dev mode that legitimately needs http://. Fail
+    # closed.
+    if not args.stack_url.startswith("https://"):
+        sys.stderr.write(
+            "--stack-url must use the https:// scheme to avoid leaking the "
+            "GRAFANA_CLOUD_API_KEY over plaintext. Got: "
+            f"{args.stack_url.split(':', 1)[0] or '(empty)'}://...\n"
+        )
+        raise SystemExit(2)
 
     failed_uids: list[str] = []
     consecutive_transport_fails = 0
