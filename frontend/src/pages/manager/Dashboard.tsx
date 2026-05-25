@@ -248,8 +248,13 @@ const Dashboard: React.FC = () => {
             dataSource={recent_pending_repairs}
             renderItem={(item) => (
               <List.Item
-                style={{ cursor: "pointer" }}
-                onClick={() => navigate(`/reviews/${item.id}`)}
+                style={{ cursor: item.id ? "pointer" : "default" }}
+                onClick={() => {
+                  // Guard against a malformed payload that omits the UUID;
+                  // navigating to /reviews/undefined would land the user
+                  // on a 404 detail page with no breadcrumb.
+                  if (item.id) navigate(`/reviews/${item.id}`);
+                }}
               >
                 <List.Item.Meta
                   title={

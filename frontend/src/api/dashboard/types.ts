@@ -24,7 +24,12 @@ export interface RepairSummary {
 }
 
 export interface RecentPendingRepair {
+  // Internal UUID primary key — used for routing to /reviews/<id>.
+  // Never displayed.
   id: string;
+  // Human-readable code (e.g. REP-2026-00041) shown in the UI.
+  // Not safe to use as a route param because the backend route
+  // resolves /reviews/<id> by UUID only.
   repair_id: string;
   asset_id: string;
   asset_name: string;
