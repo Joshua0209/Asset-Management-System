@@ -36,8 +36,13 @@ W1–W6 code work is on `main`. See [docs/roadmap.md](docs/roadmap.md) for the f
 │       ├── i18n
 │       │   └── locales
 │       └── pages
+├── infra
+│   ├── ecs               # ECS task definitions + IAM/OIDC notes
+│   └── grafana-cloud     # Dashboard JSONs + sync script
+├── load                  # k6 scripts (smoke, load, stress, spike, soak, consistent)
 └── docs
     ├── designs
+    ├── plans             # observability implementation + prod migration plans
     └── system-design
 ```
 
@@ -122,9 +127,14 @@ The Asset List page is role-aware and mode-aware:
 
 This keeps the same page behavior across environments while allowing development without a live backend.
 
-### Repair-image storage (local disk, Phase 1–2)
+### Repair-image storage (local disk in dev, S3 in production)
 
-Uploaded repair images are written to `REPAIR_UPLOAD_DIR` (default `uploads/repair-requests/`, git-ignored). The on-disk layout is `<repair-request-id>/<image-id>.<ext>`, and `repair_images.image_url` stores that relative key — **not** a public URL. The public URL `/api/v1/images/<id>` is computed at the schema layer (`RepairImageRead.url`) so the storage backend can be swapped (e.g., S3 in Week 5) without migrating any DB rows.
+Uploaded repair images go through a small `ImageStorage` Protocol in `app/services/image_storage.py` with two implementations:
+
+- **Local disk** (default in dev / docker compose). Files land under `REPAIR_UPLOAD_DIR` (default `uploads/repair-requests/`, git-ignored) with on-disk layout `<repair-request-id>/<image-id>.<ext>`.
+- **S3** (production). Selected by `REPAIR_IMAGE_BACKEND=s3` + `REPAIR_S3_BUCKET=<name>` (optional `REPAIR_S3_PREFIX`). Enabled by default in `infra/ecs/backend-task-def.json`. Boto3 is lazy-imported, so dev environments do not need it.
+
+`repair_images.image_url` stores a backend storage key (the same `<rr-id>/<image-id>.<ext>` shape for both backends), **not** a public URL or filesystem path. The public URL `/api/v1/images/<id>` is computed at the schema layer (`RepairImageRead.url`), so cutting over from local to S3 needs no DB rewrite.
 
 ## Scripts reference
 
@@ -168,28 +178,35 @@ Hooks in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 
 ## CI pipeline
 
-`.github/workflows/ci.yml` runs quality, security, and deploy gates.
+`.github/workflows/ci.yml` runs quality, security, and deploy gates. A `changes` job (dorny/paths-filter) emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
 
 On pull requests and pushes to `main`, it runs:
 
-| Job | Tool(s) |
-|-----|---------|
-| `backend` | ruff → mypy → pytest (uploads `coverage.xml`) |
-| `frontend` | ESLint → tsc → vitest (uploads `lcov.info`) → vite build |
-| `secrets` | gitleaks |
-| `sast` | Semgrep (OWASP top-10 ruleset) |
-| `pip-audit` | Python production dependency audit |
-| `npm-audit` | Node production dependency audit, HIGH+ |
-| `dependency-check` | OWASP Dependency-Check, CVSS ≥ 7 |
-| `sonarqube` | SonarCloud quality gate (consumes coverage artifacts) |
+| Job | Tool(s) | Path-filtered |
+|-----|---------|---------------|
+| `backend-lint` | ruff | backend |
+| `backend-typecheck` | mypy `--strict` | backend |
+| `backend-test` | pytest + coverage (uploads `backend-coverage`) | backend |
+| `frontend-test` | vitest + coverage (uploads `frontend-coverage`) | frontend |
+| `frontend` | ESLint + tsc + vite build | frontend |
+| `secrets` | gitleaks | no |
+| `sast` | Semgrep (OWASP top-10 ruleset) | no |
+| `pip-audit` | Python production dependency audit, HIGH+ | backend |
+| `npm-audit` | Node production dependency audit, HIGH+ | frontend |
+| `trivy` | Filesystem CVE scan, HIGH+CRITICAL (no `ignore-unfixed`) | backend or frontend |
+| `sonarqube` | SonarCloud quality gate; needs both `backend-test` and `frontend-test` to succeed | no |
+| `dashboards-validate` | Dry-run parse + UID/structure check on Grafana Cloud dashboard JSONs | dashboards |
 
 On pushes to `main` and manual dispatch, after those gates pass, it also runs:
 
-| Job | Purpose |
-|-----|---------|
-| `build-and-push` | Build backend/frontend production images and push to ECR |
-| `deploy-backend` | Render the backend ECS task definition and perform a rolling update |
-| `deploy-frontend` | Render the frontend ECS task definition and perform a rolling update |
+| Job | Purpose | Trigger |
+|-----|---------|---------|
+| `build-and-push` | Build backend/frontend production images from `Dockerfile.prod` and push to ECR via OIDC | push to main / dispatch |
+| `migrate-database` | Run `alembic upgrade head` as a one-off Fargate task before any new task set boots; gates `deploy-backend` | backend changes only |
+| `deploy-backend` | Render the backend ECS task definition and perform a rolling update with `wait-for-service-stability` | backend changes only |
+| `deploy-frontend` | Render the frontend ECS task definition and perform a rolling update | frontend changes only |
+| `sync-dashboards` | Sync dashboard JSONs to Grafana Cloud after `dashboards-validate` | dashboards changes |
+| `seed-database` | Destructive demo seed via one-off Fargate task | `workflow_dispatch` with `run_seed=true` only |
 
 ### SonarQube / SonarCloud
 
