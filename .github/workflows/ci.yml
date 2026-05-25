@@ -653,9 +653,20 @@ jobs:
 
   migrate-database:
     name: Run migrations (Alembic upgrade)
-    needs: build-and-push
+    needs: [changes, build-and-push]
     runs-on: ubuntu-latest
-    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
+    # Path-filtered to backend changes only. On a docs- or frontend-only
+    # main push there is no new schema to apply, so spinning up a Fargate
+    # task just to no-op `alembic upgrade head` wastes ~1-2 min and ECR
+    # pull bandwidth — and `deploy-backend` would be skipped anyway by
+    # its own backend-side gate. workflow_dispatch forces backend=true
+    # via the `changes` aggregate, so manual hot-fixes still migrate.
+    if: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') && needs.changes.outputs.backend == 'true' }}
+    # Bound the job so a stuck `aws ecs wait tasks-stopped` (or a
+    # never-launching task held in PROVISIONING by an ENI shortage)
+    # fails the workflow loudly instead of inheriting the 360-min
+    # workflow default.
+    timeout-minutes: 15
     permissions:
       id-token: write
       contents: read
