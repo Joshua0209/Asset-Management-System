@@ -20,8 +20,16 @@ Design constraints:
 
 * **Anonymous.** Init failure happens before user auth, so the
   endpoint must accept unauthenticated requests.
-* **Rate-limited.** Same anonymous tier as ``/auth/login`` etc. so
-  a malicious sender cannot spam the counter.
+* **Rate-limited at a HIGHER tier than auth.** The beacon is
+  fire-and-forget on the browser side — the 429 response is
+  unreadable by ``sendBeacon`` — so a rate-limited beacon is
+  otherwise invisible. The anonymous tier (30/min, sized for
+  ``/auth/login``) would clip a real outage's signal by orders of
+  magnitude. The dedicated ``rate_limit_beacon`` (600/min default)
+  per-IP cap leaves plenty of headroom for legitimate failure
+  storms while still bounding abuse, and the
+  ``FRONTEND_OBS_BEACON_RATE_LIMITED`` counter ticks when the cap
+  fires so the truncation itself is alertable.
 * **No PII.** The payload accepts a short error kind + a truncated
   message string. The frontend explicitly truncates. The endpoint
   truncates again on receive as belt-and-suspenders.
@@ -60,14 +68,16 @@ logger = logging.getLogger(__name__)
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
-def _anonymous_rate_limit() -> str:
-    """Read the anonymous rate-limit string per-request.
+def _beacon_rate_limit() -> str:
+    """Read the beacon rate-limit string per-request.
 
     Matches the pattern from ``endpoints/auth.py`` so a settings
     monkeypatch + cache-clear in tests is reflected here without a
-    re-import dance.
+    re-import dance. Distinct from ``rate_limit_anonymous`` because
+    the beacon must tolerate failure-storm bursts; see module
+    docstring "Rate-limited at a HIGHER tier than auth".
     """
-    return get_settings().rate_limit_anonymous
+    return get_settings().rate_limit_beacon
 
 
 _MAX_MESSAGE_LEN = 500
@@ -98,7 +108,7 @@ router = APIRouter()
     response_class=Response,
     include_in_schema=False,  # internal observability surface
 )
-@limiter.limit(_anonymous_rate_limit)
+@limiter.limit(_beacon_rate_limit)
 async def report_client_observability_failure(
     request: Request,
 ) -> Response:

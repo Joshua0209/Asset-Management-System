@@ -149,6 +149,27 @@ indistinguishable from ``VITE_OTEL_ENABLED=false``. Operators alert on
 catch a regression in the next deploy.
 """
 
+FRONTEND_OBS_BEACON_RATE_LIMITED = _meter.create_counter(
+    "ams_frontend_observability_beacon_rate_limited_total",
+    description=(
+        "Beacon requests dropped by the per-IP rate limit on "
+        "POST /api/v1/observability/client-error. A non-zero rate here "
+        "means FRONTEND_OBS_FAILURES is under-counting by an unknown "
+        "factor, so the init-failure alert is unreliable until the "
+        "burst subsides."
+    ),
+)
+"""OTel counter ticked when the beacon rate limit fires.
+
+The beacon is fire-and-forget; the browser cannot read the 429, so a
+rate-limited beacon is otherwise invisible. Without this counter a
+bad deploy that breaks browser OTel for every user only ticks
+``FRONTEND_OBS_FAILURES`` N times for ~1000x failures (whatever the
+per-IP cap admits), making the alert's magnitude misleading. Operators
+alert on ``rate(ams_frontend_observability_beacon_rate_limited_total[5m]) > 0``
+to know the init-failure rate is being clipped.
+"""
+
 PROFILING_INIT_FAILURES = _meter.create_counter(
     "ams_profiling_init_failures_total",
     description=(

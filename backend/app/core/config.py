@@ -153,6 +153,15 @@ class Settings(BaseSettings):
     # browses several repair requests with attachments. Higher tier so a normal
     # session does not bump into the authenticated default.
     rate_limit_images: str = "300/minute"
+    # The frontend init-failure beacon (`POST /observability/client-error`)
+    # is fire-and-forget from the browser, so a 429 here silently truncates
+    # the very signal it exists to surface: when a bad deploy breaks browser
+    # OTel for 100% of users, the anonymous tier (30/min) clips beacons N
+    # from a 1000x failure storm and the rate-rule fires with the wrong
+    # magnitude. Use a far higher per-IP tier here, and pair with the
+    # `FRONTEND_OBS_BEACON_RATE_LIMITED` counter so the truncation itself
+    # is alertable when it fires.
+    rate_limit_beacon: str = "600/minute"
 
     # CORS — defaults match the actual route surface. The "no DELETE / no
     # If-Match" invariant is enforced at the router site

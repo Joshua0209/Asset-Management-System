@@ -74,6 +74,22 @@ def _kind_count(reader: InMemoryMetricReader, kind: str) -> float:
     return total
 
 
+def _beacon_rate_limited_count(reader: InMemoryMetricReader) -> float:
+    """Sum the H1 visibility counter's data points."""
+    data = reader.get_metrics_data()
+    if data is None:
+        return 0.0
+    total = 0.0
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                if metric.name != "ams_frontend_observability_beacon_rate_limited_total":
+                    continue
+                for dp in metric.data.data_points:
+                    total += float(dp.value)
+    return total
+
+
 def test_well_formed_text_plain_beacon_increments_counter_with_kind(
     client: TestClient,
     metric_reader: InMemoryMetricReader,
@@ -212,22 +228,30 @@ def test_control_characters_are_stripped_from_logged_fields(
         assert ch not in extras_message, (ch, extras_message)
 
 
-def test_beacon_endpoint_enforces_anonymous_rate_limit(
+def test_beacon_endpoint_enforces_dedicated_beacon_rate_limit(
     client: TestClient,
+    metric_reader: InMemoryMetricReader,
 ) -> None:
-    """The ``@limiter.limit(_anonymous_rate_limit)`` decorator must
+    """The ``@limiter.limit(_beacon_rate_limit)`` decorator must
     actually fire on this endpoint.
 
-    Locks the M5 contract: without this test, a regression that
-    dropped ``@limiter.limit`` (or refactored ``_anonymous_rate_limit``
+    Locks the H1 contract: without this test, a regression that
+    dropped ``@limiter.limit`` (or refactored ``_beacon_rate_limit``
     to return an ``unlimited`` string) would not fail anything in CI,
     leaving the counter ``ams_frontend_observability_init_failures_total``
     open to spam by any anonymous sender.
 
-    The conftest sets ``RATE_LIMIT_ANONYMOUS=3/minute`` but disables
+    Also pins the H1 visibility contract: when the cap fires, the
+    ``ams_frontend_observability_beacon_rate_limited_total`` counter
+    MUST tick — otherwise operators have no way to know that the
+    init-failure counter is being silently truncated during a real
+    outage (the browser cannot read the 429; sendBeacon discards it).
+
+    The conftest sets ``RATE_LIMIT_BEACON=3/minute`` but disables
     the limiter globally. This test enables it for the duration of
     the request burst and asserts the 4th call lands as 429 with
-    the project's error envelope shape.
+    the project's error envelope shape + the visibility counter
+    ticks for that 429.
     """
     from app.main import app
 
@@ -243,6 +267,7 @@ def test_beacon_endpoint_enforces_anonymous_rate_limit(
                 json={"kind": "rl-probe", "message": f"call {i}"},
             )
             assert response.status_code == 204, (i, response.text)
+        before_rl = _beacon_rate_limited_count(metric_reader)
         blocked = client.post(
             "/api/v1/observability/client-error",
             json={"kind": "rl-probe", "message": "over the limit"},
@@ -250,6 +275,8 @@ def test_beacon_endpoint_enforces_anonymous_rate_limit(
         assert blocked.status_code == 429, blocked.text
         body = blocked.json()
         assert body["error"]["code"] == "rate_limit_exceeded", body
+        after_rl = _beacon_rate_limited_count(metric_reader)
+        assert after_rl == before_rl + 1.0, (before_rl, after_rl)
     finally:
         app.state.limiter.enabled = original_enabled
         app.state.limiter.reset()

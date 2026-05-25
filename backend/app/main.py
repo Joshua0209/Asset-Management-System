@@ -14,6 +14,7 @@ from sqlalchemy import text
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.observability import (
+    FRONTEND_OBS_BEACON_RATE_LIMITED,
     maybe_setup_profiling,
     setup_log_exporter,
     setup_logging,
@@ -351,6 +352,13 @@ def register_rate_limit_handler(target_app: FastAPI) -> None:
         # `exc.detail` is e.g. "3 per 1 minute" — surface it as the message
         # so clients can show the configured limit without leaking internals.
         message = f"Rate limit exceeded: {exc.detail}"
+        # The beacon endpoint is fire-and-forget; the browser cannot read
+        # this 429. Tick a dedicated counter so the truncation itself is
+        # alertable, otherwise FRONTEND_OBS_FAILURES silently under-counts
+        # during a failure storm. Match on the path suffix so the prefix
+        # (api_v1_prefix) can change without touching this handler.
+        if request.url.path.endswith("/observability/client-error"):
+            FRONTEND_OBS_BEACON_RATE_LIMITED.add(1)
         # SlowAPIMiddleware injects X-RateLimit-* on the response on its way
         # back through the stack when `headers_enabled=True`. We seed
         # Retry-After defensively here so a misconfigured limiter

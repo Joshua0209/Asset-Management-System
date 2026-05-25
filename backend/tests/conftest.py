@@ -36,6 +36,7 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 os.environ.setdefault("RATE_LIMIT_ANONYMOUS", "3/minute")
 os.environ.setdefault("RATE_LIMIT_AUTHENTICATED", "5/minute")
 os.environ.setdefault("RATE_LIMIT_IMAGES", "10/minute")
+os.environ.setdefault("RATE_LIMIT_BEACON", "3/minute")
 
 # ---------------------------------------------------------------------------
 # Safe to import app.* below this line — env is now configured.
