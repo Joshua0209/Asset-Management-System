@@ -23,6 +23,7 @@ See `CLAUDE.md` §"Health endpoints (Week 5+)" for the code-level distinction be
 **Database migration strategy:**
 - Use backward-compatible migrations only (add columns, never remove or rename in the same release)
 - Two-phase migration for breaking changes: (1) add new column, deploy app that writes to both, (2) migrate data, deploy app that uses only new column, (3) drop old column
+- **Automation (Phase 2+):** the `migrate-database` job in `.github/workflows/ci.yml` runs `alembic upgrade head` as a one-off Fargate task against the rendered backend task definition before `deploy-backend` starts the rolling update. The deploy is blocked on the migration job's exit code, so step (1) "add new column" lands automatically pre-deploy and the new task set never boots against an unmigrated schema. The job is forward-only: a rollback to a prior schema still needs a hand-written revert migration. Manual seeding (operator-triggered, destructive) is the sibling `seed-database` job, fired only via `workflow_dispatch` with the `run_seed` input checked.
 
 ---
 
