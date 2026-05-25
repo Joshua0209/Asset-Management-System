@@ -41,12 +41,18 @@ src/
 │   ├── layout/MainLayout.tsx
 │   ├── assets/
 │   └── repair-requests/constants.ts
+├── design/
+│   ├── antdTheme.ts        # Antd ConfigProvider theme from design tokens
+│   └── design-tokens.json  # Synced from docs/designs/design-tokens.json
 ├── hooks/
 │   ├── useAssetList.ts
 │   └── useSubmitAction.ts
 ├── i18n/
 │   ├── index.ts
 │   └── locales/{en.json,zh-TW.json}
+├── mocks/
+│   ├── assets.ts           # Static mock dataset
+│   └── mockBackend.ts      # Shared mock runtime state for VITE_USE_MOCK_AUTH=true
 ├── pages/
 │   ├── auth/{Login.tsx,Register.tsx}
 │   ├── holder/
@@ -56,7 +62,9 @@ src/
 │   └── Forbidden.tsx
 ├── utils/{apiErrors.ts,format.ts,validators.ts}
 ├── App.tsx
-└── main.tsx
+├── main.tsx
+├── observability.ts        # Browser OTel SDK init (opt-in, gated by VITE_OTEL_ENABLED)
+└── styles.css              # Global styles + design-token CSS variables
 ```
 
 ## 3. Route and role boundaries (MUST)
