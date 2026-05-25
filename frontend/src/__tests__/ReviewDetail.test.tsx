@@ -44,6 +44,33 @@ type RepairDetailInputs = {
   repairCost: string;
   repairVendor: string;
 };
+type FieldEntry = readonly [label: string, value: string];
+
+const approveFields = {
+  full: [
+    ['Repair Plan', 'Plan'],
+    ['Repair Vendor', 'Vendor'],
+    ['Repair Cost', '100'],
+    ['Planned Date', '2026-05-01'],
+  ],
+  withoutCost: [
+    ['Repair Plan', 'Plan'],
+    ['Repair Vendor', 'Vendor'],
+    ['Planned Date', '2026-05-01'],
+  ],
+  empty: [],
+} satisfies Record<string, FieldEntry[]>;
+const completedRepairDetails = {
+  repairDate: '2026-04-28',
+  faultDescription: 'Resolved',
+  repairPlan: 'Replaced part',
+  repairCost: '1800',
+  repairVendor: 'Vendor C',
+} satisfies RepairDetailInputs;
+const zeroCostCompletedRepairDetails = {
+  ...completedRepairDetails,
+  repairCost: '0',
+} satisfies RepairDetailInputs;
 
 async function clickButton(user: User, name: string): Promise<void> {
   await act(async () => {
@@ -64,38 +91,34 @@ async function typeLabel(user: User, label: string, value: string): Promise<void
   });
 }
 
-async function performApproveFlow(user: User): Promise<void> {
-  await waitFor(() => {
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-  });
+async function typeFields(user: User, fields: FieldEntry[]): Promise<void> {
+  for (const [label, value] of fields) {
+    await typeLabel(user, label, value);
+  }
+}
 
+async function waitForAction(name: string): Promise<void> {
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name })).toBeInTheDocument();
+  });
+}
+
+async function submitApprove(user: User, fields: FieldEntry[] = approveFields.full): Promise<void> {
+  await waitForAction('Approve');
   await clickButton(user, 'Approve');
-  await typeLabel(user, 'Repair Plan', 'Plan');
-  await typeLabel(user, 'Repair Vendor', 'Vendor');
-  await typeLabel(user, 'Repair Cost', '100');
-  await typeLabel(user, 'Planned Date', '2026-05-01');
+  await typeFields(user, fields);
   await clickLastButton(user, 'Approve');
 }
 
-async function performApproveFlowWithoutCost(user: User): Promise<void> {
-  await waitFor(() => {
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-  });
-
-  await clickButton(user, 'Approve');
-  await typeLabel(user, 'Repair Plan', 'Plan');
-  await typeLabel(user, 'Repair Vendor', 'Vendor');
-  await typeLabel(user, 'Planned Date', '2026-05-01');
-  await clickLastButton(user, 'Approve');
+function mockRequestSequence(...requests: RepairRequestRecord[]): void {
+  for (const request of requests) {
+    mockGetRepairRequestById.mockResolvedValueOnce(request);
+  }
 }
 
-async function performApproveFlowWithoutRepairDetails(user: User): Promise<void> {
-  await waitFor(() => {
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
-  });
-
-  await clickButton(user, 'Approve');
-  await clickLastButton(user, 'Approve');
+async function renderWithRequests(...requests: RepairRequestRecord[]): Promise<void> {
+  mockRequestSequence(...requests);
+  await renderDetailPage();
 }
 
 async function fillRepairDetails(user: User, details: RepairDetailInputs): Promise<void> {
@@ -106,13 +129,20 @@ async function fillRepairDetails(user: User, details: RepairDetailInputs): Promi
   await typeLabel(user, 'Repair Vendor', details.repairVendor);
 }
 
+async function submitComplete(user: User, details: RepairDetailInputs): Promise<void> {
+  await waitForAction('Complete');
+  await clickButton(user, 'Complete');
+  await fillRepairDetails(user, details);
+  await clickLastButton(user, 'Complete');
+}
+
 async function submitApproveWithError(error: unknown): Promise<void> {
   const user = userEvent.setup({ delay: null });
   mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
   mockApproveRepairRequest.mockRejectedValueOnce(error);
 
   await renderDetailPage();
-  await performApproveFlow(user);
+  await submitApprove(user);
 }
 
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
@@ -190,9 +220,7 @@ describe('ReviewDetail', () => {
   });
 
   it('renders full-page fault details, including uploaded images', async () => {
-    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('pending_review'));
-
-    await renderDetailPage();
+    await renderWithRequests(buildRequest('pending_review'));
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Repair Request Details' })).toBeInTheDocument();
@@ -207,13 +235,9 @@ describe('ReviewDetail', () => {
 
   it('moves approve operation to review details page and submits payload', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildRequest('pending_review'))
-      .mockResolvedValueOnce(buildRequest('under_repair'));
 
-    await renderDetailPage();
-
-    await performApproveFlow(user);
+    await renderWithRequests(buildRequest('pending_review'), buildRequest('under_repair'));
+    await submitApprove(user);
 
     await waitFor(() => {
       expect(mockApproveRepairRequest).toHaveBeenCalledWith('rr-1', {
@@ -228,13 +252,9 @@ describe('ReviewDetail', () => {
 
   it('allows approval without an estimated repair cost', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildRequest('pending_review'))
-      .mockResolvedValueOnce(buildRequest('under_repair'));
 
-    await renderDetailPage();
-
-    await performApproveFlowWithoutCost(user);
+    await renderWithRequests(buildRequest('pending_review'), buildRequest('under_repair'));
+    await submitApprove(user, approveFields.withoutCost);
 
     await waitFor(() => {
       expect(mockApproveRepairRequest).toHaveBeenCalledWith('rr-1', {
@@ -248,13 +268,9 @@ describe('ReviewDetail', () => {
 
   it('allows approval without repair detail fields', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildRequest('pending_review'))
-      .mockResolvedValueOnce(buildRequest('under_repair'));
 
-    await renderDetailPage();
-
-    await performApproveFlowWithoutRepairDetails(user);
+    await renderWithRequests(buildRequest('pending_review'), buildRequest('under_repair'));
+    await submitApprove(user, approveFields.empty);
 
     await waitFor(() => {
       expect(mockApproveRepairRequest).toHaveBeenCalledWith('rr-1', {
@@ -265,16 +281,9 @@ describe('ReviewDetail', () => {
 
   it('moves reject operation to review details page and submits payload', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildRequest('pending_review'))
-      .mockResolvedValueOnce(buildRequest('rejected'));
 
-    await renderDetailPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
-    });
-
+    await renderWithRequests(buildRequest('pending_review'), buildRequest('rejected'));
+    await waitForAction('Reject');
     await clickButton(user, 'Reject');
     await typeLabel(user, 'Rejection Reason', 'Cannot reproduce');
     await clickLastButton(user, 'Reject');
@@ -289,17 +298,13 @@ describe('ReviewDetail', () => {
 
   it('moves update-details and complete operations to review details page', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildRequest('under_repair'))
-      .mockResolvedValueOnce(buildRequest('under_repair'))
-      .mockResolvedValueOnce(buildRequest('completed'));
 
-    await renderDetailPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Update Details' })).toBeInTheDocument();
-    });
-
+    await renderWithRequests(
+      buildRequest('under_repair'),
+      buildRequest('under_repair'),
+      buildRequest('completed'),
+    );
+    await waitForAction('Update Details');
     await clickButton(user, 'Update Details');
     await fillRepairDetails(user, {
       repairDate: '2026-04-21',
@@ -321,15 +326,7 @@ describe('ReviewDetail', () => {
       );
     });
 
-    await clickButton(user, 'Complete');
-    await fillRepairDetails(user, {
-      repairDate: '2026-04-28',
-      faultDescription: 'Resolved',
-      repairPlan: 'Replaced part',
-      repairCost: '1800',
-      repairVendor: 'Vendor C',
-    });
-    await clickLastButton(user, 'Complete');
+    await submitComplete(user, completedRepairDetails);
 
     await waitFor(() => {
       expect(mockCompleteRepairRequest).toHaveBeenCalledWith(
@@ -344,16 +341,9 @@ describe('ReviewDetail', () => {
 
   it('allows updating a single repair detail field', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildRequest('under_repair'))
-      .mockResolvedValueOnce(buildRequest('under_repair'));
 
-    await renderDetailPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Update Details' })).toBeInTheDocument();
-    });
-
+    await renderWithRequests(buildRequest('under_repair'), buildRequest('under_repair'));
+    await waitForAction('Update Details');
     await clickButton(user, 'Update Details');
     await typeLabel(user, 'Repair Vendor', 'Vendor B');
     await clickButton(user, 'Save');
@@ -368,14 +358,9 @@ describe('ReviewDetail', () => {
 
   it('requires at least one field when updating repair details', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('under_repair'));
 
-    await renderDetailPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Update Details' })).toBeInTheDocument();
-    });
-
+    await renderWithRequests(buildRequest('under_repair'));
+    await waitForAction('Update Details');
     await clickButton(user, 'Update Details');
     await clickButton(user, 'Save');
 
@@ -387,16 +372,9 @@ describe('ReviewDetail', () => {
 
   it('omits a blank optional repair cost when updating existing repair details', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildUnderRepairWithDetails())
-      .mockResolvedValueOnce(buildUnderRepairWithDetails());
 
-    await renderDetailPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Update Details' })).toBeInTheDocument();
-    });
-
+    await renderWithRequests(buildUnderRepairWithDetails(), buildUnderRepairWithDetails());
+    await waitForAction('Update Details');
     await clickButton(user, 'Update Details');
     await clickButton(user, 'Save');
 
@@ -415,9 +393,7 @@ describe('ReviewDetail', () => {
     const request = buildRequest('completed');
     request.images = [];
 
-    mockGetRepairRequestById.mockResolvedValueOnce(request);
-
-    await renderDetailPage();
+    await renderWithRequests(request);
 
     await waitFor(() => {
       expect(screen.getByText('Repair Result')).toBeInTheDocument();
@@ -448,17 +424,12 @@ describe('ReviewDetail', () => {
 
   it('shows a warning modal on 409 conflict error and refreshes data', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildRequest('pending_review'))
-      .mockResolvedValueOnce(buildRequest('pending_review'));
-
     mockApproveRepairRequest.mockRejectedValueOnce(
       new apiModule.ApiError(409, 'conflict', 'Conflict occurred'),
     );
 
-    await renderDetailPage();
-
-    await performApproveFlow(user);
+    await renderWithRequests(buildRequest('pending_review'), buildRequest('pending_review'));
+    await submitApprove(user);
 
     // Wait for conflict dialog
     await waitFor(() => {
@@ -500,23 +471,9 @@ describe('ReviewDetail', () => {
 
   it('allows zero repair cost when completing a repair', async () => {
     const user = userEvent.setup({ delay: null });
-    mockGetRepairRequestById
-      .mockResolvedValueOnce(buildRequest('under_repair'))
-      .mockResolvedValueOnce(buildRequest('completed'));
 
-    await renderDetailPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Complete' })).toBeInTheDocument();
-    });
-
-    await clickButton(user, 'Complete');
-    await typeLabel(user, 'Repair Date', '2026-04-28');
-    await typeLabel(user, 'Fault Description','Resolved');
-    await typeLabel(user, 'Repair Plan', 'Replaced part');
-    await typeLabel(user, 'Repair Cost', '0');
-    await typeLabel(user, 'Repair Vendor', 'Vendor C');
-    await clickLastButton(user, 'Complete');
+    await renderWithRequests(buildRequest('under_repair'), buildRequest('completed'));
+    await submitComplete(user, zeroCostCompletedRepairDetails);
 
     await waitFor(() => {
       expect(mockCompleteRepairRequest).toHaveBeenCalledWith(
