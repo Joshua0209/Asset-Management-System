@@ -212,6 +212,10 @@
     "description": "Monitor asset inventory, repair workload, and review activity from one operational view.",
     "loadError": "Failed to load dashboard data. Please try again later.",
     "retry": "Retry",
+    "mockBanner": {
+      "title": "Mock data",
+      "description": "VITE_USE_MOCK_AUTH is on; the numbers below are a stub, not live values. Disable mock auth to see real metrics."
+    },
     "kpis": {
       "title": "Key metrics",
       "totalAssets": "Total assets",

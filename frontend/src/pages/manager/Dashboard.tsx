@@ -26,6 +26,7 @@ const Dashboard: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [data, setData] = useState<ManagerDashboard | null>(null);
+  const [isMock, setIsMock] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,11 +34,16 @@ const Dashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const payload = await dashboardApi.getManagerDashboard();
-      setData(payload);
+      const result = await dashboardApi.getManagerDashboard();
+      setData(result.data);
+      setIsMock(result.isMock);
     } catch (err) {
       const message =
         err instanceof ApiError ? getApiErrorMessage(err, t) : t("dashboard.loadError");
+      // Preserve the raw error in the console so developers see network
+      // failures or parse errors instead of just the localised string.
+      // eslint-disable-next-line no-console
+      console.error("Failed to load manager dashboard", err);
       setError(message);
     } finally {
       setLoading(false);
@@ -101,6 +107,15 @@ const Dashboard: React.FC = () => {
       <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
         {t("dashboard.description")}
       </Typography.Paragraph>
+
+      {isMock && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t("dashboard.mockBanner.title")}
+          description={t("dashboard.mockBanner.description")}
+        />
+      )}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={4}>

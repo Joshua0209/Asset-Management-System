@@ -212,6 +212,10 @@
     "description": "從單一營運視圖掌握資產庫存、維修負載與審核活動。",
     "loadError": "載入儀表板資料失敗，請稍後再試。",
     "retry": "重新整理",
+    "mockBanner": {
+      "title": "模擬資料",
+      "description": "VITE_USE_MOCK_AUTH 已啟用；下方數字為模擬資料而非即時值。請關閉模擬登入以查看實際指標。"
+    },
     "kpis": {
       "title": "關鍵指標",
       "totalAssets": "資產總數",
