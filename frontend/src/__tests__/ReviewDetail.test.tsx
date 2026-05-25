@@ -113,6 +113,17 @@ function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecor
   };
 }
 
+function buildUnderRepairWithDetails(): RepairRequestRecord {
+  return {
+    ...buildRequest('under_repair'),
+    repair_date: '2026-05-08',
+    fault_content: 'Thermal paste aged and fan exhaust blocked.',
+    repair_plan: 'Clean cooling module and replace thermal paste.',
+    repair_cost: null,
+    repair_vendor: 'Internal IT Maintenance',
+  };
+}
+
 async function renderDetailPage(path = '/reviews/rr-1', routePath = '/reviews/:id'): Promise<void> {
   await act(async () => {
     render(
@@ -274,6 +285,52 @@ describe('ReviewDetail', () => {
           repair_vendor: 'Vendor C',
         }),
       );
+    });
+  });
+
+  it('requires core repair plan fields when updating repair details', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById.mockResolvedValueOnce(buildRequest('under_repair'));
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update Details' })).toBeInTheDocument();
+    });
+
+    await clickButton(user, 'Update Details');
+    await typeLabel(user, 'Fault Description','Connector issue');
+    await clickButton(user, 'Save');
+
+    await waitFor(() => {
+      expect(screen.getAllByText('This field is required')).toHaveLength(3);
+    });
+    expect(mockUpdateRepairRequestDetails).not.toHaveBeenCalled();
+  });
+
+  it('omits a blank optional repair cost when updating existing repair details', async () => {
+    const user = userEvent.setup({ delay: null });
+    mockGetRepairRequestById
+      .mockResolvedValueOnce(buildUnderRepairWithDetails())
+      .mockResolvedValueOnce(buildUnderRepairWithDetails());
+
+    await renderDetailPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Update Details' })).toBeInTheDocument();
+    });
+
+    await clickButton(user, 'Update Details');
+    await clickButton(user, 'Save');
+
+    await waitFor(() => {
+      expect(mockUpdateRepairRequestDetails).toHaveBeenCalledWith('rr-1', {
+        version: 1,
+        repair_date: '2026-05-08',
+        fault_content: 'Thermal paste aged and fan exhaust blocked.',
+        repair_plan: 'Clean cooling module and replace thermal paste.',
+        repair_vendor: 'Internal IT Maintenance',
+      });
     });
   });
 
