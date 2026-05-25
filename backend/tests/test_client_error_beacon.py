@@ -212,6 +212,49 @@ def test_control_characters_are_stripped_from_logged_fields(
         assert ch not in extras_message, (ch, extras_message)
 
 
+def test_beacon_endpoint_enforces_anonymous_rate_limit(
+    client: TestClient,
+) -> None:
+    """The ``@limiter.limit(_anonymous_rate_limit)`` decorator must
+    actually fire on this endpoint.
+
+    Locks the M5 contract: without this test, a regression that
+    dropped ``@limiter.limit`` (or refactored ``_anonymous_rate_limit``
+    to return an ``unlimited`` string) would not fail anything in CI,
+    leaving the counter ``ams_frontend_observability_init_failures_total``
+    open to spam by any anonymous sender.
+
+    The conftest sets ``RATE_LIMIT_ANONYMOUS=3/minute`` but disables
+    the limiter globally. This test enables it for the duration of
+    the request burst and asserts the 4th call lands as 429 with
+    the project's error envelope shape.
+    """
+    from app.main import app
+
+    original_enabled = app.state.limiter.enabled
+    app.state.limiter.enabled = True
+    # slowapi tracks per-key counters in module-level state; reset between
+    # tests so a prior test that exhausted the bucket doesn't bleed.
+    app.state.limiter.reset()
+    try:
+        for i in range(3):
+            response = client.post(
+                "/api/v1/observability/client-error",
+                json={"kind": "rl-probe", "message": f"call {i}"},
+            )
+            assert response.status_code == 204, (i, response.text)
+        blocked = client.post(
+            "/api/v1/observability/client-error",
+            json={"kind": "rl-probe", "message": "over the limit"},
+        )
+        assert blocked.status_code == 429, blocked.text
+        body = blocked.json()
+        assert body["error"]["code"] == "rate_limit_exceeded", body
+    finally:
+        app.state.limiter.enabled = original_enabled
+        app.state.limiter.reset()
+
+
 def test_endpoint_accepts_anonymous_request(
     client: TestClient,
 ) -> None:
