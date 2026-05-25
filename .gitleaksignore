@@ -1,0 +1,11 @@
+# Gitleaks ignore list. Format: commitSha:filepath:ruleID:line
+#
+# History scans on every PR / main push see commits we can no longer rewrite;
+# documented false positives are pinned here by fingerprint so future scans
+# stay green without weakening the rule set.
+
+# Truncated JWT placeholder in the auth endpoint response example under
+# docs/system-design/12-api-design.md. Not a real secret. The HEAD version has
+# been replaced with a non-JWT-looking placeholder; this entry only suppresses
+# the historic occurrence in commit eba87ca.
+eba87ca4902594d2fdfda55d0b4041f68c319d52:docs/system-design/12-api-design.md:generic-api-key:249
