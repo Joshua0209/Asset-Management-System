@@ -171,9 +171,11 @@ describe("initObservability", () => {
     const re = matcher as RegExp;
     expect(re.test("http://localhost:8000")).toBe(true);
     expect(re.test("http://localhost:8000/api/v1/assets")).toBe(true);
-    // Path-boundary anchor rejects lookalike hosts.
-    expect(re.test("http://localhost:8000.evil.com/x")).toBe(false);
-    expect(re.test("http://localhost:8000evil/x")).toBe(false);
+    // Path-boundary anchor rejects lookalike hosts. The literals are
+    // negative-test inputs for the regex matcher, not network targets
+    // — Sonar S5332 (http insecure) is suppressed here on that basis.
+    expect(re.test("http://localhost:8000.evil.com/x")).toBe(false); // NOSONAR
+    expect(re.test("http://localhost:8000evil/x")).toBe(false); // NOSONAR
   });
 
   it("does not derive propagation URLs when VITE_API_BASE_URL is relative", async () => {
