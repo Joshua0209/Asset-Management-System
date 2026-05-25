@@ -683,18 +683,26 @@ def setup_tracing(app: FastAPI, settings: Settings) -> None:
 def maybe_setup_profiling(settings: Settings) -> None:
     """Start the Pyroscope sampling thread when enabled.
 
-    Wrapped in try/except so the dev image (which doesn't ship the
-    optional ``pyroscope-io`` extra) only logs a warning instead of
-    crashing on import. Configure failures (bad token, unreachable
-    server) are also caught and logged so a profiling misconfig never
-    crashes the request-serving path.
+    Two distinct catches with deliberately different scope:
 
-    Enabled in production as of Phase 3 of the prod migration plan
-    (reverses the original W6 "off in prod" locked decision). The
-    ``WEB_CONCURRENCY=1`` invariant in ``app/main.py`` plus the absence
-    of ``gunicorn --preload`` means the sampling thread starts inside
-    the worker post-fork. If samples don't appear in production within
-    60s of first request, the fallback is the ``gunicorn.conf.py``
+    * **Import**: ``(ImportError, OSError)`` — the dev image deliberately
+      omits the optional ``pyroscope-io`` extra (ImportError), and
+      Alpine / musl builds can present a broken native wheel that
+      surfaces as OSError at import time. Both are operationally
+      identical (reinstall the prod extra); both must NOT crash boot.
+    * **Configure**: ``(RuntimeError, OSError, ValueError)`` — known
+      pyroscope-io misconfig signatures: bad token / unreachable
+      server (RuntimeError), socket / DNS issues (OSError),
+      malformed-server-URL (ValueError). Deliberately NARROW — a
+      TypeError would imply this code passed wrong kwargs to
+      ``pyroscope.configure``, a programmer bug that should propagate
+      to surface during tests rather than be swallowed in prod.
+
+    Enabled in production as of Phase 3 of the prod migration plan.
+    The ``WEB_CONCURRENCY=1`` invariant in ``app/main.py`` plus the
+    absence of ``gunicorn --preload`` means the sampling thread starts
+    inside the worker post-fork. If samples don't appear within 60s of
+    first request, the fallback is the ``gunicorn.conf.py``
     ``post_fork`` hook documented in the Phase 4 plan.
 
     TODO: before relaxing ``WEB_CONCURRENCY=1`` to enable multi-worker
@@ -706,10 +714,31 @@ def maybe_setup_profiling(settings: Settings) -> None:
         return
     try:
         import pyroscope
-    except ImportError:
+    except (ImportError, OSError) as exc:
+        # ImportError covers the dev-image case where the optional
+        # ``pyroscope-io`` extra simply isn't installed (ModuleNotFoundError
+        # is an ImportError subclass).
+        #
+        # OSError covers a different real failure mode the docstring
+        # implicitly promises but the narrow ImportError didn't catch:
+        # ``pyroscope-io`` is a CPython extension wrapping a Rust client,
+        # and on Alpine / musl-based images the wheel can be present but
+        # raise ``OSError: cannot load library`` at import time when the
+        # native deps it links against (libssl, libcrypto) are missing or
+        # mismatched. Pre-M6 that raised straight out of this function
+        # and crashed boot — directly contradicting "Configure failures
+        # are also caught and logged so a profiling misconfig never
+        # crashes the request-serving path." Treating it as the same
+        # missing-dependency signal preserves the docstring contract:
+        # a broken wheel and a missing wheel are operationally identical
+        # (both mean profiling can't run; both want the prod extra
+        # reinstalled).
         logger.warning(
-            "PYROSCOPE_ENABLED=true but pyroscope-io is not installed. "
-            "Install the `prod` extra to enable continuous profiling."
+            "PYROSCOPE_ENABLED=true but pyroscope-io is unavailable "
+            "(%s: %s). Install or repair the `prod` extra to enable "
+            "continuous profiling.",
+            type(exc).__name__,
+            exc,
         )
         PROFILING_INIT_FAILURES.add(1, attributes={"reason": "missing_dependency"})
         return

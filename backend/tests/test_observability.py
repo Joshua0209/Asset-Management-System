@@ -1486,8 +1486,68 @@ def test_maybe_setup_profiling_logs_warning_on_missing_pyroscope(
     with caplog.at_level(logging.WARNING, logger="app.core.observability"):
         obs.maybe_setup_profiling(settings)
     assert any(
-        "pyroscope-io is not installed" in rec.message for rec in caplog.records
+        "pyroscope-io is unavailable" in rec.message for rec in caplog.records
     ), [rec.message for rec in caplog.records]
+    assert _counter_value(
+        metric_reader,
+        "ams_profiling_init_failures_total",
+        {"reason": "missing_dependency"},
+    ) == 1.0
+
+
+def test_maybe_setup_profiling_handles_broken_wheel_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    metric_reader: InMemoryMetricReader,
+) -> None:
+    """M6 contract: pyroscope-io import raising OSError -> warn + counter, never crash.
+
+    ``pyroscope-io`` wraps a Rust client linked against libssl. On
+    Alpine / musl-based images a broken wheel can be present but
+    raise ``OSError: cannot load library`` at import time. Pre-M6
+    this propagated out of ``maybe_setup_profiling`` and crashed
+    boot — contradicting the docstring promise that "a profiling
+    misconfig never crashes the request-serving path." Post-M6 the
+    catch widens to ``(ImportError, OSError)`` so a broken wheel is
+    operationally identical to a missing wheel (both want the prod
+    extra reinstalled).
+    """
+    import builtins
+
+    from app.core import observability as obs
+
+    real_import = builtins.__import__
+
+    def _fake_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "pyroscope":
+            raise OSError("cannot load library libssl.so.1.1")
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+    settings = _settings_with_otel(
+        monkeypatch,
+        PYROSCOPE_ENABLED="true",
+        PYROSCOPE_SERVER="https://profiles.example",
+        PYROSCOPE_AUTH_TOKEN="tok-xyz",
+        PYROSCOPE_BASIC_AUTH_USERNAME="123456",
+        ENVIRONMENT="production",
+    )
+    with caplog.at_level(logging.WARNING, logger="app.core.observability"):
+        # Must NOT raise — broken wheel is operationally same as missing wheel.
+        obs.maybe_setup_profiling(settings)
+    matched = [
+        rec for rec in caplog.records
+        if "pyroscope-io is unavailable" in rec.message
+    ]
+    assert matched, [rec.message for rec in caplog.records]
+    # The exception type AND message should land in the WARN so the
+    # operator can distinguish missing-wheel from broken-wheel from
+    # the log alone.
+    assert "OSError" in matched[0].message, matched[0].message
+    assert "libssl" in matched[0].message, matched[0].message
+    # Counter ticks under the same `missing_dependency` reason — same
+    # remediation (reinstall the prod extra), same alert rule.
     assert _counter_value(
         metric_reader,
         "ams_profiling_init_failures_total",
