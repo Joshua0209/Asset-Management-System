@@ -37,18 +37,92 @@ def test_load_dashboards_reads_all_json_files(tmp_path: Path) -> None:
     _write_dashboard(tmp_path, "ams-b", "B")
     (tmp_path / "not-a-dashboard.txt").write_text("ignore me")
 
-    loaded = sync_module.load_dashboards(tmp_path)
+    loaded, malformed = sync_module.load_dashboards(tmp_path)
 
     assert len(loaded) == 2
+    assert malformed == []
     uids = {d["uid"] for d in loaded}
     assert uids == {"ams-a", "ams-b"}
 
 
-def test_load_dashboards_raises_on_missing_uid(tmp_path: Path) -> None:
+def test_load_dashboards_reports_missing_uid_as_malformed(tmp_path: Path) -> None:
+    """A dashboard missing ``uid`` is recorded as malformed, not raised.
+
+    Per the HIGH review finding: aborting load_dashboards with an
+    uncaught exception means valid dashboards earlier in iteration
+    order are dropped on the floor without a summary line. The fix
+    routes invalid files through the same ``malformed`` list that
+    ``main()`` surfaces alongside publish failures.
+    """
+    _write_dashboard(tmp_path, "ams-ok", "Valid")
     (tmp_path / "broken.json").write_text(json.dumps({"title": "no uid"}))
 
-    with pytest.raises(ValueError, match="uid"):
-        sync_module.load_dashboards(tmp_path)
+    loaded, malformed = sync_module.load_dashboards(tmp_path)
+
+    assert len(loaded) == 1
+    assert loaded[0]["uid"] == "ams-ok"
+    assert malformed == ["broken.json"]
+
+
+def test_load_dashboards_reports_malformed_json_as_malformed(
+    tmp_path: Path,
+) -> None:
+    """Invalid JSON in one file does NOT abort the whole load with a
+    raw stacktrace; the file is reported as malformed and the others
+    continue."""
+    _write_dashboard(tmp_path, "ams-good", "OK")
+    (tmp_path / "ams-bad.json").write_text("{ not valid json")
+
+    loaded, malformed = sync_module.load_dashboards(tmp_path)
+
+    assert len(loaded) == 1
+    assert loaded[0]["uid"] == "ams-good"
+    assert malformed == ["ams-bad.json"]
+
+
+def test_main_dry_run_returns_1_when_any_dashboard_malformed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--dry-run`` is the CI validate gate; one malformed file must
+    fail the gate so the bad JSON never reaches the production sync."""
+    _write_dashboard(tmp_path, "ams-ok", "OK")
+    (tmp_path / "ams-bad.json").write_text("{ broken")
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--dry-run"]
+    )
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "malformed" in err
+    assert "ams-bad.json" in err
+
+
+def test_main_live_run_surfaces_malformed_in_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """In live mode, malformed files appear in the final failure
+    summary alongside publish failures, and the script exits non-zero."""
+    _write_dashboard(tmp_path, "ams-ok", "OK")
+    (tmp_path / "ams-bad.json").write_text("{ not json")
+    mock_post = MagicMock(return_value=200)
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+
+    exit_code = sync_module.main(
+        ["--dashboards-dir", str(tmp_path), "--stack-url", "https://x.grafana.net"]
+    )
+
+    assert exit_code == 1
+    # The valid dashboard was still posted (graceful degradation).
+    assert mock_post.call_count == 1
+    err = capsys.readouterr().err
+    assert "1 of 2 dashboard" in err
+    assert "1 malformed" in err
+    assert "ams-bad.json" in err
 
 
 def test_build_payload_wraps_dashboard_with_overwrite_true() -> None:

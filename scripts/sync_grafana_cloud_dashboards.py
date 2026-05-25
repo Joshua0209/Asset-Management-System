@@ -47,17 +47,44 @@ HTTP_TIMEOUT_SECONDS = 30
 _CONSECUTIVE_TRANSPORT_FAIL_LIMIT = 2
 
 
-def load_dashboards(dashboards_dir: Path) -> list[dict[str, Any]]:
-    """Read every `*.json` file under `dashboards_dir`. Raises if any
-    dashboard lacks a `uid` (the API needs it for idempotent upsert)."""
+def load_dashboards(
+    dashboards_dir: Path,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Read every ``*.json`` file under ``dashboards_dir``.
+
+    Returns ``(valid_dashboards, malformed_filenames)``. A malformed
+    dashboard (invalid JSON, ``OSError`` opening the file, missing
+    required ``uid`` field) is recorded as a filename in the second
+    list rather than raising — without this, a single bad JSON would
+    abort the whole sync loop with a raw stacktrace mid-summary,
+    masking any ``OK`` lines from earlier dashboards in iteration
+    order. ``main()`` surfaces both lists in the final summary so
+    operators see exactly what landed and what didn't.
+
+    The ``--dry-run`` CI gate (``dashboards-validate`` job) still
+    catches malformed dashboards before they reach this loop in
+    production; this is defense in depth for the case where the
+    operator runs the script from a laptop against a JSON that was
+    edited but not pushed yet.
+    """
     loaded: list[dict[str, Any]] = []
+    malformed: list[str] = []
     for path in sorted(dashboards_dir.glob("*.json")):
-        with path.open() as fh:
-            dashboard: dict[str, Any] = json.load(fh)
+        try:
+            with path.open() as fh:
+                dashboard: dict[str, Any] = json.load(fh)
+        except (json.JSONDecodeError, OSError) as exc:
+            sys.stderr.write(f"FAIL: {path.name} -> malformed ({exc})\n")
+            malformed.append(path.name)
+            continue
         if "uid" not in dashboard:
-            raise ValueError(f"Dashboard {path} is missing required 'uid' field")
+            sys.stderr.write(
+                f"FAIL: {path.name} -> missing required 'uid' field\n"
+            )
+            malformed.append(path.name)
+            continue
         loaded.append(dashboard)
-    return loaded
+    return loaded, malformed
 
 
 def build_payload(dashboard: dict[str, Any]) -> dict[str, Any]:
@@ -174,15 +201,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
 
-    dashboards = load_dashboards(args.dashboards_dir)
-    if not dashboards:
+    dashboards, malformed = load_dashboards(args.dashboards_dir)
+    if not dashboards and not malformed:
         sys.stderr.write(f"No dashboards found under {args.dashboards_dir}\n")
         return 1
 
     if args.dry_run:
-        print(f"DRY RUN: would POST {len(dashboards)} dashboard(s):")
-        for dashboard in dashboards:
-            print(f"  - uid={dashboard['uid']}  title={dashboard.get('title', '<no-title>')}")
+        if dashboards:
+            print(f"DRY RUN: would POST {len(dashboards)} dashboard(s):")
+            for dashboard in dashboards:
+                print(
+                    f"  - uid={dashboard['uid']}  "
+                    f"title={dashboard.get('title', '<no-title>')}"
+                )
+        if malformed:
+            sys.stderr.write(
+                f"\n{len(malformed)} dashboard(s) malformed: "
+                f"{', '.join(malformed)}\n"
+            )
+            return 1
         return 0
 
     api_key = os.environ.get("GRAFANA_CLOUD_API_KEY", "")
@@ -236,18 +273,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # Final summary so an operator scanning CI output doesn't have to
     # grep individual FAIL lines to know how many dashboards failed and
-    # which uids need investigation.
-    total = len(dashboards)
-    if failed_uids or skipped_after_abort:
-        all_failures = failed_uids + skipped_after_abort
-        skipped_note = (
-            f" ({len(skipped_after_abort)} skipped after abort)"
-            if skipped_after_abort
-            else ""
-        )
+    # which uids need investigation. Malformed files (caught in
+    # load_dashboards) are reported alongside publish failures so the
+    # operator sees one consolidated count, not two unrelated sections.
+    total = len(dashboards) + len(malformed)
+    if failed_uids or skipped_after_abort or malformed:
+        all_failures = failed_uids + skipped_after_abort + malformed
+        parts: list[str] = []
+        if skipped_after_abort:
+            parts.append(f"{len(skipped_after_abort)} skipped after abort")
+        if malformed:
+            parts.append(f"{len(malformed)} malformed")
+        suffix = f" ({', '.join(parts)})" if parts else ""
         sys.stderr.write(
             f"\n{len(all_failures)} of {total} dashboard(s) failed to publish"
-            f"{skipped_note}: {', '.join(all_failures)}\n"
+            f"{suffix}: {', '.join(all_failures)}\n"
         )
         return 1
     print(f"\nAll {total} dashboard(s) published successfully.")
