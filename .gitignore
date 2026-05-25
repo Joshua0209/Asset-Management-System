@@ -33,5 +33,10 @@ frontend/dist/
 frontend/coverage/
 frontend/*.tsbuildinfo
 
+# Stray node_modules at repo root — npm install run from the wrong cwd or
+# tooling that resolves "node_modules" hopping up the tree can drop a
+# cache here even though the real project lives under frontend/.
+/node_modules/
+
 # ── Claude Code ───────────────────────────────────────────────────────────────
 .claude/

@@ -22,7 +22,15 @@ RUN apt-get update \
 # (setuptools requires the discoverable package to exist at install time).
 COPY pyproject.toml README.md ./
 COPY app ./app
-RUN pip install --no-cache-dir -e '.[dev]'
+# `[dev]` brings the test/lint toolchain. `pyroscope-io` is the runtime profiler
+# the prod extra also installs; we pull it explicitly here (instead of `.[prod]`)
+# to keep gunicorn + boto3 out of the dev image — the local demo runs single-
+# process uvicorn and uses LocalImageStorage, so neither is needed. With
+# PYROSCOPE_ENABLED=true plus credentials for a Grafana Cloud Pyroscope
+# instance, app.core.observability successfully imports it and the flamegraph
+# panels populate. Pin matches the [prod] extra (>=0.8.5 — required for the
+# basic_auth_username / auth_token kwargs that target GC's hosted Pyroscope).
+RUN pip install --no-cache-dir -e '.[dev]' 'pyroscope-io>=0.8.5,<1.0'
 
 # Drop root before runtime. The uploads dir lives outside /app so the
 # compose bind mount on /app cannot mask it; the named volume mounting

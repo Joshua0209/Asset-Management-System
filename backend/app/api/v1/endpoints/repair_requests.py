@@ -22,6 +22,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm.interfaces import ORMOption
 
 from app.api.deps import CurrentUser, HolderUser, ManagerUser
+from app.core.observability import FSM_TRANSITIONS, OPTIMISTIC_CONFLICTS
 from app.db.session import get_db
 from app.models.asset import Asset, AssetStatus
 from app.models.asset_action_history import AssetAction
@@ -220,7 +221,17 @@ def _forbidden(message: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
 
 
-def _conflict(message: str, *, code: str = "conflict") -> HTTPException:
+def _conflict(
+    message: str, *, code: str = "conflict", endpoint: str = "repair_requests"
+) -> HTTPException:
+    # Counter increment lives at the single helper so all 409s in this
+    # module are observed by OTel metrics without per-callsite duplication.
+    # The ``endpoint`` attribute is module-scoped (``"repair_requests"``)
+    # today — see ``OPTIMISTIC_CONFLICTS`` in ``app/core/observability.py``.
+    # The kwarg is the seam for a follow-up that threads route templates
+    # (e.g. ``POST /repair-requests/{id}/approve``) through to dashboards
+    # without changing the metric schema. Until then, slice by ``code``.
+    OPTIMISTIC_CONFLICTS.add(1, attributes={"endpoint": endpoint, "code": code})
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={"code": code, "message": message},
@@ -714,7 +725,18 @@ def approve_repair_request(
             to_status=AssetStatus.UNDER_REPAIR,
             metadata={"repair_request_id": repair_request.id},
         )
-        return _commit_repair_change(db, repair_request, "Repair request approval")
+        result = _commit_repair_change(db, repair_request, "Repair request approval")
+        # Counter only ticks after a successful commit; _commit_repair_change
+        # raises on rollback so we never double-count a failed transition.
+        FSM_TRANSITIONS.add(
+            1,
+            attributes={
+                "state_from": RepairRequestStatus.PENDING_REVIEW.name,
+                "state_to": RepairRequestStatus.UNDER_REPAIR.name,
+                "asset_kind": "repair_request",
+            },
+        )
+        return result
     except HTTPException:
         # _commit_repair_change owns rollback for the commit path; precondition
         # raises (_ensure_*) happen before any pending writes.
@@ -770,7 +792,16 @@ def reject_repair_request(
                 "rejection_reason": payload.rejection_reason,
             },
         )
-        return _commit_repair_change(db, repair_request, "Repair request rejection")
+        result = _commit_repair_change(db, repair_request, "Repair request rejection")
+        FSM_TRANSITIONS.add(
+            1,
+            attributes={
+                "state_from": RepairRequestStatus.PENDING_REVIEW.name,
+                "state_to": RepairRequestStatus.REJECTED.name,
+                "asset_kind": "repair_request",
+            },
+        )
+        return result
     except HTTPException:
         raise
     except Exception:
@@ -882,7 +913,16 @@ def complete_repair_request(
                 "repair_vendor": payload.repair_vendor,
             },
         )
-        return _commit_repair_change(db, repair_request, "Repair request completion")
+        result = _commit_repair_change(db, repair_request, "Repair request completion")
+        FSM_TRANSITIONS.add(
+            1,
+            attributes={
+                "state_from": RepairRequestStatus.UNDER_REPAIR.name,
+                "state_to": RepairRequestStatus.COMPLETED.name,
+                "asset_kind": "repair_request",
+            },
+        )
+        return result
     except HTTPException:
         raise
     except Exception:
@@ -995,6 +1035,18 @@ def _create_repair_request_with_retry(
             )
             db.commit()
             saved_keys.extend(attempt_keys)
+            # Submit lifts the repair request into existence; ``from``
+            # is the sentinel ``NONE`` so dashboards can count creations
+            # without collapsing them into other PENDING_REVIEW-arrival
+            # transitions.
+            FSM_TRANSITIONS.add(
+                1,
+                attributes={
+                    "state_from": "NONE",
+                    "state_to": RepairRequestStatus.PENDING_REVIEW.name,
+                    "asset_kind": "repair_request",
+                },
+            )
             return result
         except IntegrityError as exc:
             db.rollback()

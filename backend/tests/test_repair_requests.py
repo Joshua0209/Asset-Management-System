@@ -11,8 +11,9 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DataError, IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.v1.endpoints.repair_requests import _next_repair_id
 from app.main import app
@@ -1167,6 +1168,138 @@ class TestRepairWorkflowAtomicity:
             )
 
         assert response.status_code in {500, 503}
+        db_session.refresh(rr)
+        db_session.refresh(asset)
+        assert rr.status == RepairRequestStatus.PENDING_REVIEW
+        assert asset.status == AssetStatus.PENDING_REPAIR
+
+
+class TestCommitRepairChangeErrorPaths:
+    """Each typed SQLAlchemy exception in ``_commit_repair_change`` must map to
+    a distinct HTTP response. ``TestRepairWorkflowAtomicity`` above covers the
+    catch-all ``SQLAlchemyError`` branch; these four cover the typed branches
+    that sit above it (``StaleDataError``, ``OperationalError``,
+    ``IntegrityError``, ``DataError``).
+
+    The ``StaleDataError`` case in particular guarantees the 409 surface that
+    the frontend optimistic-locking conflict UI depends on.
+    """
+
+    def _approve_with_commit_error(
+        self,
+        *,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        commit_exception: BaseException,
+    ) -> tuple[Asset, RepairRequest, Any]:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        with patch.object(db_session, "commit", side_effect=commit_exception):
+            response = client.post(
+                f"/api/v1/repair-requests/{rr.id}/approve",
+                json={"version": rr.version},
+                headers=auth_headers(manager),
+            )
+        return asset, rr, response
+
+    def test_stale_data_error_returns_409_conflict_for_optimistic_lock_race(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        asset, rr, response = self._approve_with_commit_error(
+            client=client,
+            db_session=db_session,
+            make_user=make_user,
+            auth_headers=auth_headers,
+            commit_exception=StaleDataError("row was modified concurrently"),
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["error"]["code"] == "conflict"
+        assert "modified by another user" in body["error"]["message"]
+        db_session.refresh(rr)
+        db_session.refresh(asset)
+        assert rr.status == RepairRequestStatus.PENDING_REVIEW
+        assert asset.status == AssetStatus.PENDING_REPAIR
+
+    def test_operational_error_returns_503_for_transient_db_failure(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        asset, rr, response = self._approve_with_commit_error(
+            client=client,
+            db_session=db_session,
+            make_user=make_user,
+            auth_headers=auth_headers,
+            commit_exception=OperationalError(
+                "UPDATE repair_requests ...", {}, Exception("connection lost")
+            ),
+        )
+
+        assert response.status_code == 503
+        db_session.refresh(rr)
+        db_session.refresh(asset)
+        assert rr.status == RepairRequestStatus.PENDING_REVIEW
+        assert asset.status == AssetStatus.PENDING_REPAIR
+
+    def test_integrity_error_returns_409_for_state_conflict(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        asset, rr, response = self._approve_with_commit_error(
+            client=client,
+            db_session=db_session,
+            make_user=make_user,
+            auth_headers=auth_headers,
+            commit_exception=IntegrityError(
+                "INSERT INTO ...", {}, Exception("unique constraint")
+            ),
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["error"]["code"] == "conflict"
+        assert "conflicting state" in body["error"]["message"]
+        db_session.refresh(rr)
+        db_session.refresh(asset)
+        assert rr.status == RepairRequestStatus.PENDING_REVIEW
+        assert asset.status == AssetStatus.PENDING_REPAIR
+
+    def test_data_error_returns_422_for_invalid_payload_at_db_level(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        asset, rr, response = self._approve_with_commit_error(
+            client=client,
+            db_session=db_session,
+            make_user=make_user,
+            auth_headers=auth_headers,
+            commit_exception=DataError(
+                "UPDATE ...", {}, Exception("value out of range")
+            ),
+        )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["error"]["code"] == "validation_error"
         db_session.refresh(rr)
         db_session.refresh(asset)
         assert rr.status == RepairRequestStatus.PENDING_REVIEW
@@ -2392,3 +2525,70 @@ class TestRepairIdRetry:
 
         assert response.status_code == 201
         assert response.json()["data"]["repair_id"] == "REP-2026-FRESH"
+
+
+class TestNextRepairIdCorruption:
+    """``_next_repair_id`` must fail loud rather than silently restart the
+    yearly sequence — restarting would re-collide on every retry."""
+
+    def test_raises_500_when_existing_repair_id_has_non_numeric_suffix(
+        self,
+        db_session: Session,
+        make_user: Callable[..., User],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        _make_repair_request(db_session, asset, holder, repair_id="REP-2026-BADCODE")
+        db_session.commit()
+
+        with pytest.raises(HTTPException) as excinfo:
+            _next_repair_id(db_session)
+
+        assert excinfo.value.status_code == 500
+        assert "corrupted" in str(excinfo.value.detail).lower()
+
+    def test_raises_500_when_yearly_sequence_is_exhausted(
+        self,
+        db_session: Session,
+        make_user: Callable[..., User],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, holder)
+        # ``REP-2026-99999 + 1`` = 100000 → over the 5-digit limit.
+        _make_repair_request(db_session, asset, holder, repair_id="REP-2026-99999")
+        db_session.commit()
+
+        with pytest.raises(HTTPException) as excinfo:
+            _next_repair_id(db_session)
+
+        assert excinfo.value.status_code == 500
+        assert "exhausted" in str(excinfo.value.detail).lower()
+
+
+class TestGetRepairRequestDbError:
+    """Cover the SQLAlchemyError → 503 branch on GET /repair-requests/{id}."""
+
+    def test_returns_503_on_sqlalchemy_error(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+        scalar_skip_auth: Callable[[BaseException], Callable[..., Any]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        _, rr = _seed_pending_review(db_session, holder)
+        db_session.commit()
+
+        # Auth runs db.scalar first; ``scalar_skip_auth`` passes it through and
+        # raises on every subsequent call so we exercise the endpoint's own
+        # 503 branch, not the auth-lookup 401 path.
+        with patch.object(
+            db_session, "scalar", side_effect=scalar_skip_auth(SQLAlchemyError("DB down"))
+        ):
+            response = client.get(
+                f"/api/v1/repair-requests/{rr.id}", headers=auth_headers(manager)
+            )
+
+        assert response.status_code == 503

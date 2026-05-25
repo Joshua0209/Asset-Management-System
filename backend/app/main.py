@@ -10,17 +10,37 @@ from pydantic import ValidationError
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.observability import (
+    FRONTEND_OBS_BEACON_RATE_LIMITED,
+    maybe_setup_profiling,
+    setup_access_log,
+    setup_log_exporter,
+    setup_logging,
+    setup_metrics,
+    setup_metrics_exporter,
+    setup_tracing,
+    verify_observability_exports,
+)
 from app.core.rate_limit import limiter
 from app.db.session import engine
 from app.schemas.repair_request import RepairRequestCreate
 
-logger = logging.getLogger(__name__)
-
 settings = get_settings()
+
+# Configure structlog AND attach the OTel log exporter BEFORE any
+# logger.warning() below so the boot-time rate-limit / proxy-trust
+# warnings (and the single-worker guard's RuntimeError chain) land in
+# Grafana Cloud Loki as structured records, not pre-config plaintext on
+# the container stderr where only CloudWatch can find them. The exporter
+# is a no-op when OTEL_ENABLED is false (pytest / dev default), so this
+# is safe for non-prod boots too. Idempotent for re-imports under pytest.
+setup_logging(settings)
+setup_log_exporter(settings)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.app_name,
@@ -177,6 +197,53 @@ app.add_middleware(
     allow_headers=settings.cors_allowed_headers,
 )
 
+# Observability (W6 Phase 3, OTLP-native):
+#   Ordering after setup_logging + setup_log_exporter (above):
+#   metrics_exporter → metrics → tracing → profiling → access_log.
+#
+#   setup_metrics_exporter MUST run before setup_metrics: the FastAPI
+#   instrumentor's ``instrument_app`` resolves ``get_meter()`` at call
+#   time, and creates HTTP server instruments (request duration
+#   histogram, request counter, etc.) at that moment. Current OTel
+#   1.27 ``_ProxyMeter`` rebinds those instruments when a real
+#   provider is set later, so the previous reversed order happened to
+#   work — but it depended on a documented-but-fragile SDK internal.
+#   A future SDK that switches to eager binding (or a third-party
+#   instrumentor that caches its meter reference) would silently stop
+#   publishing HTTP server metrics, and the metric-renaming Views
+#   installed in setup_metrics_exporter would never apply to the
+#   instrumentor's instruments. Installing the real provider first
+#   makes the binding direct, no proxy hop.
+#
+#   setup_metrics still must run before app startup so the ASGI
+#   middleware is registered (FastAPI rejects middleware added after
+#   startup). Every setup_* is a no-op when OTEL_ENABLED=false
+#   (pytest default), so the suite stays free of OTLP exporter
+#   threads.
+#
+#   maybe_setup_profiling is gated by PYROSCOPE_ENABLED (production
+#   sets it true). The ``WEB_CONCURRENCY=1`` invariant above plus no
+#   ``gunicorn --preload`` means the sampling thread starts inside
+#   the worker post-fork.
+#
+#   setup_access_log registers AccessLogMiddleware so every request emits
+#   a structured JSON log line tagged with route + status + duration +
+#   trace_id. OTel's FastAPI instrumentor wraps the entire stack via a
+#   ``build_middleware_stack`` monkey-patch, so this call's position
+#   relative to ``setup_tracing`` is not load-bearing for trace_id
+#   propagation; the access log always runs INSIDE the OTel span context.
+#   Pinned by tests/test_observability.py::test_access_log_runs_inside_otel_layer.
+setup_metrics_exporter(settings)
+setup_metrics(app, settings)
+setup_tracing(app, settings)
+maybe_setup_profiling(settings)
+setup_access_log(app)
+# Fail-fast smoke test: in non-local envs, refuse to boot if any OTLP
+# provider's force_flush returns False. Closes the silent-export-failure
+# gap where a wrong API key would otherwise drop every span/metric/log
+# while the container reports healthy to the ALB.
+verify_observability_exports(settings)
+
 # Map HTTP status → machine-readable error code per docs/system-design/12-api-design.md
 _STATUS_CODE_MAP = {
     400: "bad_request",
@@ -305,6 +372,13 @@ def register_rate_limit_handler(target_app: FastAPI) -> None:
         # `exc.detail` is e.g. "3 per 1 minute" — surface it as the message
         # so clients can show the configured limit without leaking internals.
         message = f"Rate limit exceeded: {exc.detail}"
+        # The beacon endpoint is fire-and-forget; the browser cannot read
+        # this 429. Tick a dedicated counter so the truncation itself is
+        # alertable, otherwise FRONTEND_OBS_FAILURES silently under-counts
+        # during a failure storm. Match on the path suffix so the prefix
+        # (api_v1_prefix) can change without touching this handler.
+        if request.url.path.endswith("/observability/client-error"):
+            FRONTEND_OBS_BEACON_RATE_LIMITED.add(1)
         # SlowAPIMiddleware injects X-RateLimit-* on the response on its way
         # back through the stack when `headers_enabled=True`. We seed
         # Retry-After defensively here so a misconfigured limiter
@@ -403,8 +477,28 @@ def readiness_check() -> JSONResponse:
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-    except SQLAlchemyError as exc:
-        logger.warning("Readiness probe failed: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — see comment block below
+        # Broad ``except`` is the right shape for a *probe* (in contrast
+        # to business logic where it would mask bugs). Three real
+        # failure modes the prior ``SQLAlchemyError``-only catch missed:
+        #
+        # 1. ``QueuePool``/``TimeoutError`` on pool exhaustion: derives
+        #    from ``Exception``, not ``SQLAlchemyError``. The container
+        #    would 500 instead of 503, ALB would kill the task instead
+        #    of draining the unhealthy target.
+        # 2. ``OSError`` / ``ConnectionRefusedError`` from the DB driver
+        #    layer (RDS Multi-AZ failover mid-probe) that the SQLAlchemy
+        #    wrapper sometimes lets through directly.
+        # 3. Any third-party driver / instrumentation that raises a
+        #    non-SQLAlchemy exception type (e.g. OTel SQLAlchemy
+        #    instrumentor edge cases under partial-shutdown).
+        #
+        # A readiness probe that 5xx's on an unexpected exception type
+        # is strictly worse than one that 503's: 503 lets ALB drain
+        # the target without killing the otherwise-fine container; 5xx
+        # gets retried by the ALB and may trip the deploy gate. Catch
+        # broadly here on purpose.
+        logger.warning("Readiness probe failed: %s", exc, exc_info=True)
         return JSONResponse(
             status_code=503,
             content={"status": "not_ready", "checks": {"database": "down"}},

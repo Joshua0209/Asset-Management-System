@@ -69,7 +69,7 @@ def create_access_token(
     expires_at = datetime.now(UTC) + timedelta(minutes=minutes)
     token = jwt.encode(
         {"sub": subject, "role": role.value, "exp": expires_at},
-        settings.jwt_secret,
+        settings.jwt_secret.get_secret_value(),
         algorithm=settings.jwt_algorithm,
     )
     return token, expires_at
@@ -78,7 +78,11 @@ def create_access_token(
 def decode_access_token(token: str) -> TokenPayload:
     settings = get_settings()
     try:
-        claims = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        claims = jwt.decode(
+            token,
+            settings.jwt_secret.get_secret_value(),
+            algorithms=[settings.jwt_algorithm],
+        )
     except jwt.PyJWTError as exc:
         raise InvalidTokenError(str(exc)) from exc
 

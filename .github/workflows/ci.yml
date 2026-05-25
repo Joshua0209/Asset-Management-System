@@ -30,6 +30,7 @@ jobs:
     outputs:
       backend: ${{ steps.aggregate.outputs.backend }}
       frontend: ${{ steps.aggregate.outputs.frontend }}
+      dashboards: ${{ steps.aggregate.outputs.dashboards }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Filter paths
@@ -52,19 +53,26 @@ jobs:
               - 'infra/ecs/frontend-task-def.json'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
+            dashboards:
+              - 'config/grafana/dashboards/**'
+              - 'scripts/sync_grafana_cloud_dashboards.py'
+              - '.github/workflows/ci.yml'
       - name: Aggregate outputs (workflow_dispatch forces everything)
         id: aggregate
         env:
           EVENT: ${{ github.event_name }}
           BACKEND: ${{ steps.filter.outputs.backend }}
           FRONTEND: ${{ steps.filter.outputs.frontend }}
+          DASHBOARDS: ${{ steps.filter.outputs.dashboards }}
         run: |
           if [ "$EVENT" = "workflow_dispatch" ]; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
             echo "frontend=true" >> "$GITHUB_OUTPUT"
+            echo "dashboards=true" >> "$GITHUB_OUTPUT"
           else
             echo "backend=${BACKEND}" >> "$GITHUB_OUTPUT"
             echo "frontend=${FRONTEND}" >> "$GITHUB_OUTPUT"
+            echo "dashboards=${DASHBOARDS}" >> "$GITHUB_OUTPUT"
           fi
 
   backend-lint:
@@ -463,6 +471,22 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
+  # Path-filtered CI gate for the Grafana Cloud dashboard JSONs. Runs on
+  # every PR + main push when dashboards change so a malformed dashboard
+  # (missing `uid`, invalid JSON) is caught before the real sync below.
+  dashboards-validate:
+    name: Dashboards - dry-run sync
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.dashboards == 'true' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Dry-run dashboard sync (parse + validate, no HTTP)
+        run: python scripts/sync_grafana_cloud_dashboards.py --dry-run
+
   # ─── Deploy pipeline ──────────────────────────────────────────────────────
   # Gated behind every quality + security job above. Runs only on push to
   # main or manual dispatch. Each job carries its own OIDC token grant so
@@ -661,6 +685,9 @@ jobs:
             RDS_SECRET_NAME
             APP_SECRET_NAME
             BOOTSTRAP_MANAGER_EMAIL
+            GC_OTLP_ENDPOINT
+            GC_PYROSCOPE_ENDPOINT
+            GC_SECRET_NAME
         env:
           ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           REGION: ${{ vars.AWS_REGION }}
@@ -671,6 +698,17 @@ jobs:
           RDS_SECRET_NAME: ${{ vars.RDS_SECRET_NAME }}
           APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
           BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
+          # The Grafana Cloud OTLP + Pyroscope endpoint URLs are read
+          # from ``secrets.*`` rather than ``vars.*`` because they
+          # embed the GC stack slug / region. The slug + a leaked GC
+          # API key would narrow an attacker's target identification.
+          # Endpoint URLs are not themselves credentials, but treating
+          # them as defense-in-depth secrets costs nothing operationally
+          # (operator sets one value in repo settings) and removes a
+          # half-credential from public-repo visibility.
+          GC_OTLP_ENDPOINT: ${{ secrets.GC_OTLP_ENDPOINT }}
+          GC_PYROSCOPE_ENDPOINT: ${{ secrets.GC_PYROSCOPE_ENDPOINT }}
+          GC_SECRET_NAME: ${{ vars.GC_SECRET_NAME }}
 
       - name: Render backend task definition
         # Patches the container image into the committed task-def template.
@@ -743,3 +781,53 @@ jobs:
           cluster: ${{ vars.ECS_CLUSTER }}
           wait-for-service-stability: true
           wait-for-minutes: 10
+
+  # CD: upsert the dashboard JSONs into Grafana Cloud on every main commit
+  # that touches the dashboard set. Blocks on failure - a half-applied
+  # dashboard tree silently drifts from the repo, which is the failure
+  # mode that motivated automating this. Independent of the ECS deploys:
+  # a dashboards-only commit does not roll backend/frontend, and a
+  # backend/frontend-only commit does not re-sync dashboards.
+  #
+  # GC_STACK_URL is the stack URL (https://<slug>.grafana.net), NOT the
+  # OTLP gateway URL already configured for backend telemetry - the
+  # dashboards-DB API lives on the stack, not the gateway. Stored as a
+  # secret (not a variable) for the same defense-in-depth reason as
+  # GC_OTLP_ENDPOINT: the slug + a leaked GC API key would narrow an
+  # attacker's target identification.
+  sync-dashboards:
+    name: Sync dashboards to Grafana Cloud
+    runs-on: ubuntu-latest
+    needs: [changes, dashboards-validate]
+    # Main-only gate mirrors `build-and-push`: dispatching from a feature
+    # branch must NOT mutate the production GC stack. The validate job is
+    # in `needs:` so a malformed JSON catches before the real upsert; if
+    # validate fails (or is skipped because dashboards didn't change) the
+    # `!failure() + (dashboards == 'true')` clause keeps the sync from
+    # firing.
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      github.ref == 'refs/heads/main' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && needs.changes.outputs.dashboards == 'true')
+      )
+    concurrency:
+      group: sync-dashboards-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Sync dashboards to Grafana Cloud
+        # Script is stdlib only - no pip install. Reads GRAFANA_CLOUD_API_KEY
+        # from env; --stack-url is passed via env indirection to keep the
+        # `${{ ... }}` expression out of the shell command (no injection
+        # surface even though both inputs are operator-controlled secrets).
+        env:
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GC_STACK_URL: ${{ secrets.GC_STACK_URL }}
+        run: python scripts/sync_grafana_cloud_dashboards.py --stack-url "$GC_STACK_URL"

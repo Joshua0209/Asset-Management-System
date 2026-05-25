@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Generator
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # IMPORT-ORDER INVARIANT — DO NOT IMPORT ANY ``app.*`` MODULE ABOVE THIS LINE.
@@ -35,6 +36,7 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 os.environ.setdefault("RATE_LIMIT_ANONYMOUS", "3/minute")
 os.environ.setdefault("RATE_LIMIT_AUTHENTICATED", "5/minute")
 os.environ.setdefault("RATE_LIMIT_IMAGES", "10/minute")
+os.environ.setdefault("RATE_LIMIT_BEACON", "3/minute")
 
 # ---------------------------------------------------------------------------
 # Safe to import app.* below this line — env is now configured.
@@ -75,6 +77,34 @@ def db_tables() -> Generator[None, None, None]:
     Base.metadata.create_all(bind=_TEST_ENGINE)
     yield
     Base.metadata.drop_all(bind=_TEST_ENGINE)
+
+
+@pytest.fixture(autouse=True)
+def _reset_trace_context_warned_sentinel() -> Generator[None, None, None]:
+    """Reset ``observability._TRACE_CONTEXT_WARNED`` per test.
+
+    The structlog processor stamps the active span's trace_id on every
+    log record. If the span-lookup raises (broken OTel install, SDK
+    drift), it logs one warning and silences subsequent failures via
+    this module-level sentinel — without per-test reset, the first
+    test in a pytest session that exercises the failure path "uses
+    up" the warning quota for the entire process, and every later
+    test that depends on seeing the warning silently passes without
+    it.
+
+    ``test_observability.py`` has its own module-scoped autouse
+    fixture that also resets this flag (alongside several other OTel
+    install flags) — but it doesn't apply across files. Tests in
+    ``test_client_error_beacon.py`` etc. that incidentally drive the
+    structlog processor would otherwise share state with whatever
+    ran first. This fixture closes the cross-file gap.
+
+    Cheap: a module-level attribute write twice per test.
+    """
+    from app.core import observability as obs
+    obs._TRACE_CONTEXT_WARNED = False
+    yield
+    obs._TRACE_CONTEXT_WARNED = False
 
 
 @pytest.fixture
@@ -141,3 +171,35 @@ def auth_headers() -> Callable[[User], dict[str, str]]:
         return {"Authorization": f"Bearer {token}"}
 
     return _headers
+
+
+@pytest.fixture
+def scalar_skip_auth(db_session: Session) -> Callable[[BaseException], Callable[..., Any]]:
+    """Factory that builds a ``db.scalar`` side_effect with auth-pass-through.
+
+    Endpoints that themselves call ``db.scalar`` share the call with
+    ``get_current_user`` (which always issues the first scalar to resolve
+    the bearer token). Patching ``db.scalar`` globally would therefore 401
+    before the endpoint's own scalar ever runs — masking the branch under
+    test. This factory returns a side_effect that lets the first scalar
+    pass through (the auth lookup) and raises ``exc`` on every subsequent
+    call (the endpoint's own scalar).
+
+    The pattern was previously duplicated across test_assets.py,
+    test_repair_requests.py, and test_images.py. Centralising it here
+    keeps the auth-call-count invariant in one place.
+    """
+    real_scalar = db_session.scalar
+
+    def _build(exc: BaseException) -> Callable[..., Any]:
+        calls = {"n": 0}
+
+        def _side_effect(*args: Any, **kwargs: Any) -> Any:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return real_scalar(*args, **kwargs)
+            raise exc
+
+        return _side_effect
+
+    return _build

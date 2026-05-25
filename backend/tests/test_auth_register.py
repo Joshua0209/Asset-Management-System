@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.user import User, UserRole
@@ -120,3 +122,65 @@ class TestRegisterDecisionA2ManagerSuppression:
         user = db_session.scalar(select(User).where(User.email == "newuser@example.com"))
         assert user is not None
         assert user.role is UserRole.HOLDER
+
+
+class TestRegisterDbErrorPaths:
+    """Cover the IntegrityError / SQLAlchemyError handlers on POST /auth/register.
+
+    These map raw DBAPI failures into the project's error envelope so the
+    public registration endpoint never leaks driver-level tracebacks.
+    """
+
+    def test_email_uniqueness_race_at_commit_returns_409(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        # Reach the IntegrityError handler *with* an email-shaped orig — this
+        # is the post-precheck race: two parallel registrations both pass the
+        # SELECT-where-email check, only the second one trips the unique index.
+        with patch.object(
+            db_session,
+            "commit",
+            side_effect=IntegrityError(
+                "INSERT INTO users ...", {}, Exception("Duplicate entry for key email")
+            ),
+        ):
+            response = client.post("/api/v1/auth/register", json=_payload())
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["error"]["code"] == "conflict"
+
+    def test_non_email_integrity_error_returns_503(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        # Any other unique-constraint or FK violation must be surfaced as 503
+        # (Decision: do not mask unknown constraint failures as "email taken").
+        with patch.object(
+            db_session,
+            "commit",
+            side_effect=IntegrityError(
+                "INSERT INTO users ...", {}, Exception("foreign key violation on department")
+            ),
+        ):
+            response = client.post("/api/v1/auth/register", json=_payload())
+
+        assert response.status_code == 503
+        body = response.json()["error"]
+        assert body["code"] == "service_unavailable"
+        # Pins the "Unable to create user" branch (line auth.py:116-119) so a
+        # regression that routes this through the generic SQLAlchemyError arm
+        # would surface as a message change here rather than passing silently.
+        assert body["message"] == "Unable to create user. Please try again later."
+
+    def test_generic_sqlalchemy_error_returns_503(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        with patch.object(
+            db_session, "commit", side_effect=SQLAlchemyError("connection reset")
+        ):
+            response = client.post("/api/v1/auth/register", json=_payload())
+
+        assert response.status_code == 503
+        body = response.json()["error"]
+        assert body["code"] == "service_unavailable"
+        assert body["message"] == "Unable to register user. Please try again later."

@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import SubmitRepairRequest from '@/pages/holder/SubmitRepairRequest';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, message } from 'antd';
 import { ApiError, assetsApi, repairRequestsApi } from '@/api';
 import type { RepairRequestRecord } from '@/api/repair-requests';
 import { buildAssetResponse } from './test-helpers';
@@ -85,10 +85,26 @@ function renderPage() {
   );
 }
 
+function fileInput(): HTMLInputElement {
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) throw new Error('Upload input not rendered');
+  return input;
+}
+
 describe('SubmitRepairRequest', () => {
+  let messageErrorSpy: MockInstance<typeof message.error>;
+  let messageSuccessSpy: MockInstance<typeof message.success>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    messageErrorSpy = vi.spyOn(message, 'error').mockImplementation(() => null as never);
+    messageSuccessSpy = vi.spyOn(message, 'success').mockImplementation(() => null as never);
+  });
+
+  afterEach(() => {
+    messageErrorSpy.mockRestore();
+    messageSuccessSpy.mockRestore();
   });
 
   it('renders form fields', async () => {
@@ -154,5 +170,114 @@ describe('SubmitRepairRequest', () => {
     await waitFor(() => {
       expect(mockSubmitRepairRequest).toHaveBeenCalledWith(expect.any(FormData));
     });
+  });
+
+  it('shows the generic error message when submit rejects with a non-ApiError', async () => {
+    mockListMyAssets.mockResolvedValue(ASSETS_RESPONSE);
+    const submitError = new Error('network down');
+    mockSubmitRepairRequest.mockRejectedValue(submitError);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderPage();
+    await selectFirstAsset();
+
+    fireEvent.change(screen.getByLabelText('common.repairRequest.faultDescription'), {
+      target: { value: 'Broken screen' },
+    });
+    fireEvent.click(screen.getByText('common.repairRequest.submit'));
+
+    await waitFor(() => {
+      expect(messageErrorSpy).toHaveBeenCalledWith('common.repairRequest.errorMessage');
+    });
+    // Pin the exact ``console.error('Submission error:', error)`` call shape.
+    // A regression that drops the prefix, swaps the order, or rewraps the
+    // original Error would otherwise pass with the looser .toHaveBeenCalled().
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Submission error:', submitError);
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('surfaces the ApiError branch via getApiErrorMessage when submit rejects with an ApiError', async () => {
+    // The ApiError branch of the submit catch in SubmitRepairRequest.tsx
+    // routes through getApiErrorMessage(error, t), not the generic
+    // 'common.repairRequest.errorMessage' key. A regression that conflates
+    // the two branches would silently drop server-side conflict messages.
+    mockListMyAssets.mockResolvedValue(ASSETS_RESPONSE);
+    mockSubmitRepairRequest.mockRejectedValue(
+      new ApiError(409, 'conflict', 'Repair request already exists'),
+    );
+
+    renderPage();
+    await selectFirstAsset();
+
+    fireEvent.change(screen.getByLabelText('common.repairRequest.faultDescription'), {
+      target: { value: 'Broken screen' },
+    });
+    fireEvent.click(screen.getByText('common.repairRequest.submit'));
+
+    await waitFor(() => {
+      // getApiErrorMessage maps code='conflict' to t('errors.conflict'),
+      // which the i18n stub returns verbatim as the key.
+      expect(messageErrorSpy).toHaveBeenCalledWith('errors.conflict');
+    });
+    expect(messageErrorSpy).not.toHaveBeenCalledWith('common.repairRequest.errorMessage');
+  });
+
+  it('beforeUpload rejects non-image files with the format error', async () => {
+    mockAssetsListThen('success');
+    renderPage();
+
+    await waitFor(() => expect(fileInput()).toBeDefined());
+    const badFile = new File(['hello'], 'note.txt', { type: 'text/plain' });
+    fireEvent.change(fileInput(), { target: { files: [badFile] } });
+
+    await waitFor(() => {
+      expect(messageErrorSpy).toHaveBeenCalledWith('common.repairRequest.uploadFormat');
+    });
+    // Rejected files do not show up in the Upload list.
+    expect(screen.queryByText('note.txt')).toBeNull();
+  });
+
+  it('beforeUpload rejects files larger than 5 MB with the size error', async () => {
+    mockAssetsListThen('success');
+    renderPage();
+
+    await waitFor(() => expect(fileInput()).toBeDefined());
+    const oversized = new File([new Uint8Array(6 * 1024 * 1024)], 'big.jpg', {
+      type: 'image/jpeg',
+    });
+    fireEvent.change(fileInput(), { target: { files: [oversized] } });
+
+    await waitFor(() => {
+      expect(messageErrorSpy).toHaveBeenCalledWith('common.repairRequest.uploadSize');
+    });
+    // Mirror the format-rejection test: the oversize file must be filtered
+    // out by Upload.LIST_IGNORE. A regression that emits the toast but
+    // forgets to return LIST_IGNORE would otherwise leave the file in
+    // ``fileList`` and silently upload it on submit.
+    expect(screen.queryByText('big.jpg')).toBeNull();
+  });
+
+  it('accepts a valid JPEG via beforeUpload + onChange and submits it as an image part', async () => {
+    mockAssetsListThen('success');
+    renderPage();
+
+    await selectFirstAsset();
+    fireEvent.change(screen.getByLabelText('common.repairRequest.faultDescription'), {
+      target: { value: 'Broken screen' },
+    });
+
+    const goodFile = new File([new Uint8Array(10)], 'photo.jpg', { type: 'image/jpeg' });
+    fireEvent.change(fileInput(), { target: { files: [goodFile] } });
+
+    fireEvent.click(screen.getByText('common.repairRequest.submit'));
+
+    await waitFor(() => {
+      expect(mockSubmitRepairRequest).toHaveBeenCalledWith(expect.any(FormData));
+    });
+
+    const formData = mockSubmitRepairRequest.mock.calls[0][0];
+    const images = formData.getAll('images');
+    expect(images).toHaveLength(1);
+    expect((images[0] as File).name).toBe('photo.jpg');
   });
 });

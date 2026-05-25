@@ -25,6 +25,9 @@ work across environments.
 | `__RDS_SECRET_NAME__`    | `${{ vars.RDS_SECRET_NAME }}` (system-managed RDS secret name, must include 6-char ARN suffix — see below) |
 | `__APP_SECRET_NAME__`    | `${{ vars.APP_SECRET_NAME }}` (application secret name, must include 6-char ARN suffix — see below) |
 | `__BOOTSTRAP_MANAGER_EMAIL__` | `${{ vars.BOOTSTRAP_MANAGER_EMAIL }}` (email of the seeded first manager)           |
+| `__GC_OTLP_ENDPOINT__`   | `${{ secrets.GC_OTLP_ENDPOINT }}` (Grafana Cloud OTLP gateway URL, e.g. `https://otlp-gateway-prod-eu-west-3.grafana.net/otlp`) |
+| `__GC_PYROSCOPE_ENDPOINT__` | `${{ secrets.GC_PYROSCOPE_ENDPOINT }}` (Grafana Cloud Pyroscope endpoint, e.g. `https://profiles-prod-eu-west-3.grafana.net`) |
+| `__GC_SECRET_NAME__`     | `${{ vars.GC_SECRET_NAME }}` (Grafana Cloud credentials secret name in AWS Secrets Manager, must include 6-char ARN suffix) |
 
 ### Placeholder convention (read before adding new ones)
 
@@ -88,6 +91,10 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 |----------------------|----------------------------------------------------------|
 | `AWS_ACCOUNT_ID`     | Your AWS account number (12 digits)                      |
 | `AWS_DEPLOY_ROLE_ARN`| OIDC role the workflow assumes (no long-lived keys)      |
+| `GC_OTLP_ENDPOINT`   | Grafana Cloud OTLP gateway URL (region-scoped; copy from the GC stack's "OpenTelemetry" connection page). Stored as a *secret* rather than a variable: the embedded stack slug + region narrow attacker target-identification if combined with a leaked GC API key, so defense-in-depth keeps the URL out of public-repo visibility |
+| `GC_PYROSCOPE_ENDPOINT` | Grafana Cloud Pyroscope endpoint (region-scoped; copy from the GC stack's "Pyroscope" connection page). Same secret-vs-variable rationale as `GC_OTLP_ENDPOINT` |
+| `GC_STACK_URL`       | Grafana Cloud stack URL, e.g. `https://<your-stack-slug>.grafana.net`. Consumed by the `sync-dashboards` CD job to upsert `config/grafana/dashboards/*.json` via the dashboards-DB API. **Not** the same as `GC_OTLP_ENDPOINT` — the OTLP gateway is for telemetry ingest, the stack URL is for Grafana's HTTP control plane. Same secret-vs-variable rationale as the other GC endpoints |
+| `GRAFANA_CLOUD_API_KEY` | Grafana Cloud API key with **dashboards write** scope. Create at `https://grafana.com/orgs/<org>/api-keys` (separate token from the OTLP/Pyroscope credentials in the AWS `ams-grafana-cloud` secret — those ingest telemetry; this one mutates dashboards). Consumed by `sync-dashboards` only |
 | `NVD_API_KEY`        | Optional, raises OWASP Dependency-Check rate limit       |
 | `SONAR_TOKEN`        | Already configured for the existing SonarCloud job       |
 
@@ -109,14 +116,54 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 | `APP_SECRET_NAME`     | Name of the application secret, **including the 6-char ARN suffix** (e.g. `ams/prod/app-Xy12Ab`) |
 | `BOOTSTRAP_MANAGER_EMAIL` | Email of the seeded first manager (e.g. `admin@ams.example.com`) |
 | `VITE_API_BASE_URL`   | Optional. Build-time API base for the frontend bundle. Defaults to `/api/v1` (same-origin via ALB path routing) — override only if FE and BE are on separate domains |
+| `GC_SECRET_NAME`      | Name of the `ams-grafana-cloud` secret in AWS Secrets Manager, **including the 6-char ARN suffix** (e.g. `ams-grafana-cloud-Xy12Ab`) |
+
+> Note: `GC_OTLP_ENDPOINT` and `GC_PYROSCOPE_ENDPOINT` previously lived
+> under *Repository variables*. They were promoted to *Repository secrets*
+> as a defense-in-depth measure — the URLs reveal the GC stack slug and
+> region, which combined with a leaked GC API key would narrow the
+> attack surface. If you are setting up a fresh repo, configure them
+> under *Settings → Secrets and variables → Actions → Secrets*, not
+> *Variables*. If you are upgrading, delete the existing entries from
+> the *Variables* tab and recreate them as *Secrets* with the same value.
 
 **GitHub vs AWS secrets.** Items in *Repository secrets* and *Repository
 variables* tables live in GitHub Actions settings. `RDS_SECRET_NAME` /
-`APP_SECRET_NAME` only carry the *names* of secrets that live in **AWS
-Secrets Manager** — the credentials themselves never enter GitHub. The
-task-def's `secrets:` block resolves those names to live values at task
-launch using the execution role's `secretsmanager:GetSecretValue`
+`APP_SECRET_NAME` / `GC_SECRET_NAME` only carry the *names* of secrets that
+live in **AWS Secrets Manager** — the credentials themselves never enter
+GitHub. The task-def's `secrets:` block resolves those names to live values
+at task launch using the execution role's `secretsmanager:GetSecretValue`
 permission.
+
+### `ams-grafana-cloud` secret shape
+
+The `__GC_SECRET_NAME__` placeholder resolves to the AWS Secrets Manager
+secret that holds Grafana Cloud OTLP / Pyroscope credentials. Create the
+secret out-of-band (it is operator-managed, not deploy-pipeline-managed)
+with this exact JSON shape so the three `secrets:` entries in the task
+def resolve cleanly:
+
+```json
+{
+  "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic <base64(prom_instance_id:api_key)>",
+  "PYROSCOPE_AUTH_TOKEN": "<grafana_cloud_api_key>",
+  "PYROSCOPE_BASIC_AUTH_USERNAME": "<pyroscope_instance_id>"
+}
+```
+
+The Grafana Cloud-side IAM role that the hosted CloudWatch integrations
+assume is a separate setup; see
+[`infra/grafana-cloud/README.md`](../grafana-cloud/README.md) for the
+cross-account role creation and the GC connector wiring.
+
+**Execution role must have `secretsmanager:GetSecretValue`.** The
+`AmazonECSTaskExecutionRolePolicy` managed policy includes this against
+all secrets the account owns, so attaching that policy to
+`ams-ecs-task-execution` is sufficient. If the execution role uses a
+scoped inline policy instead, extend the `Resource:` list to include the
+`ams-grafana-cloud-*` ARN alongside the existing RDS and app secret
+ARNs (the role reads secrets at task launch; the *task* role does not
+need this permission).
 
 ## OIDC trust policy snippet
 

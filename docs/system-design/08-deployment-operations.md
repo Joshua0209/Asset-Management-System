@@ -74,7 +74,7 @@ The limiter (`backend/app/core/rate_limit.py`) is in-process via slowapi. Per `0
 
 **ECS task command:** keep `--workers 1` until rate limits are backed by Redis. Auto-scaling at the *task* level (not the worker level) is the supported scaling axis.
 
-The W6 observability work (`docs/roadmap.md` §"Week 6") reinforces this from a second angle: `prometheus_client`'s default in-process registry is per-worker, so multi-worker tasks would return inconsistent `/metrics` snapshots depending on which worker handled the scrape. With `--workers 1` per task, `/metrics` is consistent and Prometheus aggregates across tasks via the `instance` label (`sum() by (service)`). If `WEB_CONCURRENCY` is ever bumped above 1, `prometheus-fastapi-instrumentator` must be configured with `PROMETHEUS_MULTIPROC_DIR` and a `multiproc_mode`. Do not silently raise the worker count without that wiring.
+The Grafana Cloud observability work reinforces this from a second angle: the OTel SDK's `MeterProvider`, `TracerProvider`, and `LoggerProvider` are process-wide singletons installed once at startup, and `pyroscope-io`'s sampling thread is started in the main process. With `--workers 1` per task, those singletons line up one-to-one with the task and Pyroscope's thread survives without a `gunicorn --preload` / `post_fork` dance. If `WEB_CONCURRENCY` is ever bumped above 1, both the OTel exporters and `pyroscope-io` need an explicit post-fork re-init (see `infra/ecs/README.md` on the `WEB_CONCURRENCY=1` invariant). Do not silently raise the worker count without that wiring.
 
 ### Behind the ALB: client-IP resolution (CRITICAL)
 
@@ -132,3 +132,54 @@ Interpretation:
 | `RATE_LIMIT_AUTHENTICATED` | `100/minute` |
 | `RATE_LIMIT_ANONYMOUS` | `30/minute` |
 | `RATE_LIMIT_IMAGES` | `300/minute` |
+
+---
+
+## Grafana Cloud production observability
+
+Production telemetry runs entirely through Grafana Cloud's hosted free-tier stack named `ams`. Two complementary paths:
+
+1. **Backend push (OTLP).** The ECS backend task pushes traces, metrics, logs, and CPU profiles direct to Grafana Cloud's hosted OTLP gateway via the OTel SDK. Configured by the `OTEL_*`, `PYROSCOPE_*`, and `ENVIRONMENT` env vars in `infra/ecs/backend-task-def.json` plus the `OTEL_EXPORTER_OTLP_HEADERS`, `PYROSCOPE_AUTH_TOKEN`, and `PYROSCOPE_BASIC_AUTH_USERNAME` secrets sourced from the `ams-grafana-cloud` Secrets Manager secret.
+2. **Cloud pull (CloudWatch).** Grafana Cloud's hosted CloudWatch integration assumes a read-only cross-account role (`ams-grafana-cloud-reader`) and pulls AWS-managed signals every 60s: ALB request count and target response time, RDS CPU/connections/disk queue, ECS Container Insights CPU/memory. Configured by the IAM role definition under `infra/grafana-cloud/`.
+
+The repo-side dashboard JSONs (`config/grafana/dashboards/*.json`) are the source of truth until Grafana Cloud import is verified in production; after that, Phase 6 of `docs/plans/observability-prod-migration-plan.md` deletes them and Grafana Cloud's stored dashboards become canonical.
+
+### Stack URL and login
+
+The Grafana Cloud stack URL follows the pattern `https://<your-stack-slug>.grafana.net`. The slug is the name of the stack created in the GC web UI when the account was provisioned; an operator running this runbook needs to know the current slug for their team's stack. Treat the slug as a low-sensitivity operational detail (the URL is access-controlled, not secret), but do not commit it to public source so the repo stays portable across stack renames or migrations. Operators authenticate with the Grafana Cloud account credentials; no SSO is provisioned for this class project. Per-developer API keys are out of scope for this phase; a single shared publish-key in `ams-grafana-cloud` covers OTLP and Pyroscope, and a single shared admin login covers UI access. Rotate the publish-key on the schedule documented in `infra/grafana-cloud/README.md` § "Step 6: key rotation".
+
+### `ams-grafana-cloud` AWS Secrets Manager secret
+
+This is the only AWS-side secret introduced by the observability migration. JSON shape:
+
+```json
+{
+  "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic <base64(prom_instance_id:api_key)>",
+  "PYROSCOPE_AUTH_TOKEN": "<grafana_cloud_api_key>",
+  "PYROSCOPE_BASIC_AUTH_USERNAME": "<pyroscope_instance_id>"
+}
+```
+
+The ECS task's `secrets:` block resolves all three keys at task launch. Operator creates the secret out-of-band (this is not pipeline-managed); see `infra/ecs/README.md` § "`ams-grafana-cloud` secret shape" for details.
+
+### Cross-account IAM role
+
+The `ams-grafana-cloud-reader` role is documented in [`infra/grafana-cloud/README.md`](../../infra/grafana-cloud/README.md). The trust policy is gated by an `sts:ExternalId` from the Grafana Cloud connector UI; the inline permissions policy is read-only across CloudWatch Logs, CloudWatch Metrics, RDS describe, EC2 describe, and resource tagging. Setup is a one-shot operator action; the role is stable for the life of the Grafana Cloud stack.
+
+### Free-tier quotas to watch
+
+Grafana Cloud's free tier is the only observability budget. Approximate limits (verify against the GC UI's "Usage" page; these change over time):
+
+| Signal | Free-tier ceiling | Action when approached |
+|---|---|---|
+| Prometheus active series | ~10,000 | Audit metric cardinality; drop high-cardinality labels (per-VU, per-request-id) at the OTel View boundary |
+| Loki ingestion | ~50 GB/month | Lower log level from `INFO` to `WARNING` in production; backend already drops uvicorn access logs to JSON-only |
+| Tempo ingestion | ~50 GB/month | Reduce `OTEL_TRACES_SAMPLER_ARG` (probability sampler) below `1.0` |
+| Pyroscope ingestion | ~50 GB/month | Pyroscope already samples at low frequency; the `ams-backend` workload is unlikely to hit this |
+| Active users | 3 | Class project: only the operator + one demo viewer typically log in |
+
+If a quota is hit, Grafana Cloud silently drops further ingestion for that signal until the next reset window. No production alerting fires. Monitor the GC UI's "Billing & Usage" panel weekly.
+
+### Key rotation
+
+See [`infra/grafana-cloud/README.md`](../../infra/grafana-cloud/README.md) § "Step 6: key rotation" for the canonical procedure. Summary: generate a new API key in Grafana Cloud UI, update the `ams-grafana-cloud` Secrets Manager secret, force an ECS task redeploy, then revoke the old key.
