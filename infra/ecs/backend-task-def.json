@@ -30,6 +30,7 @@
         {"name": "ENVIRONMENT", "value": "production"},
         {"name": "OTEL_ENABLED", "value": "true"},
         {"name": "OTEL_ENDPOINT", "value": "__GC_OTLP_ENDPOINT__"},
+        {"name": "OTEL_SEMCONV_STABILITY_OPT_IN", "value": "http"},
         {"name": "PYROSCOPE_ENABLED", "value": "true"},
         {"name": "PYROSCOPE_SERVER", "value": "__GC_PYROSCOPE_ENDPOINT__"}
       ],
