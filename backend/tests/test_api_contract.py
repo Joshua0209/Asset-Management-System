@@ -26,15 +26,21 @@ new shape is added (e.g. a streaming endpoint), add a test here.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
+from sqlalchemy.orm import Session
 
 from app.main import app
+from app.models.asset import Asset, AssetStatus
 from app.models.user import User, UserRole
+from app.services.image_storage import ImageStorageError, get_image_storage
 
 # Cache the OpenAPI document at module load. ``app.openapi()`` is
 # cached internally by FastAPI but constructing the dict still costs
@@ -256,6 +262,157 @@ class TestApiContract:
             method="post",
             path_template="/api/v1/auth/users",
             status_code=403,
+            payload=response.json(),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Multipart contract: POST /repair-requests
+# ---------------------------------------------------------------------------
+#
+# The submit endpoint is the only multipart surface in the API and the
+# highest-complexity contract we ship: the response embeds a list of
+# uploaded images, each with a server-derived public URL that the
+# frontend's image lightbox pins itself against. A regression that
+# swaps that URL shape (e.g. dropping the ``/api/v1/`` prefix, or
+# returning the raw storage key) would only surface as a broken
+# image-not-found render in the UI — exactly the kind of integration
+# bug the schema is supposed to defend against.
+# ---------------------------------------------------------------------------
+
+
+# Minimal JPEG: SOI + payload + EOI. The submit endpoint's
+# ``_content_matches_declared_type`` checker reads the magic-byte
+# prefix; the actual content is irrelevant.
+_VALID_JPEG_BYTES = b"\xff\xd8api-contract-test-jpeg\xff\xd9"
+
+
+def _seed_assigned_asset(db: Session, holder: User) -> Asset:
+    """Create an in_use asset owned by ``holder`` so submit can succeed."""
+    asset = Asset(
+        asset_code=f"AST-CONTRACT-{uuid.uuid4().hex[:8]}",
+        name="Contract test asset",
+        model="X",
+        category="computer",
+        supplier="ACME",
+        purchase_date=date(2026, 1, 1),
+        purchase_amount=Decimal("100.00"),
+        location="HQ",
+        department="IT",
+        status=AssetStatus.IN_USE,
+        responsible_person_id=holder.id,
+        assignment_date=date(2026, 2, 1),
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+class _FailingImageStorage:
+    """ImageStorage stub that always errors on save.
+
+    Mirrors the version in ``test_repair_requests.py`` but is repeated
+    here so the contract test stays self-contained — importing across
+    test files creates a fragile dependency where deleting the helper
+    in one file silently breaks the other.
+    """
+
+    def save(
+        self,
+        *,
+        repair_request_id: str,
+        image_id: str,
+        suffix: str,
+        content: bytes,
+    ) -> str:
+        raise ImageStorageError("contract test: simulated storage outage")
+
+    def open(self, storage_key: str) -> tuple[bytes, str]:
+        raise ImageStorageError("contract test: simulated storage outage")
+
+    def cleanup(self, storage_keys: list[str]) -> None:
+        return None
+
+
+class TestRepairSubmitMultipartContract:
+    """Validate the multipart submit endpoint's response shape against OpenAPI.
+
+    Covered:
+    - **Happy path (201)** — image successfully uploaded, response includes
+      the image list with the contract's `id` + `url` shape.
+    - **Storage failure (503)** — the global error envelope is correctly
+      emitted when ``ImageStorage.save`` raises. The 503 path is owned
+      by ``app/main.py``'s ``HTTPException`` handler (one level above
+      ``response_model``), so this is exactly the kind of cell that
+      drift can sneak past every other test.
+    """
+
+    def test_multipart_submit_response_matches_schema(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER, email="contract-submit@example.com")
+        asset = _seed_assigned_asset(db_session, holder)
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            data={
+                "asset_id": asset.id,
+                "fault_description": "Screen flicker (contract test).",
+            },
+            files=[("images", ("issue.jpg", _VALID_JPEG_BYTES, "image/jpeg"))],
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 201, response.text
+        # The frontend lightbox pins itself against the documented URL
+        # shape. A regression that drops the prefix would only surface
+        # downstream as a broken image render — assert it inline here.
+        images = response.json()["data"]["images"]
+        assert len(images) == 1
+        assert images[0]["url"] == f"/api/v1/images/{images[0]['id']}"
+
+        _assert_response_matches_openapi(
+            method="post",
+            path_template="/api/v1/repair-requests",
+            status_code=201,
+            payload=response.json(),
+        )
+
+    def test_storage_failure_error_envelope_matches_schema(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        holder = make_user(role=UserRole.HOLDER, email="contract-503@example.com")
+        asset = _seed_assigned_asset(db_session, holder)
+
+        # ``client`` fixture restores ``app.dependency_overrides`` to its
+        # baseline (just ``get_db``) in teardown via ``.clear()``, so this
+        # override is automatically rolled back after the test.
+        app.dependency_overrides[get_image_storage] = lambda: _FailingImageStorage()
+
+        response = client.post(
+            "/api/v1/repair-requests",
+            data={
+                "asset_id": asset.id,
+                "fault_description": "Screen flicker (storage-fail test).",
+            },
+            files=[("images", ("issue.jpg", _VALID_JPEG_BYTES, "image/jpeg"))],
+            headers=auth_headers(holder),
+        )
+
+        assert response.status_code == 503, response.text
+        _assert_response_matches_openapi(
+            method="post",
+            path_template="/api/v1/repair-requests",
+            status_code=503,
             payload=response.json(),
         )
 
