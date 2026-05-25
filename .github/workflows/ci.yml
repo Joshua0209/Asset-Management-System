@@ -901,7 +901,12 @@ jobs:
     name: Seed demo data (DESTRUCTIVE)
     needs: [changes, build-and-push, migrate-database, deploy-backend]
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_seed == true }}
+    # `inputs.run_seed` is declared `type: boolean` but reaches the workflow
+    # as the string 'true' / 'false' (GitHub Actions coerces all dispatch
+    # inputs through JSON before injection). Comparing against the literal
+    # `true` keyword silently evaluates false and the job is skipped — no
+    # error, no annotation. String compare is the durable form.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_seed == 'true' }}
     # Same bound as migrate-database. The seed itself completes in seconds
     # but `aws ecs wait tasks-stopped` can poll for ~10 min before failing
     # loudly if the task hangs.
