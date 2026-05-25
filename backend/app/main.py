@@ -200,22 +200,35 @@ app.add_middleware(
 )
 
 # Observability (W6 Phase 3, OTLP-native):
-#   Ordering after setup_logging + setup_log_exporter (above): metrics →
-#   metrics_exporter → tracing → profiling. setup_metrics installs the
-#   FastAPI instrumentor (an ASGI middleware) before app startup;
-#   FastAPI rejects middleware added after startup. setup_metrics_exporter
-#   then makes the ``MeterProvider`` real — module-level counters created
-#   at import time start writing into the new provider on the next
-#   ``.add()`` because OTel counters resolve the provider lazily on each
-#   call. Every setup_* is a no-op when OTEL_ENABLED=false (pytest
-#   default), so the suite stays free of OTLP exporter threads.
+#   Ordering after setup_logging + setup_log_exporter (above):
+#   metrics_exporter → metrics → tracing → profiling.
+#
+#   setup_metrics_exporter MUST run before setup_metrics: the FastAPI
+#   instrumentor's ``instrument_app`` resolves ``get_meter()`` at call
+#   time, and creates HTTP server instruments (request duration
+#   histogram, request counter, etc.) at that moment. Current OTel
+#   1.27 ``_ProxyMeter`` rebinds those instruments when a real
+#   provider is set later, so the previous reversed order happened to
+#   work — but it depended on a documented-but-fragile SDK internal.
+#   A future SDK that switches to eager binding (or a third-party
+#   instrumentor that caches its meter reference) would silently stop
+#   publishing HTTP server metrics, and the metric-renaming Views
+#   installed in setup_metrics_exporter would never apply to the
+#   instrumentor's instruments. Installing the real provider first
+#   makes the binding direct, no proxy hop.
+#
+#   setup_metrics still must run before app startup so the ASGI
+#   middleware is registered (FastAPI rejects middleware added after
+#   startup). Every setup_* is a no-op when OTEL_ENABLED=false
+#   (pytest default), so the suite stays free of OTLP exporter
+#   threads.
 #
 #   maybe_setup_profiling is enabled in production as of Phase 3 (locked
 #   decision 5 reversed by the prod migration plan). The
 #   ``WEB_CONCURRENCY=1`` invariant above plus no ``gunicorn --preload``
 #   means the sampling thread starts inside the worker post-fork.
-setup_metrics(app, settings)
 setup_metrics_exporter(settings)
+setup_metrics(app, settings)
 setup_tracing(app, settings)
 maybe_setup_profiling(settings)
 # Fail-fast smoke test: in non-local envs, refuse to boot if any OTLP
