@@ -7,7 +7,9 @@ const USE_MOCK_AUTH = import.meta.env.VITE_USE_MOCK_AUTH === "true";
 const EMPTY_DASHBOARD: ManagerDashboard = {
   kpis: {
     total_assets: 0,
+    in_stock_assets: 0,
     in_use_assets: 0,
+    pending_repair_assets: 0,
     under_repair_assets: 0,
     pending_repair_requests: 0,
   },

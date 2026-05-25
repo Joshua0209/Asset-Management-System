@@ -1,8 +1,12 @@
 import type { RepairRequestStatus } from "../repair-requests";
 
 export interface DashboardKpis {
+  // Sum of every non-disposed bucket below (total = in_stock + in_use +
+  // pending_repair + under_repair) — matches docs/system-design/12-api-design.md.
   total_assets: number;
+  in_stock_assets: number;
   in_use_assets: number;
+  pending_repair_assets: number;
   under_repair_assets: number;
   pending_repair_requests: number;
 }

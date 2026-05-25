@@ -215,7 +215,10 @@
     "kpis": {
       "title": "關鍵指標",
       "totalAssets": "資產總數",
+      "totalAssetsHint": "不含已報廢",
+      "inStock": "庫存中",
       "inUse": "使用中",
+      "pendingRepair": "待維修",
       "underRepair": "維修中",
       "pendingReview": "待審查"
     },

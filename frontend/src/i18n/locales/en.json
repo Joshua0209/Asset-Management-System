@@ -215,7 +215,10 @@
     "kpis": {
       "title": "Key metrics",
       "totalAssets": "Total assets",
+      "totalAssetsHint": "Excludes disposed",
+      "inStock": "In stock",
       "inUse": "In use",
+      "pendingRepair": "Pending repair",
       "underRepair": "Under repair",
       "pendingReview": "Pending review"
     },

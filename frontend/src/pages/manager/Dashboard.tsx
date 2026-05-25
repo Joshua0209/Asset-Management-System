@@ -103,18 +103,38 @@ const Dashboard: React.FC = () => {
       </Typography.Paragraph>
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
           <Card>
-            <Statistic title={t("dashboard.kpis.totalAssets")} value={kpis.total_assets} />
+            <Statistic
+              title={t("dashboard.kpis.totalAssets")}
+              value={kpis.total_assets}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {t("dashboard.kpis.totalAssetsHint")}
+            </Typography.Text>
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
+          <Card>
+            <Statistic title={t("dashboard.kpis.inStock")} value={kpis.in_stock_assets} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={4}>
           <Card>
             <Statistic title={t("dashboard.kpis.inUse")} value={kpis.in_use_assets} />
             <Progress percent={Math.round(inUseRatio)} size="small" showInfo={false} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
+          <Card>
+            <Statistic
+              title={t("dashboard.kpis.pendingRepair")}
+              value={kpis.pending_repair_assets}
+              valueStyle={{ color: kpis.pending_repair_assets > 0 ? "#d48806" : undefined }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={4}>
           <Card>
             <Statistic
               title={t("dashboard.kpis.underRepair")}
@@ -129,7 +149,7 @@ const Dashboard: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={4}>
           <Card>
             <Statistic
               title={t("dashboard.kpis.pendingReview")}

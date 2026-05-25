@@ -1262,7 +1262,9 @@ GET /api/v1/dashboard/manager
   "data": {
     "kpis": {
       "total_assets": 324,
+      "in_stock_assets": 18,
       "in_use_assets": 268,
+      "pending_repair_assets": 7,
       "under_repair_assets": 31,
       "pending_repair_requests": 25
     },
@@ -1294,8 +1296,8 @@ GET /api/v1/dashboard/manager
 
 **Semantics:**
 
-- `kpis.total_assets` and `asset_categories` exclude `disposed` assets — the dashboard is a *currently-managed* snapshot, not a historical inventory. `total_assets` therefore equals `in_stock + in_use + pending_repair + under_repair`. Disposed rows remain in the DB for audit/history queries but never reach this endpoint.
-- `kpis.pending_repair_requests` counts only repair requests in status `pending_review`.
+- `kpis.total_assets` and `asset_categories` exclude `disposed` assets — the dashboard is a *currently-managed* snapshot, not a historical inventory. `total_assets` therefore equals `in_stock_assets + in_use_assets + pending_repair_assets + under_repair_assets`. Disposed rows remain in the DB for audit/history queries but never reach this endpoint.
+- `kpis.pending_repair_requests` counts only repair requests in status `pending_review`. It is sourced from the same aggregate row as `repair_summary.pending_review` so the two values cannot drift.
 - `asset_categories` is grouped by `assets.category`, ordered by `count DESC, category ASC` so equal-count buckets render deterministically.
 - `repair_summary.created_today` / `completed_today` use **UTC start-of-day** as the boundary. The contract is timezone-neutral on purpose — converting to a local TZ on the server would couple the API to deploy-side clock config. Clients can re-bucket if they need a local-day view.
 - `repair_summary.pending_review` and `under_repair` are *current-state snapshots* (no time filter); `created_today` / `completed_today` are time-bounded.
