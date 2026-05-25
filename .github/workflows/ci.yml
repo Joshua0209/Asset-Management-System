@@ -1177,4 +1177,8 @@ jobs:
         env:
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GC_STACK_URL: ${{ secrets.GC_STACK_URL }}
+          # Stack-specific UID for the AWS CloudWatch datasource; the
+          # sync script substitutes it for the `cloudwatch` placeholder
+          # the dashboard JSONs use. See infra/grafana-cloud/README.md.
+          GC_CLOUDWATCH_UID: ${{ vars.GC_CLOUDWATCH_UID }}
         run: python scripts/sync_grafana_cloud_dashboards.py --stack-url "$GC_STACK_URL"

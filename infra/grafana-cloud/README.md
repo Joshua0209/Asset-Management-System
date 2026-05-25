@@ -111,6 +111,28 @@ In the same AWS connection:
    from the CloudWatch path; use the OTLP-pushed Prometheus metrics from
    the application for finer resolution.
 
+## Step 4b: capture the CloudWatch datasource UID
+
+The AWS connector creates a Grafana datasource whose UID is auto-generated
+per stack (e.g. `cfmzw3p1ziebkb`). The dashboard JSONs in
+`config/grafana/dashboards/` reference the placeholder UID `cloudwatch`;
+`scripts/sync_grafana_cloud_dashboards.py` rewrites it to the real UID at
+sync time. Without this step, every CloudWatch panel renders empty even
+though the connector is healthy.
+
+1. In Grafana → Connections → Data sources, click the AWS CloudWatch
+   datasource created in Step 4.
+2. Copy the UID shown in the URL or in the "Settings" tab.
+3. Store it as a repository variable named `GC_CLOUDWATCH_UID` (Settings
+   → Secrets and variables → Actions → Variables → New repository
+   variable). The `sync-dashboards` job reads it from `vars`.
+
+The hosted Prometheus / Loki / Tempo / Pyroscope datasources use the
+GC-standard UIDs (`grafanacloud-prom`, `grafanacloud-logs`,
+`grafanacloud-traces`, `grafanacloud-profiles`) and need no per-stack
+override. Override them via `GC_PROMETHEUS_UID` / `GC_LOKI_UID` /
+`GC_TEMPO_UID` / `GC_PYROSCOPE_UID` only if your stack rebinds them.
+
 ## Step 5: wait for the first data
 
 Allow about five minutes after enabling each integration for the first

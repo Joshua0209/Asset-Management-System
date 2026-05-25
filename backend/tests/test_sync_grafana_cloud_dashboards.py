@@ -647,3 +647,327 @@ def test_no_redirect_handler_blocks_real_3xx_on_post(
     # response code, NOT be silently followed to a 404 / 200 / etc.
     assert status == 302, status
 
+
+# ---------------------------------------------------------------------------
+# Datasource UID remap
+# ---------------------------------------------------------------------------
+
+
+def test_collect_placeholder_uids_walks_panels_and_templating() -> None:
+    """``collect_placeholder_uids`` returns every placeholder UID referenced.
+
+    The traversal must cover panels, nested targets, templating
+    variables, and annotations — anywhere Grafana puts a ``datasource``
+    block. A missed location means a placeholder slips through without
+    being remapped and the panel silently shows no data in GC.
+    """
+    dashboard = {
+        "uid": "ams-x",
+        "panels": [
+            {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "targets": [
+                    {"datasource": {"type": "loki", "uid": "loki"}},
+                ],
+            },
+            {"datasource": {"type": "cloudwatch", "uid": "cloudwatch"}},
+        ],
+        "templating": {
+            "list": [
+                {"datasource": {"type": "tempo", "uid": "tempo"}},
+            ],
+        },
+        "annotations": {
+            "list": [
+                {"datasource": {"type": "pyroscope", "uid": "pyroscope"}},
+            ],
+        },
+    }
+
+    found = sync_module.collect_placeholder_uids(dashboard)
+
+    assert found == {"prometheus", "loki", "cloudwatch", "tempo", "pyroscope"}
+
+
+def test_collect_placeholder_uids_ignores_builtin_grafana_uid() -> None:
+    """The Grafana built-in datasource ``uid="grafana"`` must NOT be remapped.
+
+    Every Grafana instance has a built-in datasource with literal
+    ``uid="grafana"`` for the default annotations source. Remapping it
+    would point those annotations at nothing.
+    """
+    dashboard = {
+        "uid": "ams-x",
+        "annotations": {
+            "list": [
+                {"datasource": {"type": "datasource", "uid": "grafana"}},
+            ],
+        },
+    }
+
+    found = sync_module.collect_placeholder_uids(dashboard)
+
+    assert found == set()
+
+
+def test_build_uid_remap_uses_defaults_when_env_unset() -> None:
+    dashboards = [
+        {
+            "uid": "d",
+            "panels": [{"datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        }
+    ]
+
+    remap = sync_module.build_uid_remap(dashboards, env={})
+
+    assert remap == {"prometheus": "grafanacloud-prom"}
+
+
+def test_build_uid_remap_env_overrides_default() -> None:
+    dashboards = [
+        {
+            "uid": "d",
+            "panels": [{"datasource": {"type": "loki", "uid": "loki"}}],
+        }
+    ]
+
+    remap = sync_module.build_uid_remap(
+        dashboards, env={"GC_LOKI_UID": "grafanacloud-staging-logs"}
+    )
+
+    assert remap == {"loki": "grafanacloud-staging-logs"}
+
+
+def test_build_uid_remap_treats_blank_env_as_unset() -> None:
+    """A whitespace-only env var must NOT override the default.
+
+    Without this guard, ``GC_PROMETHEUS_UID=""`` (a frequent
+    misconfiguration in CI when a workflow secret/var resolves to empty)
+    would set the UID to the empty string and every Prometheus panel
+    would silently break.
+    """
+    dashboards = [
+        {
+            "uid": "d",
+            "panels": [{"datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        }
+    ]
+
+    remap = sync_module.build_uid_remap(
+        dashboards, env={"GC_PROMETHEUS_UID": "   "}
+    )
+
+    assert remap == {"prometheus": "grafanacloud-prom"}
+
+
+def test_build_uid_remap_aborts_when_cloudwatch_unconfigured() -> None:
+    """Missing ``GC_CLOUDWATCH_UID`` must abort with a non-zero exit.
+
+    CloudWatch has no default because the AWS-connector UID is
+    auto-generated per stack. Letting the sync proceed without it would
+    push dashboards whose CloudWatch panels resolve to nothing — exactly
+    the failure mode this remap exists to prevent.
+    """
+    dashboards = [
+        {
+            "uid": "d",
+            "panels": [{"datasource": {"type": "cloudwatch", "uid": "cloudwatch"}}],
+        }
+    ]
+
+    with pytest.raises(SystemExit) as exc_info:
+        sync_module.build_uid_remap(dashboards, env={})
+
+    assert exc_info.value.code == 2
+
+
+def test_build_uid_remap_non_strict_tolerates_missing_cloudwatch() -> None:
+    """``strict=False`` must NOT abort on a missing CW UID.
+
+    The dry-run / validate CI job runs on every PR (and from fork PRs
+    without access to repo variables), so it cannot require
+    ``GC_CLOUDWATCH_UID``. Strict mode is reserved for the live sync.
+    """
+    dashboards = [
+        {
+            "uid": "d",
+            "panels": [
+                {"datasource": {"type": "prometheus", "uid": "prometheus"}},
+                {"datasource": {"type": "cloudwatch", "uid": "cloudwatch"}},
+            ],
+        }
+    ]
+
+    remap = sync_module.build_uid_remap(dashboards, env={}, strict=False)
+
+    # Prometheus default still resolves; CloudWatch is silently omitted.
+    assert remap == {"prometheus": "grafanacloud-prom"}
+
+
+def test_main_dry_run_does_not_require_cloudwatch_uid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: dry-run on a CW-using dashboard must succeed with no env.
+
+    Regression guard against the original strict-by-default dry-run
+    that broke the dashboards-validate CI job on PRs.
+    """
+    path = tmp_path / "d.json"
+    path.write_text(
+        json.dumps(
+            {
+                "uid": "ams-d",
+                "title": "D",
+                "panels": [
+                    {"datasource": {"type": "cloudwatch", "uid": "cloudwatch"}},
+                ],
+            }
+        )
+    )
+    monkeypatch.delenv("GC_CLOUDWATCH_UID", raising=False)
+
+    exit_code = sync_module.main(["--dashboards-dir", str(tmp_path), "--dry-run"])
+
+    assert exit_code == 0
+
+
+def test_build_uid_remap_skips_unused_placeholders() -> None:
+    """An unset ``GC_CLOUDWATCH_UID`` must not block a CW-free batch.
+
+    If a dashboard set references only Prometheus, the remap should
+    succeed without ``GC_CLOUDWATCH_UID`` being set — the env var is
+    only required when at least one dashboard references the
+    ``cloudwatch`` placeholder.
+    """
+    dashboards = [
+        {
+            "uid": "d",
+            "panels": [{"datasource": {"type": "prometheus", "uid": "prometheus"}}],
+        }
+    ]
+
+    remap = sync_module.build_uid_remap(dashboards, env={})
+
+    assert remap == {"prometheus": "grafanacloud-prom"}
+    assert "cloudwatch" not in remap
+
+
+def test_remap_datasource_uids_rewrites_nested_references() -> None:
+    """``datasource.uid`` rewrites must reach every nesting level.
+
+    Targets inside panels, datasources on templating variables, and
+    datasources on annotations all need the same treatment — otherwise
+    a single missed nest point silently breaks a panel in GC.
+    """
+    dashboard = {
+        "uid": "ams-x",
+        "panels": [
+            {
+                "datasource": {"type": "prometheus", "uid": "prometheus"},
+                "targets": [
+                    {"datasource": {"type": "loki", "uid": "loki"}, "expr": "up"},
+                ],
+            },
+        ],
+        "templating": {
+            "list": [
+                {"datasource": {"type": "tempo", "uid": "tempo"}},
+            ],
+        },
+    }
+
+    remap = {
+        "prometheus": "grafanacloud-prom",
+        "loki": "grafanacloud-logs",
+        "tempo": "grafanacloud-traces",
+    }
+    remapped = sync_module.remap_datasource_uids(dashboard, remap)
+
+    assert remapped["panels"][0]["datasource"]["uid"] == "grafanacloud-prom"
+    assert remapped["panels"][0]["targets"][0]["datasource"]["uid"] == "grafanacloud-logs"
+    assert remapped["templating"]["list"][0]["datasource"]["uid"] == "grafanacloud-traces"
+    # Types must be preserved — GC's hosted Prometheus is still
+    # ``type=prometheus``; remapping the UID alone is enough.
+    assert remapped["panels"][0]["datasource"]["type"] == "prometheus"
+    # Sibling fields on the target must survive the walk.
+    assert remapped["panels"][0]["targets"][0]["expr"] == "up"
+
+
+def test_remap_datasource_uids_does_not_mutate_input() -> None:
+    """The original dashboard dict must be left untouched.
+
+    Callers keep the pre-remap dashboard around for diagnostics
+    (``--dry-run`` log lines, future ``--diff`` mode). Mutating in
+    place would corrupt those.
+    """
+    dashboard = {
+        "uid": "ams-x",
+        "panels": [{"datasource": {"type": "prometheus", "uid": "prometheus"}}],
+    }
+
+    sync_module.remap_datasource_uids(dashboard, {"prometheus": "grafanacloud-prom"})
+
+    assert dashboard["panels"][0]["datasource"]["uid"] == "prometheus"
+
+
+def test_remap_datasource_uids_leaves_unmapped_uids_alone() -> None:
+    """UIDs not in the remap (e.g. ``grafana`` built-in) must pass through."""
+    dashboard = {
+        "uid": "ams-x",
+        "annotations": {
+            "list": [{"datasource": {"type": "datasource", "uid": "grafana"}}],
+        },
+    }
+
+    remapped = sync_module.remap_datasource_uids(
+        dashboard, {"prometheus": "grafanacloud-prom"}
+    )
+
+    assert remapped["annotations"]["list"][0]["datasource"]["uid"] == "grafana"
+
+
+def test_main_live_run_remaps_uids_before_posting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: the payload sent to GC must carry remapped UIDs.
+
+    Without remapping the placeholder UIDs survived to GC and every
+    panel resolved to "datasource not found" — the failure mode that
+    motivated this whole pass.
+    """
+    path = tmp_path / "d.json"
+    path.write_text(
+        json.dumps(
+            {
+                "uid": "ams-d",
+                "title": "D",
+                "panels": [
+                    {"datasource": {"type": "prometheus", "uid": "prometheus"}},
+                    {"datasource": {"type": "cloudwatch", "uid": "cloudwatch"}},
+                ],
+            }
+        )
+    )
+    mock_post = MagicMock(return_value=200)
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_post)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "test-token")
+    monkeypatch.setenv("GC_CLOUDWATCH_UID", "stack-specific-cw")
+
+    exit_code = sync_module.main(
+        [
+            "--dashboards-dir",
+            str(tmp_path),
+            "--stack-url",
+            "https://stack.grafana.net",
+        ]
+    )
+
+    assert exit_code == 0
+    assert mock_post.call_count == 1
+    posted_payload = mock_post.call_args.args[2]
+    panels = posted_payload["dashboard"]["panels"]
+    assert panels[0]["datasource"]["uid"] == "grafanacloud-prom"
+    assert panels[1]["datasource"]["uid"] == "stack-specific-cw"
+
