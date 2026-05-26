@@ -929,7 +929,52 @@ def test_maybe_setup_profiling_calls_pyroscope_configure_in_production(
     assert kwargs["application_name"].startswith("ams-backend.")
     assert kwargs["server_address"] == "https://profiles.example"
     assert kwargs["basic_auth_username"] == "123456"
-    assert kwargs["auth_token"] == "tok-xyz"
+    # GC Pyroscope expects HTTP Basic, so the token must travel as the
+    # basic-auth password; ``auth_token=`` would send Bearer and GC would
+    # silently 401. The dedicated regression test below pins this; the
+    # assertion here is the positive form.
+    assert kwargs["basic_auth_password"] == "tok-xyz"
+    assert kwargs.get("auth_token", "") in ("", None)
+    # The Rust client's logger is disabled by default, masking upload
+    # errors. Without this flag a regression of the auth bug recurs silently.
+    assert kwargs["enable_logging"] is True
+
+
+def test_maybe_setup_profiling_uses_basic_auth_not_bearer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression pin: the access token must NEVER ride the Bearer path.
+
+    GC Pyroscope ingest only accepts ``Authorization: Basic ...``. The
+    previous version of this code passed the token as ``auth_token=`` so
+    pyroscope-io emitted Bearer headers, GC returned 401, and the Rust
+    client's disabled-by-default logger swallowed every failure — zero
+    profile data ever reached the stack and no log line was visible.
+    """
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+
+    fake_pyroscope = types.ModuleType("pyroscope")
+    fake_pyroscope.configure = MagicMock()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pyroscope", fake_pyroscope)
+
+    settings = _settings_with_otel(
+        monkeypatch,
+        PYROSCOPE_ENABLED="true",
+        PYROSCOPE_SERVER="https://profiles.example",
+        PYROSCOPE_AUTH_TOKEN="super-secret-token",
+        PYROSCOPE_BASIC_AUTH_USERNAME="123456",
+        ENVIRONMENT="production",
+    )
+
+    obs.maybe_setup_profiling(settings)
+
+    kwargs = fake_pyroscope.configure.call_args.kwargs  # type: ignore[attr-defined]
+    assert kwargs.get("basic_auth_password") == "super-secret-token"
+    assert kwargs.get("auth_token", "") != "super-secret-token"
 
 
 def test_maybe_setup_profiling_logs_info_on_configure_success(
