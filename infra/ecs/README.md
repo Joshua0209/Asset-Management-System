@@ -176,8 +176,13 @@ example (substitute your account ID and repo path):
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": {
-        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-        "token.actions.githubusercontent.com:sub": "repo:Joshua0209/Asset-Management-System:ref:refs/heads/main"
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+      },
+      "StringLike": {
+        "token.actions.githubusercontent.com:sub": [
+          "repo:Joshua0209/Asset-Management-System:ref:refs/heads/main",
+          "repo:Joshua0209/Asset-Management-System:environment:production-destructive"
+        ]
       }
     }
   }]
@@ -185,11 +190,11 @@ example (substitute your account ID and repo path):
 ```
 
 The `sub` condition restricts the role to runs from the `main` branch
-of this exact repo - critical to prevent a fork or feature branch from
-assuming production credentials. Use `StringEquals` (not `StringLike`):
-the value contains no wildcards, and `StringLike` would silently honour
-any `*` a future operator pasted in (e.g. broadening to all branches by
-mistake).
+or the `production-destructive` environment of this exact repo. Use
+`StringLike` with explicit values (or `StringEquals` with a list) to
+allow both branch-scoped and environment-scoped subjects. Environment
+scoping is required for the `seed-database` job because it references a
+GitHub environment, which changes the OIDC subject claim.
 
 ## Identity policy for the deploy role
 
