@@ -14,6 +14,7 @@ state is freshly built by ``_make_repair_request(...)``.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
@@ -45,9 +46,15 @@ def _seed_assigned_asset(session: Session, holder: User) -> Asset:
     The journey itself starts at "holder reports a fault", so registration
     and assignment of the asset are background — they have their own
     coverage in test_assets.py.
+
+    ``asset_code`` is UUID-suffixed (matching test_fsm_matrix.py and
+    test_rbac_matrix.py) so this helper is safe under any future move to
+    session-scoped fixtures or pytest-xdist parallelism — the
+    ``unique=True`` constraint on the column would otherwise turn the
+    second call into ``IntegrityError``.
     """
     asset = Asset(
-        asset_code="AST-2026-00001",
+        asset_code=f"AST-JOURNEY-{uuid.uuid4().hex[:8]}",
         name="Business Laptop",
         model="Dell Latitude 7440",
         category="computer",
