@@ -799,7 +799,7 @@ def maybe_setup_profiling(settings: Settings) -> None:
     # here at least pins down what runtime config the worker loaded.
     # nosemgrep matches the literal word "token" in the format string;
     # the bound argument is bool(...), never the secret itself.
-    logger.info(  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+    logger.info(  # nosemgrep: python-logger-credential-disclosure
         "Pyroscope profiler started: app=%s server=%s user=%s token_present=%s",
         application_name,
         settings.pyroscope_server,
