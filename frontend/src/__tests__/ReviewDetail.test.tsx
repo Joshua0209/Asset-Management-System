@@ -377,7 +377,7 @@ describe('ReviewDetail', () => {
     await clickButton(user, 'Save');
 
     await waitFor(() => {
-      expect(screen.getByText('Enter at least one repair detail')).toBeInTheDocument();
+      expect(screen.getByText(i18n.t('validation.atLeastOneRepairDetail'))).toBeInTheDocument();
     });
     expect(mockUpdateRepairRequestDetails).not.toHaveBeenCalled();
   });
