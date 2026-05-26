@@ -267,7 +267,7 @@
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
       "id": 10,
       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"ams-backend\"} | environment=\"$environment\" | json | event=~\"(?i).*(slow.query|mysql.error|deadlock).*\"", "refId": "A"}],
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"ams-backend\"} | environment=\"$environment\" | detected_level=~\"(?i)warn|warning|error|critical|fatal\" |~ \"(?i)(slow|deadlock|mysql|sql|database|integrity|conflict)\"", "refId": "A"}],
       "title": "Backend DB-related Logs (slow query, deadlock, error)",
       "type": "logs",
       "description": "Backend-side logs that touch MySQL. RDS server logs are exposed via the CloudWatch Logs integration; query them in Explore at {log_group=\"/aws/rds/instance/ams-database/slowquery\"} once the operator opts in."

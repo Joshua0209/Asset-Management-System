@@ -647,7 +647,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ams-backend\", service_instance_id=~\"$replica\"} | environment=\"$environment\" | json | level=~\"(?i)warning|error|critical\"",
+          "expr": "{service_name=\"ams-backend\", service_instance_id=~\"$replica\"} | environment=\"$environment\" | detected_level=~\"(?i)warn|warning|error|critical|fatal\"",
           "refId": "A"
         }
       ],

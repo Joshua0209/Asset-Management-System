@@ -25,7 +25,7 @@
       "gridPos": {"h": 5, "w": 6, "x": 0, "y": 4},
       "id": 2,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(ams_fsm_transitions_total{service_name=\"ams-backend\"}[5m]))", "legendFormat": "transitions/sec", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(ams_fsm_transitions_total{service_name=\"ams-backend\"}[5m])) or vector(0)", "legendFormat": "transitions/sec", "refId": "A"}],
       "title": "FSM Transitions /sec",
       "type": "stat"
     },
@@ -35,7 +35,7 @@
       "gridPos": {"h": 5, "w": 6, "x": 6, "y": 4},
       "id": 3,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(ams_optimistic_conflicts_total{service_name=\"ams-backend\"}[5m]))", "legendFormat": "conflicts/sec", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(ams_optimistic_conflicts_total{service_name=\"ams-backend\"}[5m])) or vector(0)", "legendFormat": "conflicts/sec", "refId": "A"}],
       "title": "409 Conflicts /sec",
       "type": "stat"
     },
