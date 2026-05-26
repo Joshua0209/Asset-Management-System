@@ -274,6 +274,22 @@ _RBAC_MATRIX: list[_RbacCase] = [
         body=None,
         allow_anon=False, allow_holder=True, allow_manager=True,
     ),
+
+    # -----------------------------------------------------------------
+    # /api/v1/observability/* — internal beacon, intentionally anonymous
+    #
+    # ``navigator.sendBeacon`` issues this from a failing frontend with
+    # ``Content-Type: text/plain`` and no auth header, so the endpoint
+    # MUST stay anonymous. The matrix row guards against a future PR
+    # that attaches ``CurrentUser`` and silently turns init-failure
+    # telemetry into 401 noise. Endpoint always returns 204 for safety,
+    # even for empty bodies — body=None is correct.
+    # -----------------------------------------------------------------
+    _RbacCase(
+        "POST", "/api/v1/observability/client-error",
+        body=None,
+        allow_anon=True, allow_holder=True, allow_manager=True,
+    ),
 ]
 
 
@@ -406,6 +422,16 @@ class TestRbacMatrix:
             headers = auth_headers(manager)
 
         response = client.request(case.method, path, headers=headers, json=body)
+
+        # 5xx must never count as "gate let us through" — a regression
+        # that throws an unhandled exception inside ``get_current_user``
+        # would otherwise pass every ``allowed=True`` row in this matrix.
+        # Fail loudly so a server crash never masquerades as success.
+        assert response.status_code < 500, (
+            f"{case.method} {case.path_template} as {role}: server returned "
+            f"HTTP {response.status_code} — the auth dep (or something it "
+            f"depends on) crashed. Body: {response.text[:300]}"
+        )
 
         gate_rejected = response.status_code in _GATE_REJECT_CODES
         if expected_allowed:
