@@ -96,7 +96,7 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "definition": "label_values(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\"}, service_instance_id)",
+        "definition": "label_values(http_server_duration_seconds_count{service_name=\"ams-backend\"}, service_instance_id)",
         "hide": 0,
         "includeAll": true,
         "label": "replica",
@@ -105,7 +105,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(http_server_duration_seconds_count{service_name=\"ams-backend\", environment=\"$environment\"}, service_instance_id)",
+          "query": "label_values(http_server_duration_seconds_count{service_name=\"ams-backend\"}, service_instance_id)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
