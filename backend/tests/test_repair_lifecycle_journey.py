@@ -514,7 +514,7 @@ class TestRepairLifecycleJourney:
         holder_auth = auth_headers(holder)
         manager_auth = auth_headers(manager)
 
-        submitted = client.post(
+        submit_response = client.post(
             "/api/v1/repair-requests",
             json={
                 "asset_id": asset.id,
@@ -522,31 +522,40 @@ class TestRepairLifecycleJourney:
                 "version": asset.version,
             },
             headers=holder_auth,
-        ).json()["data"]
+        )
+        assert submit_response.status_code == 201, submit_response.text
+        submitted = submit_response.json()["data"]
         rr_id = submitted["id"]
 
         # Right after submit, holder sees pending_review.
         after_submit = client.get(f"/api/v1/repair-requests/{rr_id}", headers=holder_auth)
+        assert after_submit.status_code == 200, after_submit.text
         assert after_submit.json()["data"]["status"] == "pending_review"
 
         # After approve, holder's view advances to under_repair without
         # needing any client-side state update.
-        approved = client.post(
+        approve_response = client.post(
             f"/api/v1/repair-requests/{rr_id}/approve",
             json={"version": submitted["version"]},
             headers=manager_auth,
-        ).json()["data"]
+        )
+        assert approve_response.status_code == 200, approve_response.text
+        approved = approve_response.json()["data"]
         after_approve = client.get(f"/api/v1/repair-requests/{rr_id}", headers=holder_auth)
+        assert after_approve.status_code == 200, after_approve.text
         assert after_approve.json()["data"]["status"] == "under_repair"
 
         # After complete, status reaches its terminal state and completed_at
         # is populated.
-        completed = client.post(
+        complete_response = client.post(
             f"/api/v1/repair-requests/{rr_id}/complete",
             json={**_COMPLETION_PAYLOAD, "version": approved["version"]},
             headers=manager_auth,
-        ).json()["data"]
+        )
+        assert complete_response.status_code == 200, complete_response.text
+        completed = complete_response.json()["data"]
         after_complete = client.get(f"/api/v1/repair-requests/{rr_id}", headers=holder_auth)
+        assert after_complete.status_code == 200, after_complete.text
         final_data = after_complete.json()["data"]
         assert final_data["status"] == "completed"
         assert final_data["completed_at"] == completed["completed_at"]
