@@ -773,11 +773,22 @@ def maybe_setup_profiling(settings: Settings) -> None:
         return
     application_name = f"ams-backend.{settings.replica_id}"
     try:
+        # GC Pyroscope ingest requires HTTP Basic auth (instance id + access
+        # token). pyroscope-io's ``auth_token=`` kwarg sends a Bearer header
+        # — GC rejects it as 401, silently. The token must go via
+        # ``basic_auth_password=`` so the Rust client emits
+        # ``Authorization: Basic base64(user:token)``.
+        # ``enable_logging=True`` flips the Rust client's
+        # ``logging.getLogger("pyroscope")`` from ``disabled=True`` (default)
+        # to active, routing upload errors into Python logging → Loki.
+        # Without it, the success-path INFO line above is the only signal,
+        # which is exactly the dark-failure mode that masked this 401 bug.
         pyroscope.configure(
             application_name=application_name,
             server_address=settings.pyroscope_server,
             basic_auth_username=settings.pyroscope_basic_auth_username,
-            auth_token=settings.pyroscope_auth_token.get_secret_value(),
+            basic_auth_password=settings.pyroscope_auth_token.get_secret_value(),
+            enable_logging=True,
         )
     except (RuntimeError, OSError, ValueError) as exc:
         # Narrowed from a bare ``Exception``: pyroscope-io's known failure
