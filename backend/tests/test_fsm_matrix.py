@@ -277,6 +277,13 @@ def _call_asset_action(
                 "version": asset.version,
             },
         )
+    else:
+        # Defensive guard: if a row in _ASSET_FSM_MATRIX is mistyped or a
+        # new _AssetAction literal is added without a dispatch branch,
+        # the test would otherwise crash with ``UnboundLocalError`` on
+        # ``response`` — a confusing error that hides the real bug.
+        # Fail loudly with the offending action name instead.
+        raise AssertionError(f"unknown asset FSM action: {action!r}")
     return response.status_code
 
 
@@ -380,26 +387,36 @@ def _call_repair_action(
     *,
     action: _RepairAction,
     rr: RepairRequest,
-    manager_headers: dict[str, str],
+    caller_headers: dict[str, str],
 ) -> int:
+    """Issue the FSM-transition call for ``action`` with the given headers.
+
+    Centralised so callers (manager-allowed transitions in
+    TestRepairFSMMatrix, holder-forbidden cells in the
+    cross-state safety test below) can target the same endpoints
+    without copy-pasting request bodies.
+    """
     if action == "approve":
         response = client.post(
             f"/api/v1/repair-requests/{rr.id}/approve",
-            headers=manager_headers,
+            headers=caller_headers,
             json={"version": rr.version},
         )
     elif action == "reject":
         response = client.post(
             f"/api/v1/repair-requests/{rr.id}/reject",
-            headers=manager_headers,
+            headers=caller_headers,
             json={"version": rr.version, "rejection_reason": "FSM matrix reject"},
         )
     elif action == "complete":
         response = client.post(
             f"/api/v1/repair-requests/{rr.id}/complete",
-            headers=manager_headers,
+            headers=caller_headers,
             json={**_COMPLETION_PAYLOAD, "version": rr.version},
         )
+    else:
+        # Defensive guard: see _call_asset_action for rationale.
+        raise AssertionError(f"unknown repair FSM action: {action!r}")
     return response.status_code
 
 
@@ -449,7 +466,7 @@ class TestRepairFSMMatrix:
             client,
             action=action,
             rr=rr,
-            manager_headers=auth_headers(manager),
+            caller_headers=auth_headers(manager),
         )
 
         db_session.refresh(rr)
@@ -464,4 +481,82 @@ class TestRepairFSMMatrix:
         assert asset.status is expected_asset_state, (
             f"{transition_id}: expected asset state {expected_asset_state.value}, "
             f"got {asset.status.value}"
+        )
+
+    # ------------------------------------------------------------------
+    # Cross-state holder-forbidden guard
+    # ------------------------------------------------------------------
+    #
+    # test_rbac_matrix.py only covers approve/reject/complete from the
+    # seeded ``pending_review`` state. A regression where the holder
+    # gate is removed from these endpoints only *after* the RR moves to
+    # ``under_repair`` (e.g. a state-conditional auth dep that ships
+    # broken) would silently pass the RBAC matrix. The cells below
+    # exhaustively assert that a holder gets 403 for every
+    # (action × from_state) cell, AND that the rejected call does NOT
+    # mutate either the RR or the asset row.
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize(
+        ("transition_id", "from_state", "action"),
+        [
+            pytest.param(
+                f"holder-forbidden-{row[0]}",
+                row[1],
+                row[2],
+                id=f"holder-{row[0]}",
+            )
+            for row in _REPAIR_FSM_MATRIX
+        ],
+    )
+    def test_holder_forbidden_for_every_repair_action(
+        self,
+        transition_id: str,
+        from_state: RepairRequestStatus,
+        action: _RepairAction,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        """Every (action × from_state) cell must 403 for a holder caller.
+
+        Two-part assertion: the gate returns 403 (not 401, not 409 — a
+        409 would imply the holder *passed* the gate and then failed
+        the FSM check, which is the regression we are guarding against)
+        AND the row state is unchanged.
+        """
+        holder = make_user(role=UserRole.HOLDER, name=f"H-{transition_id}")
+        manager = make_user(role=UserRole.MANAGER, name=f"M-{transition_id}")
+        asset, rr = _seed_repair_request_in_state(
+            db_session, from_state, holder=holder, manager=manager
+        )
+        rr_status_before = rr.status
+        asset_status_before = asset.status
+        rr_version_before = rr.version
+
+        actual_status = _call_repair_action(
+            client,
+            action=action,
+            rr=rr,
+            caller_headers=auth_headers(holder),
+        )
+
+        db_session.refresh(rr)
+        db_session.refresh(asset)
+        assert actual_status == 403, (
+            f"{transition_id}: holder called {action} from {from_state.value} — "
+            f"expected HTTP 403 from the role gate, got {actual_status}."
+        )
+        assert rr.status is rr_status_before, (
+            f"{transition_id}: forbidden call mutated RR status from "
+            f"{rr_status_before.value} to {rr.status.value}"
+        )
+        assert asset.status is asset_status_before, (
+            f"{transition_id}: forbidden call mutated asset status from "
+            f"{asset_status_before.value} to {asset.status.value}"
+        )
+        assert rr.version == rr_version_before, (
+            f"{transition_id}: forbidden call bumped RR version "
+            f"{rr_version_before} -> {rr.version}"
         )
