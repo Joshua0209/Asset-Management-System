@@ -25,6 +25,7 @@ export interface AssetSortState {
 export interface AssetListFilters {
   q: string;
   status?: AssetStatus;
+  category?: AssetCategory;
   department: string;
   location: string;
   holder: string;
@@ -54,6 +55,7 @@ const CLIENT_ONLY_SORTABLE_FIELDS = new Set<AssetSortField>([
 const FILTERABLE_FIELDS = new Set<keyof AssetListFilters>([
   'q',
   'status',
+  'category',
   'department',
   'location',
   'holder',
@@ -192,6 +194,7 @@ export function normalizeFilters(filters: AssetListFilters): AssetListFilters {
   return {
     q: filters.q.trim(),
     status: filters.status,
+    category: filters.category,
     department: filters.department.trim(),
     location: filters.location.trim(),
     holder: filters.holder.trim(),
@@ -205,6 +208,7 @@ export function buildBaseServerParams(filters: AssetListFilters): Omit<
   return {
     q: filters.q || undefined,
     status: filters.status,
+    category: filters.category,
   };
 }
 
@@ -221,6 +225,7 @@ export function applyLocalAssetFilters(
   filters: AssetListFilters,
 ): AssetRecord[] {
   const query = toLowerText(filters.q);
+  const category = filters.category;
   const departmentQuery = toLowerText(filters.department);
   const locationQuery = toLowerText(filters.location);
   const holderQuery = toLowerText(filters.holder);
@@ -236,6 +241,13 @@ export function applyLocalAssetFilters(
     }
 
     if (filters.status && asset.status !== filters.status) {
+      return false;
+    }
+
+    if (
+      category &&
+      normalizeAssetCategoryLiteral(asset.category) !== normalizeAssetCategoryLiteral(category)
+    ) {
       return false;
     }
 
