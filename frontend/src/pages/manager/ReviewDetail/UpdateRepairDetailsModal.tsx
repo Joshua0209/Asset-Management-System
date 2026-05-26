@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Form, Input, Modal, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 
+import { isAntdValidationError } from '@/utils/antdForm';
 import { createAmountValidator } from '@/utils/validators';
 import type { RepairDetailsValues } from './useReviewActions';
 
@@ -41,7 +42,10 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
     let values: RepairDetailsValues;
     try {
       values = await form.validateFields();
-    } catch {
+    } catch (err) {
+      if (!isAntdValidationError(err)) {
+        console.error('Unexpected error in update-repair form validation', err);
+      }
       return;
     }
     const normalizedValues: RepairDetailsValues = {};

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Form, Input, Modal } from 'antd';
 import { useTranslation } from 'react-i18next';
 
+import { isAntdValidationError } from '@/utils/antdForm';
 import { createAmountValidator } from '@/utils/validators';
 import type { CompleteValues } from './useReviewActions';
 
@@ -40,7 +41,10 @@ const CompleteRepairModal: React.FC<CompleteRepairModalProps> = ({
     let values: CompleteValues;
     try {
       values = await form.validateFields();
-    } catch {
+    } catch (err) {
+      if (!isAntdValidationError(err)) {
+        console.error('Unexpected error in complete-repair form validation', err);
+      }
       return;
     }
     await onSubmit(values);

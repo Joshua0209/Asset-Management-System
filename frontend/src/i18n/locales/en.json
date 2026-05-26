@@ -210,7 +210,43 @@
   },
   "dashboard": {
     "description": "Monitor asset inventory, repair workload, and review activity from one operational view.",
-    "demoNotice": "Dashboard metrics are reserved for the demo data pass."
+    "loadError": "Failed to load dashboard data. Please try again later.",
+    "retry": "Retry",
+    "mockBanner": {
+      "title": "Mock data",
+      "description": "VITE_USE_MOCK_AUTH is on; the numbers below are a stub, not live values. Disable mock auth to see real metrics."
+    },
+    "kpis": {
+      "title": "Key metrics",
+      "totalAssets": "Total assets",
+      "totalAssetsHint": "Excludes disposed",
+      "inStock": "In stock",
+      "inUse": "In use",
+      "pendingRepair": "Pending repair",
+      "underRepair": "Under repair",
+      "pendingReview": "Pending review"
+    },
+    "categories": {
+      "title": "Asset category distribution",
+      "empty": "No active assets yet."
+    },
+    "repairSummary": {
+      "title": "Repair workload",
+      "createdToday": "Created today",
+      "_comment_pendingReview": "Intentionally duplicates kpis.pendingReview — same value, different card position. Do not 'dedupe' by removing one without restructuring the layout.",
+      "pendingReview": "Pending review",
+      "underRepair": "In repair",
+      "completedToday": "Completed today"
+    },
+    "recentPending": {
+      "title": "Recent review requests",
+      "empty": "No pending review requests.",
+      "viewAll": "View all",
+      "repairId": "Request ID",
+      "asset": "Asset",
+      "requester": "Requester",
+      "submittedAt": "Submitted"
+    }
   },
   "reviews": {
     "title": "Repair Requests",

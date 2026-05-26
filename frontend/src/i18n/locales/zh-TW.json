@@ -210,7 +210,43 @@
   },
   "dashboard": {
     "description": "從單一營運視圖掌握資產庫存、維修負載與審核活動。",
-    "demoNotice": "儀表板指標保留給 demo 資料整理階段補齊。"
+    "loadError": "載入儀表板資料失敗，請稍後再試。",
+    "retry": "重新整理",
+    "mockBanner": {
+      "title": "模擬資料",
+      "description": "VITE_USE_MOCK_AUTH 已啟用；下方數字為模擬資料而非即時值。請關閉模擬登入以查看實際指標。"
+    },
+    "kpis": {
+      "title": "關鍵指標",
+      "totalAssets": "資產總數",
+      "totalAssetsHint": "不含已報廢",
+      "inStock": "庫存中",
+      "inUse": "使用中",
+      "pendingRepair": "待維修",
+      "underRepair": "維修中",
+      "pendingReview": "待審查"
+    },
+    "categories": {
+      "title": "資產類別分布",
+      "empty": "目前沒有可用資產。"
+    },
+    "repairSummary": {
+      "title": "維修工單概況",
+      "createdToday": "今日新增",
+      "_comment_pendingReview": "刻意與 kpis.pendingReview 重複，相同數值但位於不同卡片。請勿在未調整版面的情況下移除其中一個。",
+      "pendingReview": "待審查",
+      "underRepair": "維修中",
+      "completedToday": "今日完成"
+    },
+    "recentPending": {
+      "title": "最近待審申請",
+      "empty": "目前沒有待審查申請。",
+      "viewAll": "查看全部",
+      "repairId": "申請單號",
+      "asset": "資產",
+      "requester": "申請人",
+      "submittedAt": "申請時間"
+    }
   },
   "reviews": {
     "title": "維修清單",

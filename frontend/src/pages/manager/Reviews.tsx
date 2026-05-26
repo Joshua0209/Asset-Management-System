@@ -9,15 +9,15 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { ApiError, repairRequestsApi } from '@/api';
 import { getApiErrorMessage } from '@/utils/apiErrors';
-import { formatDateTime } from '@/utils/format';
 import {
+  buildCreatedAtColumn,
+  buildStatusColumn,
   renderRequestAssetCell,
   renderRequestIdCell,
-  renderRequestStatusTag,
 } from '@/components/repair-requests/columns';
 import type {
   RepairRequestRecord,
@@ -26,14 +26,30 @@ import type {
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20];
 
+const STATUS_FILTER_VALUES: RepairRequestStatus[] = [
+  'pending_review',
+  'under_repair',
+  'completed',
+  'rejected',
+];
+
+function parseStatusParam(raw: string | null): RepairRequestStatus | undefined {
+  // Reject unknown strings so a stray ?status=foo can't poison the API
+  // request — the backend would 422 and the table would silently empty.
+  return raw && (STATUS_FILTER_VALUES as string[]).includes(raw)
+    ? (raw as RepairRequestStatus)
+    : undefined;
+}
+
 const Reviews: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusFilter = parseStatusParam(searchParams.get('status'));
   const [requests, setRequests] = useState<RepairRequestRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
-  const [statusFilter, setStatusFilter] = useState<RepairRequestStatus | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,21 +107,8 @@ const Reviews: React.FC = () => {
       render: (_: unknown, record) => record.requester.name,
       width: 160,
     },
-    {
-      title: t('reviews.columns.status'),
-      dataIndex: 'status',
-      key: 'status',
-      width: 140,
-      render: (status: RepairRequestStatus) =>
-        renderRequestStatusTag(status, t, 'reviews.status'),
-    },
-    {
-      title: t('reviews.columns.createdAt'),
-      dataIndex: 'created_at',
-      key: 'created_at',
-      width: 180,
-      render: (value: string) => <span className="tabular-nums">{formatDateTime(value)}</span>,
-    },
+    buildStatusColumn(t('reviews.columns.status'), t, 'reviews.status'),
+    buildCreatedAtColumn(t('reviews.columns.createdAt')),
     {
       title: t('reviews.columns.actions'),
       key: 'actions',
@@ -138,7 +141,18 @@ const Reviews: React.FC = () => {
           value={statusFilter}
           onChange={(value) => {
             setPage(1);
-            setStatusFilter(value);
+            setSearchParams(
+              (prev) => {
+                const next = new URLSearchParams(prev);
+                if (value) {
+                  next.set('status', value);
+                } else {
+                  next.delete('status');
+                }
+                return next;
+              },
+              { replace: true },
+            );
           }}
           style={{ width: 220 }}
           options={[

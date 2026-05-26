@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     assets,
     auth,
+    dashboard,
     images,
     observability,
     repair_requests,
@@ -29,6 +30,7 @@ api_router.include_router(
     tags=["repair_requests"],
 )
 api_router.include_router(images.router, prefix="/images", tags=["images"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(
     observability.router,
     prefix="/observability",

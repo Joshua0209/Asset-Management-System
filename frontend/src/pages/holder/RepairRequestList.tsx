@@ -13,13 +13,13 @@ import { useNavigate } from 'react-router-dom';
 import { PlusOutlined } from '@ant-design/icons';
 
 import { ApiError, repairRequestsApi } from '@/api';
-import type { RepairRequestRecord, RepairRequestStatus } from '@/api/repair-requests';
+import type { RepairRequestRecord } from '@/api/repair-requests';
 import {
+  buildCreatedAtColumn,
+  buildStatusColumn,
   renderRequestAssetCell,
   renderRequestIdCell,
-  renderRequestStatusTag,
 } from '@/components/repair-requests/columns';
-import { formatDateTime } from '@/utils/format';
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -83,21 +83,8 @@ const RepairRequestList: React.FC = () => {
       render: (_, record) => renderRequestAssetCell(record.asset),
       width: 200,
     },
-    {
-      title: t('repairRequestList.columns.status'),
-      dataIndex: 'status',
-      key: 'status',
-      width: 140,
-      render: (status: RepairRequestStatus) =>
-        renderRequestStatusTag(status, t, 'repairRequestList.status'),
-    },
-    {
-      title: t('repairRequestList.columns.createdAt'),
-      dataIndex: 'created_at',
-      key: 'created_at',
-      width: 180,
-      render: (value: string) => <span className="tabular-nums">{formatDateTime(value)}</span>,
-    },
+    buildStatusColumn(t('repairRequestList.columns.status'), t, 'repairRequestList.status'),
+    buildCreatedAtColumn(t('repairRequestList.columns.createdAt')),
     {
       title: t('repairRequestList.columns.actions'),
       key: 'actions',

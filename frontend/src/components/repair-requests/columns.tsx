@@ -1,8 +1,10 @@
 import React from 'react';
 import { Space, Tag, Typography } from 'antd';
+import type { TableColumnsType } from 'antd';
 import type { TFunction } from 'i18next';
 
 import type { RepairRequestRecord, RepairRequestStatus } from '@/api/repair-requests';
+import { formatDateTime } from '@/utils/format';
 import { REPAIR_REQUEST_STATUS_COLORS } from './constants';
 
 const ID_PREFIX_LENGTH = 8;
@@ -35,3 +37,37 @@ export const renderRequestStatusTag = (
     {t(`${statusKeyPrefix}.${status}`)}
   </Tag>
 );
+
+type RepairRequestColumn = TableColumnsType<RepairRequestRecord>[number];
+
+// Both the manager Reviews page and the holder RepairRequestList page render
+// identical status and createdAt columns — only the i18n key prefix differs.
+// Factor them out so the two tables can never drift in width or formatter.
+// Callers pass the already-translated title so the typed `t()` keys stay
+// pinned to the call site rather than being widened to plain string here.
+export function buildStatusColumn(
+  title: string,
+  t: TFunction,
+  statusKeyPrefix: RepairRequestStatusKeyPrefix,
+): RepairRequestColumn {
+  return {
+    title,
+    dataIndex: 'status',
+    key: 'status',
+    width: 140,
+    render: (status: RepairRequestStatus) =>
+      renderRequestStatusTag(status, t, statusKeyPrefix),
+  };
+}
+
+export function buildCreatedAtColumn(title: string): RepairRequestColumn {
+  return {
+    title,
+    dataIndex: 'created_at',
+    key: 'created_at',
+    width: 180,
+    render: (value: string) => (
+      <span className="tabular-nums">{formatDateTime(value)}</span>
+    ),
+  };
+}
