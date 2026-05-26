@@ -43,7 +43,7 @@
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 17},
       "id": 4,
       "options": {"legend": {"calcs": ["max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\"}[1m])) by (le, http_route))", "legendFormat": "{{http_route}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\"}[$__rate_interval])) by (le, http_route))", "legendFormat": "{{http_route}}", "refId": "A"}],
       "title": "Find Slow Handler (then look at logs + traces above)",
       "type": "timeseries"
     },
