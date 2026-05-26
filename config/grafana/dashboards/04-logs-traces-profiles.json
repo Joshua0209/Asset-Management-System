@@ -25,7 +25,7 @@
       "gridPos": {"h": 12, "w": 12, "x": 0, "y": 5},
       "id": 2,
       "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
-      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"ams-backend\", environment=\"$environment\"} | json | trace_id != \"\"", "refId": "A"}],
+      "targets": [{"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"ams-backend\"} | environment=\"$environment\" | json | trace_id != \"\"", "refId": "A"}],
       "title": "Backend Logs With trace_id (click trace_id → Tempo)",
       "type": "logs"
     },
@@ -43,13 +43,13 @@
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 17},
       "id": 4,
       "options": {"legend": {"calcs": ["max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\"}[1m])) by (le, http_route))", "legendFormat": "{{http_route}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name=\"ams-backend\"}[$__rate_interval])) by (le, http_route))", "legendFormat": "{{http_route}}", "refId": "A"}],
       "title": "Find Slow Handler (then look at logs + traces above)",
       "type": "timeseries"
     },
     {
       "datasource": {"type": "pyroscope", "uid": "pyroscope"},
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 25},
+      "gridPos": {"h": 32, "w": 24, "x": 0, "y": 25},
       "id": 5,
       "targets": [{"datasource": {"type": "pyroscope", "uid": "pyroscope"}, "groupBy": [], "labelSelector": "{service_name=~\"ams-backend.*\"}", "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds", "queryType": "profile", "refId": "A"}],
       "title": "Pyroscope CPU Flamegraph (ams-backend.*)",

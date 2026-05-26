@@ -145,7 +145,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\"}[5m])), 0.001)",
+          "expr": "(sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\", http_response_status_code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\"}[5m])), 0.001)",
           "legendFormat": "5xx ratio",
           "refId": "A"
         }
@@ -301,7 +301,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\"}[1m])) by (http_response_status_code)",
+          "expr": "sum(rate(http_server_duration_seconds_count{service_name=\"ams-backend\"}[$__rate_interval])) by (http_response_status_code)",
           "legendFormat": "{{http_response_status_code}}",
           "refId": "A"
         }
@@ -559,7 +559,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ams-backend\", environment=\"$environment\"} | json | level=~\"(?i)warning|error|critical\"",
+          "expr": "{service_name=\"ams-backend\"} | environment=\"$environment\" | detected_level=~\"(?i)warn|warning|error|critical|fatal\"",
           "refId": "A"
         }
       ],

@@ -932,6 +932,56 @@ def test_maybe_setup_profiling_calls_pyroscope_configure_in_production(
     assert kwargs["auth_token"] == "tok-xyz"
 
 
+def test_maybe_setup_profiling_logs_info_on_configure_success(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Successful configure() must record what the worker loaded.
+
+    pyroscope-io's background upload thread writes errors to stderr,
+    not through Python ``logging`` — so when configure() succeeds and
+    uploads then silently fail (bad token, blocked egress, wrong
+    endpoint), Loki shows nothing and an operator has no signal at all.
+    A single INFO line on the success path at least pins the runtime
+    config the worker actually saw; the absence of profile data plus
+    presence of this line localises the bug to async upload.
+    """
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    from app.core import observability as obs
+
+    fake_pyroscope = types.ModuleType("pyroscope")
+    fake_pyroscope.configure = MagicMock()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pyroscope", fake_pyroscope)
+
+    settings = _settings_with_otel(
+        monkeypatch,
+        PYROSCOPE_ENABLED="true",
+        PYROSCOPE_SERVER="https://profiles.example",
+        PYROSCOPE_AUTH_TOKEN="tok-xyz",
+        PYROSCOPE_BASIC_AUTH_USERNAME="123456",
+        ENVIRONMENT="production",
+    )
+
+    with caplog.at_level(logging.INFO, logger="app.core.observability"):
+        obs.maybe_setup_profiling(settings)
+
+    success = [
+        rec.getMessage()
+        for rec in caplog.records
+        if "Pyroscope profiler started" in rec.getMessage()
+    ]
+    assert success, [rec.getMessage() for rec in caplog.records]
+    rendered = success[0]
+    assert "https://profiles.example" in rendered
+    assert "user=123456" in rendered
+    assert "token_present=True" in rendered
+    # The auth token must never appear in the log line.
+    assert "tok-xyz" not in rendered
+
+
 # ---------------------------------------------------------------------------
 # Settings observability fields
 # ---------------------------------------------------------------------------
