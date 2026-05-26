@@ -771,9 +771,10 @@ def maybe_setup_profiling(settings: Settings) -> None:
         )
         PROFILING_INIT_FAILURES.add(1, attributes={"reason": "missing_dependency"})
         return
+    application_name = f"ams-backend.{settings.replica_id}"
     try:
         pyroscope.configure(
-            application_name=f"ams-backend.{settings.replica_id}",
+            application_name=application_name,
             server_address=settings.pyroscope_server,
             basic_auth_username=settings.pyroscope_basic_auth_username,
             auth_token=settings.pyroscope_auth_token.get_secret_value(),
@@ -789,6 +790,20 @@ def maybe_setup_profiling(settings: Settings) -> None:
             exc,
         )
         PROFILING_INIT_FAILURES.add(1, attributes={"reason": "configure_error"})
+        return
+    # Success path needs a single observable record. pyroscope-io's
+    # background upload thread logs to stderr (not through Python's
+    # ``logging``), so when configure() returns clean but uploads then
+    # fail silently — bad token, blocked egress, wrong endpoint — Loki
+    # sees nothing and the operator has no signal at all. One INFO line
+    # here at least pins down what runtime config the worker loaded.
+    logger.info(
+        "Pyroscope profiler started: app=%s server=%s user=%s token_present=%s",
+        application_name,
+        settings.pyroscope_server,
+        settings.pyroscope_basic_auth_username,
+        bool(settings.pyroscope_auth_token.get_secret_value()),
+    )
 
 
 def _missing_exporters() -> list[str]:
