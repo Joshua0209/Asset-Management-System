@@ -65,7 +65,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 9},
       "id": 6,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (state_from, state_to) (rate(ams_fsm_transitions_total{service_name=\"ams-backend\"}[$__rate_interval]))", "legendFormat": "{{state_from}} → {{state_to}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (state_from, state_to) (rate(ams_fsm_transitions_total{service_name=\"ams-backend\"}[$__rate_interval])) or on() vector(0)", "legendFormat": "{{state_from}} → {{state_to}}", "refId": "A"}],
       "title": "FSM Transitions By (from → to)",
       "type": "timeseries"
     },
@@ -75,7 +75,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 9},
       "id": 7,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (code) (rate(ams_optimistic_conflicts_total{service_name=\"ams-backend\"}[$__rate_interval]))", "legendFormat": "{{code}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (code) (rate(ams_optimistic_conflicts_total{service_name=\"ams-backend\"}[$__rate_interval])) or on() vector(0)", "legendFormat": "{{code}}", "refId": "A"}],
       "title": "409 Conflicts By Code",
       "type": "timeseries"
     },
@@ -103,7 +103,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
       "id": 9,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (state_to) (increase(ams_fsm_transitions_total{service_name=\"ams-backend\", asset_kind=\"repair_request\"}[5m]))", "legendFormat": "→ {{state_to}}", "refId": "A"}],
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum by (state_to) (increase(ams_fsm_transitions_total{service_name=\"ams-backend\", asset_kind=\"repair_request\"}[5m])) or on() vector(0)", "legendFormat": "→ {{state_to}}", "refId": "A"}],
       "title": "Repair-Request Transitions Into Each State (5m bucket)",
       "type": "timeseries"
     },
