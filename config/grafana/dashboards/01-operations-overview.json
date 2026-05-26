@@ -559,7 +559,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ams-backend\", environment=\"$environment\"} | json | level=~\"(?i)warning|error|critical\"",
+          "expr": "{service_name=\"ams-backend\"} | environment=\"$environment\" | json | level=~\"(?i)warning|error|critical\"",
           "refId": "A"
         }
       ],

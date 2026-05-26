@@ -612,7 +612,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"} | json",
+          "expr": "{service_name=\"ams-backend\", service_instance_id=~\"$replica\"} | environment=\"$environment\" | json",
           "refId": "A"
         }
       ],
@@ -647,7 +647,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ams-backend\", environment=\"$environment\", service_instance_id=~\"$replica\"} | json | level=~\"(?i)warning|error|critical\"",
+          "expr": "{service_name=\"ams-backend\", service_instance_id=~\"$replica\"} | environment=\"$environment\" | json | level=~\"(?i)warning|error|critical\"",
           "refId": "A"
         }
       ],
