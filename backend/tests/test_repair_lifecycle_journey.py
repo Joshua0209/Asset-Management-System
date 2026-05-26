@@ -296,20 +296,21 @@ class TestRepairLifecycleJourney:
         assert completed["repair_cost"] == _COMPLETION_PAYLOAD["repair_cost"]
         assert completed["repair_vendor"] == _COMPLETION_PAYLOAD["repair_vendor"]
 
-    def test_concurrent_managers_only_one_approval_wins(
+    def test_stale_version_loser_gets_409_with_winner_persisted(
         self,
         client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        """Two managers race to approve the same request — only one wins.
+        """Stale-version optimistic-lock semantics with two managers.
 
-        Both managers pull the request while it's still ``pending_review``
-        and see ``version = 1``. They each post /approve with that version.
-        Optimistic locking must let exactly one through (200) and reject
-        the other (409 stale_version). The persisted ``reviewer_id`` must
-        belong to the winner, not silently get overwritten by the loser.
+        The two approve calls run *sequentially* over a single in-process
+        TestClient — there is no real concurrency here (SQLite + threading
+        in the same Python process). What the test does prove is the
+        optimistic-lock contract: a caller that submits with a stale
+        version token gets 409 ``stale_version``, and the row reflects
+        only the winning call's writes.
 
         This is the protection that makes "two managers eyeballing the
         same queue at the same time" safe in production. Without it, the

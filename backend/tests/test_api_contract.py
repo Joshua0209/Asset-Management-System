@@ -393,9 +393,11 @@ class TestRepairSubmitMultipartContract:
         holder = make_user(role=UserRole.HOLDER, email="contract-503@example.com")
         asset = _seed_assigned_asset(db_session, holder)
 
-        # ``client`` fixture restores ``app.dependency_overrides`` to its
-        # baseline (just ``get_db``) in teardown via ``.clear()``, so this
-        # override is automatically rolled back after the test.
+        # ``client`` fixture's teardown calls ``app.dependency_overrides.clear()``
+        # which removes ALL overrides — including ``get_db``. The next test's
+        # ``client`` fixture invocation re-adds the ``get_db`` override on
+        # entry, so the per-test isolation still holds. The override added
+        # here is therefore rolled back before any other test runs.
         app.dependency_overrides[get_image_storage] = lambda: _FailingImageStorage()
 
         response = client.post(

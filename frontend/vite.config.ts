@@ -1,4 +1,5 @@
 import path from "node:path";
+import { availableParallelism } from "node:os";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
@@ -25,10 +26,15 @@ export default defineConfig({
     // leaving headroom for the runner + system processes. Each fork
     // still has its own JSDOM, so test isolation is unchanged (single
     // fork would leak globals between tests).
+    //
+    // Take the MIN of 4 and the runner's actual parallelism so that
+    // 2-vCPU CI runners (GitHub Actions ubuntu-latest, ~2-4 vCPU) are
+    // not oversubscribed with 4 forks fighting for 2 cores. On the dev
+    // Mac (10 cores) the cap stays at 4.
     pool: "forks",
     poolOptions: {
       forks: {
-        maxForks: 4,
+        maxForks: Math.min(4, availableParallelism()),
         minForks: 1,
       },
     },
