@@ -49,7 +49,7 @@
     },
     {
       "datasource": {"type": "pyroscope", "uid": "pyroscope"},
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 25},
+      "gridPos": {"h": 32, "w": 24, "x": 0, "y": 25},
       "id": 5,
       "targets": [{"datasource": {"type": "pyroscope", "uid": "pyroscope"}, "groupBy": [], "labelSelector": "{service_name=~\"ams-backend.*\"}", "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds", "queryType": "profile", "refId": "A"}],
       "title": "Pyroscope CPU Flamegraph (ams-backend.*)",
