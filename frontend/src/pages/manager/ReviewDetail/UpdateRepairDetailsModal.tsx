@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Form, Input, Modal } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Form, Input, Modal, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { createAmountValidator } from '@/utils/validators';
@@ -22,14 +22,17 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm<RepairDetailsValues>();
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       form.setFieldsValue(initialValues);
+      setDetailError(null);
     }
   }, [open, initialValues, form]);
 
   const validateRepairCost = createAmountValidator(t, {
+    allowZero: true,
     formatKey: 'validation.repairCostFormat',
     positiveKey: 'validation.repairCostPositive',
   });
@@ -41,7 +44,33 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
     } catch {
       return;
     }
-    await onSubmit(values);
+    const normalizedValues: RepairDetailsValues = {};
+    const repairDate = values.repair_date?.trim();
+    if (repairDate) {
+      normalizedValues.repair_date = repairDate;
+    }
+    const repairPlan = values.repair_plan?.trim();
+    if (repairPlan) {
+      normalizedValues.repair_plan = repairPlan;
+    }
+    const repairVendor = values.repair_vendor?.trim();
+    if (repairVendor) {
+      normalizedValues.repair_vendor = repairVendor;
+    }
+    const faultContent = values.fault_content?.trim();
+    if (faultContent) {
+      normalizedValues.fault_content = faultContent;
+    }
+    const repairCost = values.repair_cost?.trim();
+    if (repairCost) {
+      normalizedValues.repair_cost = repairCost;
+    }
+    if (Object.keys(normalizedValues).length === 0) {
+      setDetailError(t('validation.atLeastOneRepairDetail'));
+      return;
+    }
+    setDetailError(null);
+    await onSubmit(normalizedValues);
   };
 
   return (
@@ -56,13 +85,19 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
       destroyOnHidden
     >
       <Form form={form} layout="vertical">
-        <Form.Item name="repair_date" label={t('reviews.form.repairDate')}>
+        <Form.Item
+          name="repair_date"
+          label={t('reviews.form.repairDate')}
+        >
           <Input type="date" />
         </Form.Item>
         <Form.Item name="fault_content" label={t('reviews.form.faultContent')}>
           <Input.TextArea rows={3} />
         </Form.Item>
-        <Form.Item name="repair_plan" label={t('reviews.form.repairPlan')}>
+        <Form.Item
+          name="repair_plan"
+          label={t('reviews.form.repairPlan')}
+        >
           <Input.TextArea rows={3} />
         </Form.Item>
         <Form.Item
@@ -72,9 +107,13 @@ const UpdateRepairDetailsModal: React.FC<UpdateRepairDetailsModalProps> = ({
         >
           <Input type="number" min={0} step="0.01" />
         </Form.Item>
-        <Form.Item name="repair_vendor" label={t('reviews.form.repairVendor')}>
+        <Form.Item
+          name="repair_vendor"
+          label={t('reviews.form.repairVendor')}
+        >
           <Input />
         </Form.Item>
+        {detailError ? <Typography.Text type="danger">{detailError}</Typography.Text> : null}
       </Form>
     </Modal>
   );

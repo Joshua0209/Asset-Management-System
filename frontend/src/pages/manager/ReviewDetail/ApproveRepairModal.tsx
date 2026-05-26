@@ -30,7 +30,7 @@ const ApproveRepairModal: React.FC<ApproveRepairModalProps> = ({
   }, [open, initialValues, form]);
 
   const validateRepairCost = createAmountValidator(t, {
-    required: true,
+    allowZero: true,
     formatKey: 'validation.repairCostFormat',
     positiveKey: 'validation.repairCostPositive',
   });
@@ -42,7 +42,24 @@ const ApproveRepairModal: React.FC<ApproveRepairModalProps> = ({
     } catch {
       return;
     }
-    await onSubmit(values);
+    const normalizedValues: ApproveValues = {};
+    const repairPlan = values.repair_plan?.trim();
+    if (repairPlan) {
+      normalizedValues.repair_plan = repairPlan;
+    }
+    const repairVendor = values.repair_vendor?.trim();
+    if (repairVendor) {
+      normalizedValues.repair_vendor = repairVendor;
+    }
+    const repairCost = values.repair_cost?.trim();
+    if (repairCost) {
+      normalizedValues.repair_cost = repairCost;
+    }
+    const plannedDate = values.planned_date?.trim();
+    if (plannedDate) {
+      normalizedValues.planned_date = plannedDate;
+    }
+    await onSubmit(normalizedValues);
   };
 
   return (
@@ -60,14 +77,12 @@ const ApproveRepairModal: React.FC<ApproveRepairModalProps> = ({
         <Form.Item
           name="repair_plan"
           label={t('reviews.form.repairPlan')}
-          rules={[{ required: true, message: t('validation.required') }]}
         >
           <Input.TextArea rows={3} />
         </Form.Item>
         <Form.Item
           name="repair_vendor"
           label={t('reviews.form.repairVendor')}
-          rules={[{ required: true, message: t('validation.required') }]}
         >
           <Input />
         </Form.Item>
@@ -81,7 +96,6 @@ const ApproveRepairModal: React.FC<ApproveRepairModalProps> = ({
         <Form.Item
           name="planned_date"
           label={t('reviews.form.plannedDate')}
-          rules={[{ required: true, message: t('validation.required') }]}
         >
           <Input type="date" />
         </Form.Item>

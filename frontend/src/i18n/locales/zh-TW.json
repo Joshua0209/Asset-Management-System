@@ -11,10 +11,10 @@
     },
     "nav": {
       "dashboard": "儀表板",
-      "assets": "資產",
+      "assets": "資產管理",
       "myAssets": "我的資產",
       "repairs": "維修申請",
-      "reviews": "審核",
+      "reviews": "維修管理",
       "users": "使用者",
       "logout": "登出"
     },
@@ -72,8 +72,9 @@
     "max500Chars": "最多 500 個字元",
     "purchaseAmountPositive": "採購金額必須大於 0",
     "purchaseAmountFormat": "採購金額需為正數，最多 15 位數且小數最多 2 位",
-    "repairCostPositive": "維修金額必須大於 0",
-    "repairCostFormat": "維修金額需為正數，最多 15 位數且小數最多 2 位",
+    "repairCostPositive": "維修金額必須大於或等於 0",
+    "repairCostFormat": "維修金額需為非負數，最多 15 位數且小數最多 2 位",
+    "atLeastOneRepairDetail": "請至少填寫一項維修資訊",
     "purchaseDateNotFuture": "採購日期不可為未來日期",
     "warrantyAfterPurchase": "保固到期日必須晚於採購日期",
     "warrantyAfterActivation": "保固到期日必須晚於啟用日期",
@@ -212,7 +213,7 @@
     "demoNotice": "儀表板指標保留給 demo 資料整理階段補齊。"
   },
   "reviews": {
-    "title": "維修審核",
+    "title": "維修清單",
     "description": "審核、處理並完成維修申請。",
     "loadError": "載入維修申請失敗，請稍後再試。",
     "empty": "目前沒有維修申請。",

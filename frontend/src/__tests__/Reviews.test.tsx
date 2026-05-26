@@ -90,7 +90,7 @@ describe("Reviews", () => {
       });
     });
 
-    expect(screen.getByRole("heading", { name: "Repair Reviews" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Repair Requests" })).toBeInTheDocument();
     expect(screen.getByText("AST-1")).toBeInTheDocument();
     expect(screen.getByText("Pending Review")).toBeInTheDocument();
   });

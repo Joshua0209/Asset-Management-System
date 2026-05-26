@@ -88,16 +88,16 @@ describe("App routing & auth guards", () => {
     seedSession("manager");
     await renderAt("/dashboard");
     expect(screen.getByRole("menuitem", { name: /dashboard/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /assets/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /reviews/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /asset management/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /repair management/i })).toBeInTheDocument();
   });
 
   it("hides manager-only sidebar items for holder", async () => {
     seedSession("holder");
     await renderAt("/assets");
     expect(screen.queryByRole("menuitem", { name: /dashboard/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /reviews/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /assets/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /repair management/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /my assets/i })).toBeInTheDocument();
   });
 
   it("redirects an authenticated user away from /auth/login to their landing", async () => {

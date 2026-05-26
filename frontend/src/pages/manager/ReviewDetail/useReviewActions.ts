@@ -4,10 +4,10 @@ import { repairRequestsApi } from '@/api';
 import { useSubmitAction } from '@/hooks/useSubmitAction';
 
 export interface ApproveValues {
-  repair_plan: string;
-  repair_vendor: string;
-  repair_cost: string;
-  planned_date: string;
+  repair_plan?: string;
+  repair_vendor?: string;
+  repair_cost?: string;
+  planned_date?: string;
 }
 
 export interface RejectValues {
