@@ -6,19 +6,10 @@ Course project for a cloud computing / software engineering class. The repositor
 - `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
 
-## Status (Buffer week begins 2026-05-26)
+## Open before the Jun 2 presentation
 
-W1–W6 code work is on `main`. See [docs/roadmap.md](docs/roadmap.md) for the full week-by-week retrospective.
-
-**Open before the Jun 2 presentation:**
-
-- **Production AWS deploy is not yet running.** Infrastructure code, ECS task definitions, OIDC IAM role, and the pre-deploy `alembic upgrade head` one-off task are all merged (PRs [#63](https://github.com/Joshua0209/Asset-Management-System/pull/63), [#83](https://github.com/Joshua0209/Asset-Management-System/pull/83), [#90](https://github.com/Joshua0209/Asset-Management-System/pull/90)), but the rolling deploy has not completed cleanly. Until it does, the demo runs on `docker compose up` against Grafana Cloud from a laptop.
-- **k6 load test against the deployed service.** Six scenario scripts under `load/`, the per-VU JWT cache, and the per-request OTel-bridged access log are merged (PR [#85](https://github.com/Joshua0209/Asset-Management-System/pull/85)). The sustained-QPS run with `K6_PROMETHEUS_RW_*` against the prod ALB waits on the deploy.
-- **Grafana Cloud dashboard verification with production data.** Six dashboard JSONs and `scripts/sync_grafana_cloud_dashboards.py` are merged (PR [#78](https://github.com/Joshua0209/Asset-Management-System/pull/78)). Syncing them and confirming the panels render against real prod telemetry waits on the deploy.
-- **End-to-end correlation demo in Grafana Cloud:** dashboard → Loki log line → Tempo trace → Pyroscope flamegraph for the same window.
-- **Phase 6 of the obs migration plan:** delete repo-side dashboard JSONs once GC import is verified in production.
-- **Playwright E2E for the 6 critical flows:** login, holder submit repair (with image), manager approve with plan, manager complete, manager register asset, multi-dim asset search.
-- **Presentation:** slides first draft, demo script, report draft, May 26 + May 29 rehearsals.
+- **k6 sustained-QPS run against the deployed ALB.** Six scenario scripts under `load/`, the per-VU JWT cache, and the per-request OTel-bridged access log are merged (PR [#85](https://github.com/Joshua0209/Asset-Management-System/pull/85)); the prod deploy is up. The sustained run with `K6_PROMETHEUS_RW_*` into Grafana Cloud Prom and the screenshots for the testing slide still need to happen.
+- **Presentation:** slides first draft, demo script, May 26 + May 29 rehearsals.
 
 ## Repository layout
 
