@@ -545,7 +545,12 @@ jobs:
         # both for speed (~5x) and so the cached wheel store is shared with
         # backend-test/typecheck above (same uv cache key family).
         run: |
-          uv venv .audit-venv
+          # --seed installs pip/setuptools/wheel into the venv. Without it
+          # uv-created venvs are pip-less (saves ~10 MB), but the downstream
+          # pypa/gh-action-pip-audit calls `python -m pip` against the venv's
+          # python and fails with "No module named pip". --seed makes the
+          # venv behave like `python -m venv` while keeping uv's speed.
+          uv venv --seed .audit-venv
           uv pip install --python .audit-venv/bin/python -e '.[prod]'
       - name: pip-audit
         uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
