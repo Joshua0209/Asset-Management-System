@@ -276,6 +276,15 @@ _RBAC_MATRIX: list[_RbacCase] = [
     ),
 
     # -----------------------------------------------------------------
+    # /api/v1/dashboard/*
+    # -----------------------------------------------------------------
+    _RbacCase(
+        "GET", "/api/v1/dashboard/manager",
+        body=None,
+        allow_anon=False, allow_holder=False, allow_manager=True,
+    ),
+
+    # -----------------------------------------------------------------
     # /api/v1/observability/* — internal beacon, intentionally anonymous
     #
     # ``navigator.sendBeacon`` issues this from a failing frontend with
