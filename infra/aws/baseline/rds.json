@@ -1,0 +1,125 @@
+{
+    "DBInstances": [
+        {
+            "DBInstanceIdentifier": "ams-database",
+            "DBInstanceClass": "db.t3.micro",
+            "Engine": "mysql",
+            "DBInstanceStatus": "available",
+            "MasterUsername": "admin",
+            "Endpoint": {
+                "Address": "__RDS_ENDPOINT__",
+                "Port": 3306,
+                "HostedZoneId": "Z0272753185VU5HG1UMAB"
+            },
+            "AllocatedStorage": 20,
+            "InstanceCreateTime": "2026-05-19T16:16:44.366000+00:00",
+            "PreferredBackupWindow": "15:06-15:36",
+            "BackupRetentionPeriod": 7,
+            "DBSecurityGroups": [],
+            "VpcSecurityGroups": [
+                {
+                    "VpcSecurityGroupId": "__SG_RDS_ID__",
+                    "Status": "active"
+                }
+            ],
+            "DBParameterGroups": [
+                {
+                    "DBParameterGroupName": "default.mysql8.4",
+                    "ParameterApplyStatus": "in-sync"
+                }
+            ],
+            "AvailabilityZone": "ap-east-2b",
+            "DBSubnetGroup": {
+                "DBSubnetGroupName": "default-__VPC_ID__",
+                "DBSubnetGroupDescription": "Created from the RDS Management Console",
+                "VpcId": "__VPC_ID__",
+                "SubnetGroupStatus": "Complete",
+                "Subnets": [
+                    {
+                        "SubnetIdentifier": "__SUBNET_PRIVATE_1__",
+                        "SubnetAvailabilityZone": {
+                            "Name": "ap-east-2a"
+                        },
+                        "SubnetOutpost": {},
+                        "SubnetStatus": "Active"
+                    },
+                    {
+                        "SubnetIdentifier": "__SUBNET_PUBLIC_2__",
+                        "SubnetAvailabilityZone": {
+                            "Name": "ap-east-2b"
+                        },
+                        "SubnetOutpost": {},
+                        "SubnetStatus": "Active"
+                    },
+                    {
+                        "SubnetIdentifier": "__SUBNET_PRIVATE_2__",
+                        "SubnetAvailabilityZone": {
+                            "Name": "ap-east-2b"
+                        },
+                        "SubnetOutpost": {},
+                        "SubnetStatus": "Active"
+                    },
+                    {
+                        "SubnetIdentifier": "__SUBNET_PUBLIC_1__",
+                        "SubnetAvailabilityZone": {
+                            "Name": "ap-east-2a"
+                        },
+                        "SubnetOutpost": {},
+                        "SubnetStatus": "Active"
+                    }
+                ]
+            },
+            "PreferredMaintenanceWindow": "mon:13:38-mon:14:08",
+            "UpgradeRolloutOrder": "second",
+            "PendingModifiedValues": {},
+            "LatestRestorableTime": "2026-05-27T08:15:16+00:00",
+            "MultiAZ": false,
+            "EngineVersion": "8.4.8",
+            "AutoMinorVersionUpgrade": true,
+            "ReadReplicaDBInstanceIdentifiers": [],
+            "LicenseModel": "general-public-license",
+            "StorageThroughput": 0,
+            "OptionGroupMemberships": [
+                {
+                    "OptionGroupName": "default:mysql-8-4",
+                    "Status": "in-sync"
+                }
+            ],
+            "PubliclyAccessible": false,
+            "StorageType": "gp2",
+            "DbInstancePort": 0,
+            "StorageEncrypted": true,
+            "KmsKeyId": "arn:aws:kms:ap-east-2:__ACCOUNT_ID__:key/__RDS_KMS_KEY_ID__",
+            "DbiResourceId": "__RDS_RESOURCE_ID__",
+            "CACertificateIdentifier": "rds-ca-rsa2048-g1",
+            "DomainMemberships": [],
+            "CopyTagsToSnapshot": true,
+            "MonitoringInterval": 60,
+            "EnhancedMonitoringResourceArn": "arn:aws:logs:ap-east-2:__ACCOUNT_ID__:log-group:RDSOSMetrics:log-stream:__RDS_RESOURCE_ID__",
+            "MonitoringRoleArn": "arn:aws:iam::__ACCOUNT_ID__:role/rds-monitoring-role",
+            "DBInstanceArn": "arn:aws:rds:ap-east-2:__ACCOUNT_ID__:db:ams-database",
+            "IAMDatabaseAuthenticationEnabled": false,
+            "DatabaseInsightsMode": "standard",
+            "PerformanceInsightsEnabled": false,
+            "DeletionProtection": true,
+            "AssociatedRoles": [],
+            "MaxAllocatedStorage": 1000,
+            "TagList": [],
+            "CustomerOwnedIpEnabled": false,
+            "NetworkType": "IPV4",
+            "BackupTarget": "region",
+            "CertificateDetails": {
+                "CAIdentifier": "rds-ca-rsa2048-g1",
+                "ValidTill": "2027-05-19T16:56:55+00:00"
+            },
+            "MasterUserSecret": {
+                "SecretArn": "arn:aws:secretsmanager:ap-east-2:__ACCOUNT_ID__:secret:__RDS_SECRET_ARN__",
+                "SecretStatus": "active",
+                "KmsKeyId": "arn:aws:kms:ap-east-2:__ACCOUNT_ID__:key/__SECRET_KMS_KEY_ID__"
+            },
+            "DedicatedLogVolume": false,
+            "IsStorageConfigUpgradeAvailable": false,
+            "EngineLifecycleSupport": "open-source-rds-extended-support-disabled"
+        }
+    ]
+}

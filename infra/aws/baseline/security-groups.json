@@ -1,0 +1,244 @@
+{
+    "SecurityGroups": [
+        {
+            "GroupId": "__SG_BACKEND_ID__",
+            "IpPermissionsEgress": [
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ],
+            "VpcId": "__VPC_ID__",
+            "SecurityGroupArn": "arn:aws:ec2:ap-east-2:__ACCOUNT_ID__:security-group/__SG_BACKEND_ID__",
+            "OwnerId": "__ACCOUNT_ID__",
+            "GroupName": "ams-backend-task-sg",
+            "Description": "Backend Task Security Group",
+            "IpPermissions": [
+                {
+                    "IpProtocol": "tcp",
+                    "FromPort": 8000,
+                    "ToPort": 8000,
+                    "UserIdGroupPairs": [
+                        {
+                            "UserId": "__ACCOUNT_ID__",
+                            "GroupId": "__SG_ALB_ID__"
+                        }
+                    ],
+                    "IpRanges": [],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ]
+        },
+        {
+            "GroupId": "__SG_FRONTEND_ID__",
+            "IpPermissionsEgress": [
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ],
+            "VpcId": "__VPC_ID__",
+            "SecurityGroupArn": "arn:aws:ec2:ap-east-2:__ACCOUNT_ID__:security-group/__SG_FRONTEND_ID__",
+            "OwnerId": "__ACCOUNT_ID__",
+            "GroupName": "ams-frontend-task-sg",
+            "Description": "Frontend Task Security Group",
+            "IpPermissions": [
+                {
+                    "IpProtocol": "tcp",
+                    "FromPort": 80,
+                    "ToPort": 80,
+                    "UserIdGroupPairs": [
+                        {
+                            "UserId": "__ACCOUNT_ID__",
+                            "GroupId": "__SG_ALB_ID__"
+                        }
+                    ],
+                    "IpRanges": [],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ]
+        },
+        {
+            "GroupId": "__SG_RDS_ID__",
+            "IpPermissionsEgress": [
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ],
+            "VpcId": "__VPC_ID__",
+            "SecurityGroupArn": "arn:aws:ec2:ap-east-2:__ACCOUNT_ID__:security-group/__SG_RDS_ID__",
+            "OwnerId": "__ACCOUNT_ID__",
+            "GroupName": "ams-rds-sg",
+            "Description": "Database Security Group",
+            "IpPermissions": [
+                {
+                    "IpProtocol": "tcp",
+                    "FromPort": 3306,
+                    "ToPort": 3306,
+                    "UserIdGroupPairs": [
+                        {
+                            "UserId": "__ACCOUNT_ID__",
+                            "GroupId": "__SG_BACKEND_ID__"
+                        }
+                    ],
+                    "IpRanges": [],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ]
+        },
+        {
+            "GroupId": "__SG_REDIS_ID__",
+            "IpPermissionsEgress": [
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ],
+            "VpcId": "__VPC_ID__",
+            "SecurityGroupArn": "arn:aws:ec2:ap-east-2:__ACCOUNT_ID__:security-group/__SG_REDIS_ID__",
+            "OwnerId": "__ACCOUNT_ID__",
+            "GroupName": "ams-redis-sg",
+            "Description": "Cache Security Group",
+            "IpPermissions": [
+                {
+                    "IpProtocol": "tcp",
+                    "FromPort": 6379,
+                    "ToPort": 6379,
+                    "UserIdGroupPairs": [
+                        {
+                            "UserId": "__ACCOUNT_ID__",
+                            "GroupId": "__SG_BACKEND_ID__"
+                        }
+                    ],
+                    "IpRanges": [],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ]
+        },
+        {
+            "GroupId": "__SG_DEFAULT_ID__",
+            "IpPermissionsEgress": [
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ],
+            "VpcId": "__VPC_ID__",
+            "SecurityGroupArn": "arn:aws:ec2:ap-east-2:__ACCOUNT_ID__:security-group/__SG_DEFAULT_ID__",
+            "OwnerId": "__ACCOUNT_ID__",
+            "GroupName": "default",
+            "Description": "default VPC security group",
+            "IpPermissions": [
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [
+                        {
+                            "UserId": "__ACCOUNT_ID__",
+                            "GroupId": "__SG_DEFAULT_ID__"
+                        }
+                    ],
+                    "IpRanges": [],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ]
+        },
+        {
+            "GroupId": "__SG_ALB_ID__",
+            "IpPermissionsEgress": [
+                {
+                    "IpProtocol": "-1",
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [],
+                    "PrefixListIds": []
+                }
+            ],
+            "VpcId": "__VPC_ID__",
+            "SecurityGroupArn": "arn:aws:ec2:ap-east-2:__ACCOUNT_ID__:security-group/__SG_ALB_ID__",
+            "OwnerId": "__ACCOUNT_ID__",
+            "GroupName": "ams-alb-sg",
+            "Description": "ALB Security Group",
+            "IpPermissions": [
+                {
+                    "IpProtocol": "tcp",
+                    "FromPort": 80,
+                    "ToPort": 80,
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [
+                        {
+                            "CidrIpv6": "::/0"
+                        }
+                    ],
+                    "PrefixListIds": []
+                },
+                {
+                    "IpProtocol": "tcp",
+                    "FromPort": 443,
+                    "ToPort": 443,
+                    "UserIdGroupPairs": [],
+                    "IpRanges": [
+                        {
+                            "CidrIp": "0.0.0.0/0"
+                        }
+                    ],
+                    "Ipv6Ranges": [
+                        {
+                            "CidrIpv6": "::/0"
+                        }
+                    ],
+                    "PrefixListIds": []
+                }
+            ]
+        }
+    ]
+}

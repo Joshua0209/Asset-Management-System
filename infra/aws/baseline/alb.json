@@ -1,0 +1,34 @@
+{
+    "LoadBalancers": [
+        {
+            "LoadBalancerArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:loadbalancer/app/ams-alb/__ALB_RESOURCE_ID__",
+            "DNSName": "__ALB_DNS_NAME__",
+            "CanonicalHostedZoneId": "Z02789141MW7T1WBU19PO",
+            "CreatedTime": "2026-05-19T12:43:00.338000+00:00",
+            "LoadBalancerName": "ams-alb",
+            "Scheme": "internet-facing",
+            "VpcId": "__VPC_ID__",
+            "State": {
+                "Code": "active"
+            },
+            "Type": "application",
+            "AvailabilityZones": [
+                {
+                    "ZoneName": "ap-east-2b",
+                    "SubnetId": "__SUBNET_PUBLIC_2__",
+                    "LoadBalancerAddresses": []
+                },
+                {
+                    "ZoneName": "ap-east-2a",
+                    "SubnetId": "__SUBNET_PUBLIC_1__",
+                    "LoadBalancerAddresses": []
+                }
+            ],
+            "SecurityGroups": [
+                "__SG_ALB_ID__"
+            ],
+            "IpAddressType": "ipv4",
+            "EnablePrefixForIpv6SourceNat": "off"
+        }
+    ]
+}
