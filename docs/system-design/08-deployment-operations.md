@@ -39,6 +39,17 @@ See `CLAUDE.md` §"Health endpoints (Week 5+)" for the code-level distinction be
 | Disk usage | > 70% | > 85% | Expand volume |
 | Health check failure | 1 consecutive | 3 consecutive | Auto-replace node |
 
+**Notification routing.** Each row above maps to two Grafana-managed
+alert rules (warning + critical) defined under `config/grafana/alerts/`
+and provisioned by `scripts/sync_grafana_cloud_dashboards.py` alongside
+the dashboards. All 14 rules route to a single email contact point
+(`email-default`); the recipient list is sourced from the
+`GC_ALERT_EMAIL_RECIPIENTS` GitHub secret (comma-separated) so it can
+change without a code PR. The complete runbook lives in
+`infra/grafana-cloud/README.md` §"Alert provisioning". Warning rules
+fire after `for: 5m` (10m for disk, 1m for ALB health); critical rules
+fire faster (2m / 5m / 3m respectively).
+
 ---
 
 ## Backup & Recovery

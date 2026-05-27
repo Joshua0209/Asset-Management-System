@@ -599,4 +599,10 @@ jobs:
           # sync script substitutes it for the `cloudwatch` placeholder
           # the dashboard JSONs use. See infra/grafana-cloud/README.md.
           GC_CLOUDWATCH_UID: ${{ vars.GC_CLOUDWATCH_UID }}
-        run: python scripts/sync_grafana_cloud_dashboards.py --stack-url "$GC_STACK_URL"
+          # Comma-separated email recipients for the alert contact
+          # point. Stored as a secret (rather than a var) so the
+          # alerting team's addresses do not leak into public PR diffs.
+          # The sync script tolerates absence under --dry-run (PR-side
+          # validate gate) but exits 2 in live mode if unset.
+          GC_ALERT_EMAIL_RECIPIENTS: ${{ secrets.GC_ALERT_EMAIL_RECIPIENTS }}
+        run: python scripts/sync_grafana_cloud_dashboards.py --targets all --stack-url "$GC_STACK_URL"

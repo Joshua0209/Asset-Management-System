@@ -81,6 +81,7 @@ jobs:
               - '.github/actions/**'
             dashboards:
               - 'config/grafana/dashboards/**'
+              - 'config/grafana/alerts/**'
               - 'scripts/sync_grafana_cloud_dashboards.py'
               - '.github/workflows/ci.yml'
       - name: Aggregate outputs (workflow_dispatch forces everything)
