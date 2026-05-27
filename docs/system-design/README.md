@@ -20,6 +20,7 @@
 | [10-design-decisions.md](./10-design-decisions.md) | Resolved team decisions on stack, storage, business logic, scope |
 | [11-asset-fsm.md](./11-asset-fsm.md) | Asset finite state machine — state diagram and transition table |
 | [12-api-design.md](./12-api-design.md) | REST API contract — endpoints, request/response shapes, RBAC, error codes |
+| [13-aws-infrastructure-reference.md](./13-aws-infrastructure-reference.md) | AWS production baseline — VPC, ALB, RDS, and IAM resource mappings |
 
 ---
 
