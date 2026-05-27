@@ -673,6 +673,212 @@ jobs:
       - name: Dry-run dashboard sync (parse + validate, no HTTP)
         run: python scripts/sync_grafana_cloud_dashboards.py --dry-run
 
+  # Playwright browser-driven regression suite (25 tests across 16 specs)
+  # against a real FastAPI + MySQL stack. The unit tests mock `@/api`, so
+  # the only line of defence against contract drift (BE/FE OpenAPI shape
+  # divergence) is this job. Gated on docs_only=false + at least one of
+  # backend/frontend changing - a config/grafana-only change does not need
+  # browser coverage. Blocks `build-and-push` so a failing E2E cannot
+  # ship to ECS.
+  e2e:
+    name: E2E - Playwright (chromium)
+    runs-on: ubuntu-latest
+    needs: [changes, frontend, backend-typecheck]
+    # The needs chain (`frontend`, `backend-typecheck`) is path-filtered, so
+    # !cancelled() is required to let e2e run when frontend was correctly
+    # skipped on a backend-only change (and vice versa). The explicit
+    # docs_only + per-side check below keeps e2e from firing on docs-only
+    # or dashboards-only PRs.
+    if: |
+      !cancelled() &&
+      needs.changes.outputs.docs_only != 'true' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true')
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: asset_management
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ppassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      # Inline env mirrors backend/.env.example minus observability + minus
+      # the things the host actually overrides at runtime (DB host, ports).
+      # Kept short on purpose - if pydantic-settings needs a field that is
+      # not here, the test will surface it loudly on first run.
+      DATABASE_URL: mysql+pymysql://root:password@127.0.0.1:3306/asset_management
+      JWT_SECRET: e2e-fixed-secret-not-used-elsewhere-and-not-deployed
+      BOOTSTRAP_MANAGER_EMAIL: admin@example.com
+      BOOTSTRAP_MANAGER_PASSWORD: ChangeMe123
+      BOOTSTRAP_MANAGER_NAME: Bootstrap Manager
+      BOOTSTRAP_MANAGER_DEPARTMENT: IT
+      # /tmp is wiped between jobs; the repair-image directory lives there
+      # because Playwright's repair-submit spec uploads a 1x1 PNG fixture
+      # and the backend needs a writeable upload root.
+      REPAIR_UPLOAD_DIR: /tmp/repair-uploads
+      # Telemetry off - the suite cares about API contracts, not traces,
+      # and OTLP exporters would spam timeouts without credentials.
+      OTEL_ENABLED: "false"
+      PYROSCOPE_ENABLED: "false"
+      # Rate limiting off so the rapid-fire E2E auth calls do not 429.
+      # Other rate-limit fields stay at .env.example defaults via
+      # pydantic-settings.
+      RATE_LIMIT_ENABLED: "false"
+      CORS_ALLOWED_ORIGINS: '["http://localhost:5173"]'
+      CORS_ALLOWED_METHODS: '["GET","POST","PATCH","OPTIONS"]'
+      CORS_ALLOWED_HEADERS: '["Authorization","Content-Type"]'
+      # Vite reads VITE_API_BASE_URL at dev-server startup. localhost:8000
+      # because uvicorn binds to 127.0.0.1 on the host below.
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/pyproject.toml
+
+      - name: Install backend (dev extras for uvicorn + alembic + seed)
+        working-directory: backend
+        run: uv pip install --system -e '.[dev]'
+
+      - name: Apply migrations + seed demo data
+        # The Playwright fixtures (e2e/fixtures/auth.ts) hardcode the
+        # bootstrap manager credentials and well-known seeded asset codes
+        # (AST-2026-00007, -00013, -00050). Without the seed those assertions
+        # have nothing to act on. AMS_SEED_CONFIRM=1 is the in-script safety
+        # gate; CI is exactly the controlled env it's designed for.
+        working-directory: backend
+        env:
+          AMS_SEED_CONFIRM: "1"
+        run: |
+          alembic upgrade head
+          python scripts/seed_demo_data.py
+
+      - name: Start backend (uvicorn, background)
+        working-directory: backend
+        run: |
+          mkdir -p /tmp/repair-uploads
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+            > /tmp/backend.log 2>&1 &
+          echo $! > /tmp/backend.pid
+
+      - name: Wait for backend /ready
+        # /ready exercises a `SELECT 1` against MySQL, which is exactly
+        # what we want here - it confirms both uvicorn AND the DB-side of
+        # the stack are reachable. 60s budget covers Python import warm-up
+        # on a cold runner. Tail backend.log on failure so a crash on boot
+        # is visible without re-running with verbose logging.
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/ready; then
+              echo
+              echo "Backend ready after ${i} polls"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Backend did not become ready in 60s. Tail of backend.log:"
+          tail -200 /tmp/backend.log || true
+          exit 1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Cache node_modules
+        # Share the cache-key shape with `frontend` / `frontend-test` so a
+        # warm cache from either of them is reusable here. See `frontend`
+        # for the full rationale on ImageOS/ImageVersion in the key.
+        id: node-modules-cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        with:
+          path: frontend/node_modules
+          key: node-modules-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-node22-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install frontend dependencies
+        if: ${{ steps.node-modules-cache.outputs.cache-hit != 'true' }}
+        working-directory: frontend
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        # ~/.cache/ms-playwright holds the chromium binary (~300 MB).
+        # Keyed on @playwright/test's resolved version so an SDK bump
+        # invalidates the cache - browser binaries are SDK-version-pinned.
+        id: playwright-cache
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
+      - name: Install Playwright browsers
+        # Always run with --with-deps to ensure the system-level Chromium
+        # dependencies (libnss3 etc.) are installed even on a cache hit.
+        # The browser-binary download is a no-op when the binary is already
+        # at the expected path.
+        if: ${{ steps.playwright-cache.outputs.cache-hit != 'true' }}
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit path)
+        # apt-get bits still need to be installed when the binary cache hit
+        # spared us the full --with-deps install above.
+        if: ${{ steps.playwright-cache.outputs.cache-hit == 'true' }}
+        working-directory: frontend
+        run: npx playwright install-deps chromium
+
+      - name: Run E2E suite
+        # Playwright's webServer config in e2e/playwright.config.ts starts
+        # `npm run dev` (Vite) automatically and waits for the URL to be up
+        # before the first test. `workers: 1` on CI keeps specs serial so
+        # they do not race the single shared backend DB.
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:5173
+        run: npm run test:e2e
+
+      - name: Tail backend log on failure
+        if: failure()
+        run: |
+          echo '---- backend.log ----'
+          tail -300 /tmp/backend.log || true
+
+      - name: Upload Playwright HTML report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload Playwright traces/screenshots/video
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-test-results
+          path: frontend/test-results/
+          if-no-files-found: ignore
+
+      - name: Stop backend
+        # Cleanup on every exit so a leaked PID does not poison subsequent
+        # debugging steps. `kill || true` since the process may have already
+        # crashed.
+        if: always()
+        run: |
+          if [ -f /tmp/backend.pid ]; then
+            kill "$(cat /tmp/backend.pid)" 2>/dev/null || true
+          fi
+
   # ─── Deploy pipeline ──────────────────────────────────────────────────────
   # Gated behind every quality + security job above. Runs only on push to
   # main or manual dispatch. Each job carries its own OIDC token grant so
@@ -692,6 +898,7 @@ jobs:
       - pip-audit
       - npm-audit
       - trivy
+      - e2e
     # SonarQube is intentionally NOT in `needs:` so the image build runs in
     # parallel with the SonarQube scan (~1m16s saved on every main deploy).
     # The quality gate is preserved by adding `sonarqube` to the `needs:`
@@ -1403,6 +1610,7 @@ jobs:
       - backend-coverage-merge
       - frontend
       - frontend-test
+      - e2e
       - secrets
       - sast
       - pip-audit
