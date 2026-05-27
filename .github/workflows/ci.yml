@@ -35,6 +35,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
     outputs:
       backend: ${{ steps.aggregate.outputs.backend }}
+      alembic: ${{ steps.aggregate.outputs.alembic }}
       frontend: ${{ steps.aggregate.outputs.frontend }}
       dashboards: ${{ steps.aggregate.outputs.dashboards }}
     steps:
@@ -54,6 +55,16 @@ jobs:
               - 'infra/ecs/backend-task-def.json'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
+            # Narrower filter than `backend`: only fires when a new
+            # migration is added under backend/alembic/versions/**. The
+            # `migrate-database` deploy step is gated on this so a
+            # backend-code-only change skips the ~1m14s Fargate run-task
+            # launch (alembic upgrade head no-ops if the chain is at
+            # head, but the task launch overhead is real). Migration env/
+            # config changes (alembic.ini, env.py) still go through
+            # `backend` because they can affect how migrations run.
+            alembic:
+              - 'backend/alembic/versions/**'
             frontend:
               - 'frontend/**'
               - 'infra/ecs/frontend-task-def.json'
@@ -68,15 +79,18 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BACKEND: ${{ steps.filter.outputs.backend }}
+          ALEMBIC: ${{ steps.filter.outputs.alembic }}
           FRONTEND: ${{ steps.filter.outputs.frontend }}
           DASHBOARDS: ${{ steps.filter.outputs.dashboards }}
         run: |
           if [ "$EVENT" = "workflow_dispatch" ]; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "alembic=true" >> "$GITHUB_OUTPUT"
             echo "frontend=true" >> "$GITHUB_OUTPUT"
             echo "dashboards=true" >> "$GITHUB_OUTPUT"
           else
             echo "backend=${BACKEND}" >> "$GITHUB_OUTPUT"
+            echo "alembic=${ALEMBIC}" >> "$GITHUB_OUTPUT"
             echo "frontend=${FRONTEND}" >> "$GITHUB_OUTPUT"
             echo "dashboards=${DASHBOARDS}" >> "$GITHUB_OUTPUT"
           fi
@@ -818,12 +832,16 @@ jobs:
     name: Run migrations (Alembic upgrade)
     needs: [changes, build-and-push, sonarqube]
     runs-on: ubuntu-latest
-    # Path-filtered to backend changes only. On a docs- or frontend-only
-    # main push there is no new schema to apply, so spinning up a Fargate
-    # task just to no-op `alembic upgrade head` wastes ~1-2 min and ECR
-    # pull bandwidth - and `deploy-backend` would be skipped anyway by
-    # its own backend-side gate. workflow_dispatch forces backend=true
-    # via the `changes` aggregate, so manual hot-fixes still migrate.
+    # Path-filtered to **alembic** changes only (backend/alembic/versions/**),
+    # not the broader `backend` filter. A backend code change that does
+    # not add a new migration file no-ops `alembic upgrade head` anyway -
+    # spinning up a Fargate task and pulling the image still costs ~1m14s
+    # of critical-path time, which adds up across the deploys we ship per
+    # week. `deploy-backend` no longer requires `migrate-database` to be
+    # `success`; it accepts `skipped` too (see the `if:` block on that job)
+    # so a code-only deploy proceeds without the migration step.
+    # workflow_dispatch still forces alembic=true via the `changes`
+    # aggregate, so manual hot-fixes always run migrations.
     #
     # The `always() && needs.<job>.result == 'success'` form is required
     # for the same reason `deploy-backend` carries it (see the long
@@ -844,7 +862,7 @@ jobs:
       needs.build-and-push.result == 'success' &&
       needs.sonarqube.result == 'success' &&
       ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') &&
-      needs.changes.outputs.backend == 'true'
+      needs.changes.outputs.alembic == 'true'
     # Shares `deploy-backend-` with deploy-backend so two queued main
     # pushes never run their migrations concurrently (Alembic forward-
     # only migrations are sequential by design; concurrent runs against
@@ -1026,7 +1044,8 @@ jobs:
     if: |
       always() &&
       needs.build-and-push.result == 'success' &&
-      needs.migrate-database.result == 'success' &&
+      needs.migrate-database.result != 'failure' &&
+      needs.migrate-database.result != 'cancelled' &&
       needs.changes.outputs.backend == 'true'
     # Per-service concurrency: backend-side jobs (migrate-database +
     # deploy-backend) share `deploy-backend-` so they serialize cross-run
