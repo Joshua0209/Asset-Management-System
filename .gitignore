@@ -38,5 +38,11 @@ frontend/*.tsbuildinfo
 # cache here even though the real project lives under frontend/.
 /node_modules/
 
+# ── Playwright E2E ────────────────────────────────────────────────────────────
+frontend/e2e/playwright-report/
+frontend/e2e/test-results/
+frontend/playwright-report/
+frontend/test-results/
+
 # ── Claude Code ───────────────────────────────────────────────────────────────
 .claude/

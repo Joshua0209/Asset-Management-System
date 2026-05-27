@@ -163,6 +163,39 @@ Uploaded repair images go through a small `ImageStorage` Protocol in `app/servic
 
 Asset List focused test: `src/__tests__/AssetList.test.tsx`.
 
+### Frontend e2e tests
+
+Run the frontend e2e suite after the app stack is already running in another terminal.
+
+1. In terminal A (repository root), reset and seed the demo data before e2e:
+
+    ```bash
+    docker compose run --rm -e AMS_SEED_CONFIRM=1 backend python scripts/seed_demo_data.py
+    ```
+
+2. In terminal A, start the app stack from the repository root:
+
+    ```bash
+    docker compose up --build
+    ```
+
+3. In terminal B, install the frontend dependencies and Playwright browsers:
+
+    ```bash
+    cd frontend
+    npm install
+    npx playwright install
+    ```
+
+4. Run the e2e tests from `frontend/` in this order:
+
+    ```bash
+    npm run test:e2e
+    npm run test:e2e:demo
+    ```
+
+`npm run test:e2e` should run first. Use `npm run test:e2e:demo` after that when you want the headed demo project run.
+
 ## Pre-commit hooks
 
 ```bash
