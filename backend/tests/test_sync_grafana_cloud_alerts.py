@@ -437,3 +437,127 @@ def test_apply_recipients_to_contact_point_preserves_other_settings() -> None:
 
     assert applied["settings"]["subject"] == "[AMS] {{ .CommonLabels.alertname }}"
     assert applied["settings"]["singleEmail"] is False
+
+
+# ---------------------------------------------------------------------------
+# Cycle 3: UID remap covers the alert-rule shape (data[].datasourceUid)
+# ---------------------------------------------------------------------------
+
+
+def test_collect_placeholder_uids_walks_alert_rule_data_array() -> None:
+    """Alert rules carry their datasource as a flat ``data[].datasourceUid``
+    string, not a nested ``datasource.uid`` object (the Grafana
+    provisioning API's alert-rule shape predates the dashboard
+    convention). ``collect_placeholder_uids`` must recognise both."""
+    rule = {
+        "uid": "ams-cpu-warning",
+        "data": [
+            {
+                "refId": "A",
+                "datasourceUid": "cloudwatch",
+                "model": {"refId": "A"},
+            },
+            {
+                "refId": "B",
+                "datasourceUid": "prometheus",
+                "model": {"refId": "B"},
+            },
+        ],
+    }
+
+    found = sync_module.collect_placeholder_uids(rule)
+
+    assert found == {"cloudwatch", "prometheus"}
+
+
+def test_collect_placeholder_uids_walks_mixed_shapes_in_one_object() -> None:
+    """An object can carry both shapes (e.g. a rule with a server-side
+    expression that points back at a query via ``datasource.uid``). The
+    walker must catch placeholders in both."""
+    rule = {
+        "uid": "ams-mixed",
+        "data": [
+            {"refId": "A", "datasourceUid": "cloudwatch"},
+            {
+                "refId": "B",
+                "datasource": {"type": "__expr__", "uid": "__expr__"},
+                "model": {"expression": "A"},
+            },
+        ],
+    }
+
+    found = sync_module.collect_placeholder_uids(rule)
+
+    # ``__expr__`` is Grafana's server-side-expression sentinel — it is
+    # NOT one of our placeholders so it must NOT be returned. Only
+    # ``cloudwatch`` qualifies.
+    assert found == {"cloudwatch"}
+
+
+def test_remap_datasource_uids_rewrites_alert_rule_datasourceUid() -> None:
+    """The flat ``data[].datasourceUid`` field is rewritten the same way
+    the nested ``datasource.uid`` field is."""
+    rule = {
+        "uid": "ams-cpu-warning",
+        "data": [
+            {"refId": "A", "datasourceUid": "cloudwatch", "model": {}},
+            {"refId": "B", "datasourceUid": "prometheus", "model": {}},
+        ],
+    }
+
+    remapped = sync_module.remap_datasource_uids(
+        rule,
+        {"cloudwatch": "stack-specific-cw", "prometheus": "grafanacloud-prom"},
+    )
+
+    assert remapped["data"][0]["datasourceUid"] == "stack-specific-cw"
+    assert remapped["data"][1]["datasourceUid"] == "grafanacloud-prom"
+
+
+def test_remap_datasource_uids_does_not_mutate_alert_rule_input() -> None:
+    """Same immutability contract as the dashboard test — caller keeps
+    the pre-remap object for dry-run output."""
+    rule = {
+        "uid": "ams-cpu-warning",
+        "data": [{"refId": "A", "datasourceUid": "cloudwatch", "model": {}}],
+    }
+
+    sync_module.remap_datasource_uids(rule, {"cloudwatch": "stack-specific-cw"})
+
+    assert rule["data"][0]["datasourceUid"] == "cloudwatch"
+
+
+def test_remap_datasource_uids_leaves_non_placeholder_datasourceUid_alone() -> None:
+    """A ``datasourceUid`` already pointing at a real UID (e.g. an
+    operator-edited rule file) must pass through unchanged."""
+    rule = {
+        "uid": "ams-pre-resolved",
+        "data": [{"refId": "A", "datasourceUid": "grafanacloud-prom", "model": {}}],
+    }
+
+    remapped = sync_module.remap_datasource_uids(
+        rule, {"cloudwatch": "stack-specific-cw"}
+    )
+
+    assert remapped["data"][0]["datasourceUid"] == "grafanacloud-prom"
+
+
+def test_build_uid_remap_aggregates_across_dashboards_and_alert_rules() -> None:
+    """``build_uid_remap`` accepts any iterable of resource dicts —
+    dashboards and alert rules are both walked the same way, so a
+    mixed batch resolves all placeholders in one pass."""
+    dashboard = {
+        "uid": "ams-dash",
+        "panels": [{"datasource": {"type": "prometheus", "uid": "prometheus"}}],
+    }
+    rule = {
+        "uid": "ams-rule",
+        "data": [{"refId": "A", "datasourceUid": "loki", "model": {}}],
+    }
+
+    remap = sync_module.build_uid_remap([dashboard, rule], env={})
+
+    assert remap == {
+        "prometheus": "grafanacloud-prom",
+        "loki": "grafanacloud-logs",
+    }
