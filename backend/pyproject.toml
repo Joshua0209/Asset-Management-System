@@ -60,6 +60,10 @@ dev = [
   "mypy>=1.10,<2.0",
   "pytest>=8.2,<9.0",
   "pytest-cov>=5.0,<6.0",
+  # pytest-split shards the suite by recorded test durations so CI can run
+  # two matrix jobs in parallel with balanced wall-clock per shard. See the
+  # `backend-test` matrix in .github/workflows/ci-quality.yml.
+  "pytest-split>=0.9,<1.0",
   "pytest-xdist>=3.6,<4.0",
   "ruff>=0.5,<1.0",
 ]

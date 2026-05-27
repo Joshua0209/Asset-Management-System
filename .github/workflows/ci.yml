@@ -149,7 +149,14 @@ jobs:
         run: mypy app
 
   backend-test:
-    name: Backend - pytest + coverage
+    # 2-way matrix shard via pytest-split. The previous single job took
+    # ~2m40s on a typical PR (the dominant critical path before SonarQube
+    # could start). Two shards cut wall-clock to ~1m20s each because the
+    # runner's 4 vCPUs already saturate one shard's pytest-xdist workers,
+    # so doubling the workers via a matrix gives near-linear speedup.
+    # Coverage is merged downstream in `backend-coverage-merge` before
+    # being handed to SonarQube.
+    name: Backend - pytest + coverage (${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     needs: changes
     # No path filter: pytest+coverage runs on every PR / main push so the
@@ -157,6 +164,14 @@ jobs:
     # Skipping this on docs-only PRs would also skip SonarQube (which needs
     # both coverage files to avoid distorting the project-wide trend), and
     # we want SonarQube's quality gate to evaluate every change.
+    strategy:
+      # One shard's flake should not mask the other's; we want both
+      # diagnostic outputs side by side. SonarQube downstream still
+      # requires both shards green via `backend-coverage-merge`, so a
+      # single shard failure still blocks the merge gate.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     defaults:
       run:
         working-directory: backend
@@ -166,6 +181,12 @@ jobs:
     # against the "ORM model added without a matching migration" bug
     # class that only explodes on real MySQL. Without this service block
     # the test silently `pytest.skip`s in CI and the gate is fictional.
+    #
+    # MySQL runs on BOTH shards because pytest-split distributes tests by
+    # recorded duration, so the migration drift test could land in either
+    # shard run to run. Adding the service to both adds no critical-path
+    # time (parallel matrix jobs each get their own runner + container)
+    # and avoids a brittle "predict which shard hosts the MySQL test" rule.
     services:
       mysql:
         image: mysql:8.4
@@ -190,23 +211,119 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e '.[dev]'
-      - name: Pytest with coverage
-        # -n auto + --dist=loadfile mirrors .githooks/pre-push: parallelise
-        # across the runner's vCPUs (4 on ubuntu-latest), with file-scoped
-        # distribution so the autouse db_tables create_all/drop_all stays
-        # predictable. Safe because each xdist worker is its own process
-        # with its own module-scoped in-memory SQLite engine (see
-        # tests/conftest.py) and UUID-keyed upload paths avoid filename
-        # collisions in the shared REPAIR_UPLOAD_DIR.
+      - name: Restore pytest-split durations cache
+        # pytest-split reads `.test_durations` to balance shards by recorded
+        # wall-clock. On a cold cache it falls back to splitting by test
+        # count, which can produce 1.5x skew on a real suite. `--store-
+        # durations` below refreshes the file so the next run starts hot.
+        # `restore-keys` lets a partial hit survive new tests being added.
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        with:
+          path: backend/.test_durations
+          key: pytest-durations-${{ runner.os }}-py3.11-${{ hashFiles('backend/tests/**/*.py') }}
+          restore-keys: |
+            pytest-durations-${{ runner.os }}-py3.11-
+      - name: Pytest with coverage (shard ${{ matrix.shard }}/2)
+        # pytest-split (--splits 2 --group N) slices the collected test list
+        # into 2 balanced groups by recorded duration; pytest-xdist (-n auto
+        # --dist=loadfile) then parallelises within the slice. Order matters:
+        # pytest-split must see the full collection before xdist distributes,
+        # so its flags come first.
         #
-        # TEST_MYSQL_URL points at the MySQL 8 service container above
-        # so test_migration_schema_drift.py runs (rather than silently
-        # skipping). The drift test creates and drops its own throwaway
-        # database on each run, so no DB suffix on the URL.
+        # --cov-context records context per test so the downstream
+        # `coverage combine` produces a consistent merged dataset rather
+        # than the last-writer-wins overwrite that comes from two raw
+        # .coverage files. --store-durations writes/updates .test_durations
+        # so the next run's shard distribution is better balanced.
+        #
+        # COVERAGE_FILE puts each shard's raw coverage data in its own
+        # file so the artifacts uploaded below don't collide; the merge
+        # job (`backend-coverage-merge`) combines them into one
+        # `coverage.xml` for SonarQube.
         env:
           TEST_MYSQL_URL: mysql+pymysql://root:rootpass@127.0.0.1:3306
-        run: pytest -n auto --dist=loadfile --cov=app --cov-report=term --cov-report=xml
-      - name: Upload coverage
+          COVERAGE_FILE: .coverage.${{ matrix.shard }}
+        run: |
+          pytest \
+            --splits 2 --group ${{ matrix.shard }} \
+            --store-durations --durations-path .test_durations \
+            -n auto --dist=loadfile \
+            --cov=app --cov-report=term
+      - name: Upload partial coverage data
+        # Raw .coverage.N files (not XML) so the merge job downstream can
+        # call `coverage combine` to produce a single canonical dataset
+        # before exporting XML for SonarQube. include-hidden-files=true
+        # because actions/upload-artifact@v4 silently drops dotfiles by
+        # default and our coverage files all start with a dot.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: backend-coverage-data-${{ matrix.shard }}
+          path: backend/.coverage.${{ matrix.shard }}
+          include-hidden-files: true
+          if-no-files-found: ignore
+      - name: Upload refreshed test durations
+        # Both shards write the same merged file (pytest-split's --store-
+        # durations is idempotent across shards within a run); the cache
+        # action above reads it back on the next run. Per-shard artifact
+        # names avoid the v4 upload-artifact same-name-conflict error.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: pytest-durations-${{ matrix.shard }}
+          path: backend/.test_durations
+          if-no-files-found: ignore
+
+  backend-coverage-merge:
+    # Combine the two shard coverage artifacts into a single coverage.xml
+    # that SonarQube can ingest. Without this step SonarQube would only
+    # see whichever shard happened to upload last (artifact-name collision)
+    # or, with the per-shard naming used above, neither - because the
+    # downstream `sonarqube` job hardcodes `name: backend-coverage`.
+    #
+    # Coverage combine runs in seconds; the wall-clock cost is dwarfed by
+    # the time it saves on the critical path (the shards finish ~80s
+    # faster than the un-sharded job did).
+    name: Backend - coverage merge
+    runs-on: ubuntu-latest
+    needs: backend-test
+    if: ${{ !cancelled() && needs.backend-test.result == 'success' }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install coverage tooling
+        # Only `coverage[toml]` is needed for the combine + xml export.
+        # The full backend install would take 20-30s for no benefit.
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'coverage[toml]>=7,<8'
+      - name: Download shard coverage data
+        # Both .coverage.1 and .coverage.2 land in the same directory so
+        # `coverage combine` can pick them up by glob. The merge operation
+        # discards the .coverage.N files once .coverage exists.
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: backend-coverage-data-*
+          merge-multiple: true
+          path: backend/
+      - name: Merge and export coverage.xml
+        # `coverage combine` reads .coverage.* siblings into one .coverage
+        # dataset (additive across files, deduped on (file, line)); `xml`
+        # then writes the SonarQube-compatible report.
+        run: |
+          coverage combine .coverage.*
+          coverage xml -o coverage.xml
+          coverage report --skip-empty || true
+      - name: Upload merged coverage
+        # Keep the artifact name SonarQube already expects (`backend-coverage`)
+        # so the downstream job doesn't need a rename.
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -464,12 +581,12 @@ jobs:
   sonarqube:
     name: SonarQube quality gate
     runs-on: ubuntu-latest
-    needs: [changes, backend-test, frontend-test]
+    needs: [changes, backend-coverage-merge, frontend-test]
     # Runs on every event the `changes` gate admits (PR / main push /
     # workflow_dispatch). The two test jobs above are path-filter free, so
     # SonarQube always sees both coverage artifacts and the project-wide
     # coverage trend cannot be distorted by a missing side.
-    if: ${{ !cancelled() && needs.backend-test.result == 'success' && needs.frontend-test.result == 'success' }}
+    if: ${{ !cancelled() && needs.backend-coverage-merge.result == 'success' && needs.frontend-test.result == 'success' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
