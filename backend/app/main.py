@@ -209,7 +209,7 @@ def _warn_if_database_config_is_legacy(settings_obj: "object") -> None:
         "Database configured via legacy DB_HOST/DB_NAME/DB_USER/DB_PASSWORD "
         "env vars, not DATABASE_URL. Production deploys should pull a single "
         "DATABASE_URL from Secrets Manager via DATABASE_URL_SECRET_NAME (see "
-        "infra/ecs/backend-task-def.json). The component-parts form remains "
+        "infra/aws/tasks/backend-task-def.json). The component-parts form remains "
         "supported for legacy local setups only."
     )
 

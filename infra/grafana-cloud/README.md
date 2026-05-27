@@ -3,7 +3,7 @@
 Runbook for wiring AWS-side telemetry (CloudWatch Logs and Metrics) into the
 Grafana Cloud stack used by AMS. The backend pushes traces, metrics, logs, and
 profiles to Grafana Cloud over OTLP directly from the ECS task (see
-`infra/ecs/backend-task-def.json` and `infra/ecs/README.md`); this directory
+`infra/aws/tasks/backend-task-def.json` and `infra/aws/tasks/README.md`); this directory
 covers the complementary path where Grafana Cloud *pulls* AWS-managed signals
 (ALB metrics, RDS metrics, CloudWatch log groups) via a cross-account IAM role.
 
@@ -91,7 +91,7 @@ Still in the AWS connection in GC:
 
 1. CloudWatch Logs → Enable.
 2. Select the `/ecs/ams-backend` log group (already auto-created by the
-   `awslogs-create-group` option on `infra/ecs/backend-task-def.json`).
+   `awslogs-create-group` option on `infra/aws/tasks/backend-task-def.json`).
 3. Optionally add `/ecs/ams-frontend` to surface nginx access logs.
 
 Logs land in the GC stack's Loki under the label
