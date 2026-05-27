@@ -1,0 +1,104 @@
+{
+  "rules": [
+    {
+      "uid": "ams-health-check-warning",
+      "title": "ALB unhealthy hosts ≥1 for 1m",
+      "ruleGroup": "warning",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "1m",
+      "noDataState": "Alerting",
+      "execErrState": "Alerting",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "cloudwatch",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "namespace": "AWS/ApplicationELB",
+            "metricName": "UnHealthyHostCount",
+            "dimensions": {
+              "TargetGroup": "targetgroup/ams-backend/*",
+              "LoadBalancer": "app/ams-alb/*"
+            },
+            "statistic": "Maximum",
+            "period": "60",
+            "region": "default"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [0]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "warning", "service": "ams-backend"},
+      "annotations": {
+        "summary": "ALB reports ≥1 unhealthy target for 1m",
+        "description": "{{ $values.A.Value }} unhealthy target(s) in the backend target group. Warning per docs/system-design/08-deployment-operations.md ('1 consecutive' health-check failure). noDataState=Alerting because absence of the metric in this rule's window is itself a problem worth paging on."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    },
+    {
+      "uid": "ams-health-check-critical",
+      "title": "ALB unhealthy hosts ≥1 for 3m",
+      "ruleGroup": "critical",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "3m",
+      "noDataState": "Alerting",
+      "execErrState": "Alerting",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "cloudwatch",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "namespace": "AWS/ApplicationELB",
+            "metricName": "UnHealthyHostCount",
+            "dimensions": {
+              "TargetGroup": "targetgroup/ams-backend/*",
+              "LoadBalancer": "app/ams-alb/*"
+            },
+            "statistic": "Maximum",
+            "period": "60",
+            "region": "default"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [0]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "critical", "service": "ams-backend"},
+      "annotations": {
+        "summary": "ALB reports ≥1 unhealthy target for 3m — auto-replace node",
+        "description": "{{ $values.A.Value }} unhealthy target(s) for 3 consecutive minutes. Critical per docs/system-design/08-deployment-operations.md ('3 consecutive' health-check failures → auto-replace node)."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    }
+  ]
+}

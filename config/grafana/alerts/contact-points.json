@@ -1,0 +1,12 @@
+{
+  "uid": "email-default",
+  "name": "email-default",
+  "type": "email",
+  "disableResolveMessage": false,
+  "settings": {
+    "addresses": "__PLACEHOLDER__",
+    "singleEmail": false,
+    "subject": "[AMS {{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}",
+    "message": "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n\nLabels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}\n{{ if .GeneratorURL }}Generator: {{ .GeneratorURL }}{{ end }}\n\n{{ end }}"
+  }
+}

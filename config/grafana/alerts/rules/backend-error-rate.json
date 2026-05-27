@@ -1,0 +1,92 @@
+{
+  "rules": [
+    {
+      "uid": "ams-backend-error-rate-warning",
+      "title": "Backend 5xx ratio above 1%",
+      "ruleGroup": "warning",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "5m",
+      "noDataState": "NoData",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "expr": "sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count[5m]))",
+            "intervalMs": 60000,
+            "maxDataPoints": 43200
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [0.01]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "warning", "service": "ams-backend"},
+      "annotations": {
+        "summary": "Backend 5xx ratio >1% for 5m",
+        "description": "5xx ratio is {{ humanizePercentage $values.A.Value }}; warning threshold 1% per docs/system-design/08-deployment-operations.md."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    },
+    {
+      "uid": "ams-backend-error-rate-critical",
+      "title": "Backend 5xx ratio above 5%",
+      "ruleGroup": "critical",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "2m",
+      "noDataState": "NoData",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "expr": "sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count[5m]))",
+            "intervalMs": 60000,
+            "maxDataPoints": 43200
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [0.05]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "critical", "service": "ams-backend"},
+      "annotations": {
+        "summary": "Backend 5xx ratio >5% for 2m",
+        "description": "5xx ratio is {{ humanizePercentage $values.A.Value }}; critical threshold 5% per docs/system-design/08-deployment-operations.md. Page on-call."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    }
+  ]
+}
