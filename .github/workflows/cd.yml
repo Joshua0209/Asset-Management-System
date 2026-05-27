@@ -1,0 +1,773 @@
+name: CD
+
+# Quality + security gates run first via ci-quality.yml (same reusable
+# workflow ci.yml invokes for PRs), then the deploy chain rolls images
+# into ECR and reconciles ECS services + Grafana Cloud dashboards.
+#
+# Fires only on push to main and manual workflow_dispatch. Feature-branch
+# pushes go through ci.yml (which doesn't have the deploy jobs), so no
+# manual gating is needed to keep deploys off feature branches.
+on:
+  push:
+    branches: [main]
+  # Manual rollout path for hot-fixes that need a re-deploy without a
+  # new commit. The same `if:` gates on the deploy jobs below still
+  # apply - workflow_dispatch forces the changes-filter aggregate to
+  # report all sides changed (see ci-quality.yml).
+  workflow_dispatch:
+    inputs:
+      run_seed:
+        description: 'Run demo data seeding (WARNING: deletes ALL data)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  # Pushes to main do NOT cancel - if two main commits queue, the older
+  # one might be a security patch mid-deploy and we want it to finish
+  # before the newer one starts (matches the job-level concurrency
+  # `cancel-in-progress: false` below).
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Pinned at workflow level so build-and-push and the downstream ECS
+  # render jobs all reference the same image tag for this run.
+  IMAGE_TAG: sha-${{ github.sha }}
+
+jobs:
+  # Run the same quality + security gate ci.yml uses on PRs, plus the
+  # Playwright E2E suite. ci-quality outputs the path-filter booleans we
+  # gate each deploy job on below.
+  quality:
+    uses: ./.github/workflows/ci-quality.yml
+    secrets: inherit
+
+  # Gated behind every quality + security job above. Runs only on push to
+  # main or manual dispatch. Each job carries its own OIDC token grant so
+  # the rest of the workflow has no AWS-assume capability.
+  build-and-push:
+    name: Build and push images to ECR
+    runs-on: ubuntu-latest
+    needs: [quality]
+    # cd.yml only fires on main pushes + workflow_dispatch, so the
+    # `github.ref == 'refs/heads/main'` clause that used to live here is
+    # implicit. On a push event we still gate the per-side filter so a
+    # dashboards-only push to main doesn't build container images for
+    # nothing. workflow_dispatch always builds both sides.
+    if: |
+      needs.quality.result == 'success' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'push' &&
+          (needs.quality.outputs.backend == 'true' || needs.quality.outputs.frontend == 'true')
+        )
+      )
+    # Cross-run serialization of image builds for the same branch. The
+    # group is `build-` (not `deploy-`) so this lock does NOT block the
+    # deploy jobs below - previously they all shared the same `deploy-`
+    # group, which serialized backend-deploy behind frontend-deploy
+    # within a single run (run 26405726818: deploy-backend waited 1m54s
+    # for deploy-frontend to release the lock even though it had no
+    # `needs:` on it). cancel-in-progress: false preserves an in-flight
+    # build if a newer commit lands.
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      backend-image: ${{ steps.meta.outputs.backend-image }}
+      frontend-image: ${{ steps.meta.outputs.frontend-image }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        # Federated identity - no AWS_ACCESS_KEY_ID secret. The role's trust
+        # policy restricts assumption to this repo + branch (see
+        # infra/ecs/README.md). Tokens are short-lived (1 hour default).
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@4625ce35226a7557230889aae2f52eb50ec3dcda # v2.0.1
+
+      - name: Set up Docker Buildx
+        # Buildx enables multi-platform builds and a more efficient cache
+        # backend than the legacy builder.
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          push: true
+          # Single immutable :sha-<commit> tag. The previous `:latest` push
+          # was a footgun: any ECR lifecycle rule that prunes by tag would
+          # reassign and could delete a still-running revision. The task
+          # definition pins the deployed image by SHA already, so `:latest`
+          # added no operational value.
+          tags: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:${{ env.IMAGE_TAG }}
+          # Layer caching against a sidecar :cache tag - cuts cold-build
+          # time from ~5 min to ~1 min on dependency-clean rebuilds.
+          cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:cache
+          cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:cache,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: true
+          # Vite inlines build-args, so the API base URL is baked into the
+          # bundle. If FE/BE share an ALB with path routing, /api/v1 keeps
+          # requests same-origin and avoids CORS entirely.
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '/api/v1' }}
+          # Immutable :sha-<commit> tag only - see backend build comment.
+          tags: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:${{ env.IMAGE_TAG }}
+          cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:cache
+          cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_FRONTEND }}:cache,mode=max
+
+      - name: Expose image URIs to downstream jobs
+        id: meta
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          BACKEND_REPO: ${{ vars.ECR_REPOSITORY_BACKEND }}
+          FRONTEND_REPO: ${{ vars.ECR_REPOSITORY_FRONTEND }}
+        run: |
+          echo "backend-image=${REGISTRY}/${BACKEND_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "frontend-image=${REGISTRY}/${FRONTEND_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: ECR image scan gate (block CRITICAL/HIGH CVEs)
+        # Matches the CVSS >= 7 threshold the source-side SCA jobs use
+        # (pip-audit, npm audit --audit-level=high, trivy --severity HIGH,
+        # CRITICAL). Scans cover OS packages in the final image - something
+        # pip-audit / npm audit cannot see. Requires the ECR repos to have
+        # scan-on-push enabled (basic scanning is free; for Inspector /
+        # Enhanced, the API surface is the same). Tolerates "scan never
+        # started" with a loud warning rather than hanging the workflow,
+        # so a misconfigured repo is visible but not a hard outage.
+        env:
+          BACKEND_REPO: ${{ vars.ECR_REPOSITORY_BACKEND }}
+          FRONTEND_REPO: ${{ vars.ECR_REPOSITORY_FRONTEND }}
+        run: |
+          set -euo pipefail
+          check_findings() {
+            local repo=$1
+            echo "Waiting for scan on ${repo}:${IMAGE_TAG}..."
+            if ! aws ecr wait image-scan-complete \
+                 --repository-name "$repo" \
+                 --image-id "imageTag=${IMAGE_TAG}" 2>/dev/null; then
+              echo "::warning::Scan did not start or complete for ${repo}:${IMAGE_TAG} - enable scan-on-push on the repository (aws ecr put-image-scanning-configuration)"
+              return 0
+            fi
+            local findings critical high
+            findings=$(aws ecr describe-image-scan-findings \
+              --repository-name "$repo" \
+              --image-id "imageTag=${IMAGE_TAG}" \
+              --query 'imageScanFindings.findingSeverityCounts' \
+              --output json)
+            echo "${repo} severity counts: ${findings}"
+            critical=$(echo "$findings" | jq -r '.CRITICAL // 0')
+            high=$(echo "$findings" | jq -r '.HIGH // 0')
+            if [ "$critical" -gt 0 ] || [ "$high" -gt 0 ]; then
+              echo "::error::${repo}:${IMAGE_TAG} has ${critical} CRITICAL and ${high} HIGH findings (gate: block on CVSS >= 7)"
+              return 1
+            fi
+          }
+          check_findings "$BACKEND_REPO"
+          check_findings "$FRONTEND_REPO"
+
+  migrate-database:
+    name: Run migrations (Alembic upgrade)
+    needs: [quality, build-and-push]
+    runs-on: ubuntu-latest
+    # Path-filtered to **alembic** changes only (backend/alembic/versions/**),
+    # not the broader `backend` filter. A backend code change that does
+    # not add a new migration file no-ops `alembic upgrade head` anyway -
+    # spinning up a Fargate task and pulling the image still costs ~1m14s
+    # of critical-path time, which adds up across the deploys we ship per
+    # week. `deploy-backend` no longer requires `migrate-database` to be
+    # `success`; it accepts `skipped` too (see the `if:` block on that job)
+    # so a code-only deploy proceeds without the migration step.
+    # workflow_dispatch still forces alembic=true via the `changes`
+    # aggregate, so manual hot-fixes always run migrations.
+    #
+    # The `always() && needs.<job>.result == 'success'` form is required
+    # for the same reason `deploy-backend` carries it (see the long
+    # explanation on that job's `if:` below). A bare
+    # `if: ((push && main) || dispatch) && needs.quality.outputs.backend == 'true'`
+    # compiles to an implicit `success() && ...`, and the implicit
+    # success() returns false whenever any transitive ancestor was
+    # skipped (e.g. `frontend` / `npm-audit` path-filtered out on a
+    # backend-only main push) - even though `build-and-push` itself
+    # succeeded via its own `always()` clause. That quirk skipped the
+    # whole migrate -> deploy chain on commit 3e9b3dc (PR #100, the
+    # OTLP HTTP exporter fix), exactly the symptom PR #81 thought it
+    # had eliminated by adding the explicit form to deploy-backend.
+    # The fix has to land here too; otherwise every backend-only main
+    # push silently no-ops the deploy.
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      needs.quality.outputs.alembic == 'true'
+    # Shares `deploy-backend-` with deploy-backend so two queued main
+    # pushes never run their migrations concurrently (Alembic forward-
+    # only migrations are sequential by design; concurrent runs against
+    # the same DB risk lock contention + partial-state corruption).
+    # Same group means within a run the migration releases the lock
+    # before deploy-backend tries to acquire it, and the per-side
+    # split keeps deploy-frontend free to roll in parallel.
+    concurrency:
+      group: deploy-backend-${{ github.ref }}
+      cancel-in-progress: false
+    # Bound the job so a stuck `aws ecs wait tasks-stopped` (or a
+    # never-launching task held in PROVISIONING by an ENI shortage)
+    # fails the workflow loudly instead of inheriting the 360-min
+    # workflow default.
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Fill placeholders in backend task definition
+        uses: ./.github/actions/render-task-def
+        with:
+          task-def-path: infra/ecs/backend-task-def.json
+          required-vars: |
+            ACCOUNT_ID
+            REGION
+            REPAIR_S3_BUCKET
+            DATABASE_URL_SECRET_NAME
+            APP_SECRET_NAME
+            BOOTSTRAP_MANAGER_EMAIL
+            GC_OTLP_ENDPOINT
+            GC_PYROSCOPE_ENDPOINT
+            GC_SECRET_NAME
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          REGION: ${{ vars.AWS_REGION }}
+          REPAIR_S3_BUCKET: ${{ vars.REPAIR_S3_BUCKET }}
+          DATABASE_URL_SECRET_NAME: ${{ vars.DATABASE_URL_SECRET_NAME }}
+          APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
+          BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
+          GC_OTLP_ENDPOINT: ${{ secrets.GC_OTLP_ENDPOINT }}
+          GC_PYROSCOPE_ENDPOINT: ${{ secrets.GC_PYROSCOPE_ENDPOINT }}
+          GC_SECRET_NAME: ${{ vars.GC_SECRET_NAME }}
+
+      - name: Render migration task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/backend-task-def.json
+          container-name: backend
+          image: ${{ needs.build-and-push.outputs.backend-image }}
+
+      - name: Run migration task
+        # Executes `alembic upgrade head` as a one-off task using the new
+        # image. Blocks until the task stops. If it fails (exit code != 0
+        # or the container never reached STOPPED cleanly) this job fails
+        # and `deploy-backend` is skipped — preventing the app from
+        # booting against an old schema. Forward-only: rollback to a
+        # prior schema needs a manual revert migration.
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_MIGRATION_SUBNETS: ${{ vars.ECS_MIGRATION_SUBNETS }}
+          ECS_MIGRATION_SECURITY_GROUPS: ${{ vars.ECS_MIGRATION_SECURITY_GROUPS }}
+          TASK_DEFINITION: ${{ steps.render.outputs.task-definition }}
+        run: |
+          set -euo pipefail
+          # Fail fast on missing infra vars. The previous fallback to
+          # hardcoded subnet / security-group IDs leaked VPC topology into
+          # source control AND silently routed migrations into a VPC that
+          # might not match ECS_CLUSTER. Matches the `required-vars` posture
+          # used by the render-task-def action above.
+          if [ -z "${ECS_MIGRATION_SUBNETS}" ] || [ -z "${ECS_MIGRATION_SECURITY_GROUPS}" ]; then
+            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
+            exit 1
+          fi
+          # Shape check: a CSV ("subnet-abc,subnet-def") would silently produce
+          # broken JSON at jq -cn time and a downstream aws-cli error message
+          # that doesn't name the variable. Refuse early with a clear pointer.
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SUBNETS}"; then
+            echo "::error::ECS_MIGRATION_SUBNETS must be a JSON array (got: ${ECS_MIGRATION_SUBNETS})"
+            exit 1
+          fi
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SECURITY_GROUPS}"; then
+            echo "::error::ECS_MIGRATION_SECURITY_GROUPS must be a JSON array (got: ${ECS_MIGRATION_SECURITY_GROUPS})"
+            exit 1
+          fi
+          network_config=$(jq -cn \
+            --argjson subnets "${ECS_MIGRATION_SUBNETS}" \
+            --argjson sgs "${ECS_MIGRATION_SECURITY_GROUPS}" \
+            '{awsvpcConfiguration: {subnets: $subnets, securityGroups: $sgs, assignPublicIp: "DISABLED"}}')
+          # Register the rendered task definition and capture the new ARN.
+          # `aws-actions/amazon-ecs-render-task-definition` outputs a *file
+          # path* (e.g. /home/runner/work/_temp/task-definition-...json), not
+          # a registered family or ARN. `aws ecs run-task --task-definition`
+          # accepts only family / family:revision / ARN -- passing the path
+          # directly fails with `family must match ^[a-zA-Z0-9\-_]+$` on the
+          # slashes. `deploy-backend` works because its deploy action calls
+          # RegisterTaskDefinition internally; `run-task` has no such wrapper.
+          task_def_arn=$(aws ecs register-task-definition \
+            --cli-input-json "file://${TASK_DEFINITION}" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Registered migration task definition: $task_def_arn"
+          # Capture the full run-task JSON so we can inspect `failures[]`.
+          # ECS returns HTTP 200 with `tasks: []` and a populated `failures[]`
+          # whenever it cannot launch (capacity-provider exhaustion, ENI
+          # shortage, IAM denial, image pull at launch time). The previous
+          # `--query 'tasks[0].taskArn' --output text` would emit the literal
+          # string "None" and `aws ecs wait` would then fail with an opaque
+          # "task not found" instead of the real reason.
+          run_task_output=$(aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --task-definition "${task_def_arn}" \
+            --launch-type FARGATE \
+            --network-configuration "${network_config}" \
+            --overrides '{"containerOverrides":[{"name":"backend","command":["alembic","upgrade","head"]}]}' \
+            --output json)
+          if [ "$(jq '.failures | length' <<<"$run_task_output")" -gt 0 ]; then
+            failures_compact=$(jq -c '.failures' <<<"$run_task_output")
+            echo "::error::run-task could not launch the migration task. failures: ${failures_compact}"
+            exit 1
+          fi
+          task_arn=$(jq -r '.tasks[0].taskArn' <<<"$run_task_output")
+          echo "Migration task ARN: $task_arn"
+          # `wait || true` so a wait timeout (PROVISIONING → STOPPED stalled
+          # past the waiter's 100×6s budget) or a TaskFailedToStart status
+          # falls through to the describe-tasks dump below. `set -e` would
+          # otherwise abort here and the operator would see a bare
+          # "Max attempts exceeded" with no stoppedReason, containerReason,
+          # or task ARN — exactly the diagnostic gap this script exists to close.
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn" || true
+          task_state=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --output json)
+          last_status=$(jq -r '.tasks[0].lastStatus // "UNKNOWN"' <<<"$task_state")
+          exit_code=$(jq -r '.tasks[0].containers[0].exitCode // "null"' <<<"$task_state")
+          stopped_reason=$(jq -r '.tasks[0].stoppedReason // "none"' <<<"$task_state")
+          container_reason=$(jq -r '.tasks[0].containers[0].reason // "none"' <<<"$task_state")
+          echo "Migration task final state: lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}"
+          if [ "$last_status" != "STOPPED" ] || [ "$exit_code" != "0" ]; then
+            # exitCode is null when the container never started (Secrets
+            # Manager fetch, image pull, ENI shortage). The CloudWatch log
+            # stream is also absent in that case — stoppedReason and
+            # containerReason printed above are the only diagnostic surface.
+            echo "::error::Migration failed. lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}. Check CloudWatch logs for task $task_arn."
+            exit 1
+          fi
+
+  deploy-backend:
+    name: Deploy backend (ECS rolling update)
+    needs: [quality, build-and-push, migrate-database]
+    runs-on: ubuntu-latest
+    # Per-side gate: only roll the backend task when backend code actually
+    # changed in this run (or on a manual hot-fix dispatch, which forces
+    # both `changes` outputs to true). On a frontend-only main push the
+    # backend image is still rebuilt (deterministically, from unchanged
+    # source) but ECS keeps serving the previous task revision instead of
+    # rolling a no-op deploy.
+    #
+    # The `always() && needs.<job>.result == 'success'` form is deliberate:
+    # a bare `if: needs.quality.outputs.backend == 'true'` compiles to an
+    # implicit `success() && ...`, and that success() returns false when
+    # build-and-push had any skipped need (e.g. backend-lint skipped on a
+    # frontend-only push) — even though build-and-push itself succeeded via
+    # its own always() clause. That quirk silently skipped every single-side
+    # main deploy between PR #81 and this fix.
+    #
+    # The explicit `build-and-push.result == 'success'` check (not just
+    # `!contains(failure)`) is what cascades the skip from build-and-push
+    # down on PR / docs-only runs — `skipped` is neither failure nor success,
+    # so a permissive `!contains(failure/cancelled)` would let the deploy
+    # run on PRs with no image to deploy. Same for migrate-database: it
+    # owns the main+backend gate and a failed migration MUST block deploy.
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      needs.migrate-database.result != 'failure' &&
+      needs.migrate-database.result != 'cancelled' &&
+      needs.quality.outputs.backend == 'true'
+    # Per-service concurrency: backend-side jobs (migrate-database +
+    # deploy-backend) share `deploy-backend-` so they serialize cross-run
+    # but DO NOT block deploy-frontend (different group). This unblocks
+    # within-run parallelism that the prior single `deploy-` group was
+    # silently breaking - see build-and-push's comment above for the
+    # symptom this fixes.
+    concurrency:
+      group: deploy-backend-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Fill placeholders in backend task definition
+        uses: ./.github/actions/render-task-def
+        with:
+          task-def-path: infra/ecs/backend-task-def.json
+          required-vars: |
+            ACCOUNT_ID
+            REGION
+            REPAIR_S3_BUCKET
+            DATABASE_URL_SECRET_NAME
+            APP_SECRET_NAME
+            BOOTSTRAP_MANAGER_EMAIL
+            GC_OTLP_ENDPOINT
+            GC_PYROSCOPE_ENDPOINT
+            GC_SECRET_NAME
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          REGION: ${{ vars.AWS_REGION }}
+          REPAIR_S3_BUCKET: ${{ vars.REPAIR_S3_BUCKET }}
+          DATABASE_URL_SECRET_NAME: ${{ vars.DATABASE_URL_SECRET_NAME }}
+          APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
+          BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
+          # The Grafana Cloud OTLP + Pyroscope endpoint URLs are read
+          # from ``secrets.*`` rather than ``vars.*`` because they
+          # embed the GC stack slug / region. The slug + a leaked GC
+          # API key would narrow an attacker's target identification.
+          # Endpoint URLs are not themselves credentials, but treating
+          # them as defense-in-depth secrets costs nothing operationally
+          # (operator sets one value in repo settings) and removes a
+          # half-credential from public-repo visibility.
+          GC_OTLP_ENDPOINT: ${{ secrets.GC_OTLP_ENDPOINT }}
+          GC_PYROSCOPE_ENDPOINT: ${{ secrets.GC_PYROSCOPE_ENDPOINT }}
+          GC_SECRET_NAME: ${{ vars.GC_SECRET_NAME }}
+
+      - name: Render backend task definition
+        # Patches the container image into the committed task-def template.
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/backend-task-def.json
+          container-name: backend
+          image: ${{ needs.build-and-push.outputs.backend-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@817071763d92bbe2ae01a5ec32f1d999dd2293a0 # v2.1.0
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_BACKEND }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          # Block until the new task set passes ALB health checks. Without
+          # this the workflow would return success while the new task is
+          # crash-looping and the old image is still serving traffic.
+          wait-for-service-stability: true
+          # 10 min covers cold-start + slow ALB drain. If a deploy stalls
+          # past this, fail loud rather than hang the workflow.
+          wait-for-minutes: 10
+
+  deploy-frontend:
+    name: Deploy frontend (ECS rolling update)
+    needs: [quality, build-and-push]
+    runs-on: ubuntu-latest
+    # Per-side gate: see deploy-backend for the same rationale, including
+    # why the explicit `build-and-push.result == 'success'` check (rather
+    # than `!contains(failure/cancelled)`) is what keeps PR runs from
+    # rolling a deploy with no image to ship.
+    #
+    # `sonarqube` is now a direct dependency (previously it gated
+    # build-and-push, which transitively gated this job). Decoupled so
+    # the image build can run in parallel with the SonarQube scan; the
+    # quality gate is preserved by checking `sonarqube.result == 'success'`
+    # here. deploy-backend inherits the gate via migrate-database.
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      needs.quality.outputs.frontend == 'true'
+    # Per-service concurrency: see deploy-backend above. Separate group
+    # from `deploy-backend-` so the two services can roll in parallel
+    # within a run.
+    concurrency:
+      group: deploy-frontend-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Fill placeholders in frontend task definition
+        uses: ./.github/actions/render-task-def
+        with:
+          task-def-path: infra/ecs/frontend-task-def.json
+          required-vars: |
+            ACCOUNT_ID
+            REGION
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          REGION: ${{ vars.AWS_REGION }}
+
+      - name: Render frontend task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/frontend-task-def.json
+          container-name: frontend
+          image: ${{ needs.build-and-push.outputs.frontend-image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@817071763d92bbe2ae01a5ec32f1d999dd2293a0 # v2.1.0
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_FRONTEND }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes: 10
+
+  # DESTRUCTIVE: wipes all four core tables and re-seeds demo data. Only
+  # fires on workflow_dispatch with the `run_seed` input ticked; never on
+  # push events. Runs after `deploy-backend` so the freshly seeded data
+  # matches the schema of the running image. The container image gates
+  # the seed script behind AMS_SEED_CONFIRM=1 (see CLAUDE.md §"Local dev
+  # environment"); this job sets that env override explicitly so a stray
+  # re-run of the rendered task definition can never accidentally re-seed.
+  seed-database:
+    name: Seed demo data (DESTRUCTIVE)
+    # `deploy-backend` is in `needs:` so the seed runs against the
+    # already-rolled-out task set — the freshly seeded rows therefore land
+    # while the new code is serving traffic, not while the previous image
+    # is still on the ALB. Note this implies the seed can ONLY fire on a
+    # workflow_dispatch event: `deploy-backend` is gated on
+    # `changes.outputs.backend == 'true'` which is forced to `true` on
+    # workflow_dispatch (see the `changes` job's aggregate step), so the
+    # backend deploys unconditionally on dispatch. On a `push` event,
+    # deploy-backend may be skipped (frontend-only commit) and `needs:`
+    # would silently skip this job too — but the `if:` guard below
+    # already restricts the trigger to workflow_dispatch with run_seed
+    # ticked, so the silent-skip path is unreachable in practice.
+    needs: [quality, build-and-push, migrate-database, deploy-backend]
+    runs-on: ubuntu-latest
+    # `inputs.run_seed` is declared `type: boolean` and reaches the
+    # workflow as an actual boolean (true / false), not the string
+    # 'true' / 'false'. Comparing against the string 'true' silently
+    # evaluates false: GH's loose-equality coercion rules turn the
+    # boolean side into a number (true -> 1) and the string side into
+    # a number too (non-numeric strings -> NaN), and `NaN == 1` is
+    # always false. So `inputs.run_seed == 'true'` is unreachable
+    # regardless of whether the operator ticks the box, and the job
+    # silently skips with no annotation. (Symptom: dispatch run
+    # 26410291386 on 2026-05-25 - operator ticked run_seed, job
+    # showed "Seed demo data (DESTRUCTIVE)" as skipped, deploys
+    # succeeded.) The prior comment in this block claimed boolean
+    # inputs arrive as strings; that's wrong - confirmed empirically
+    # against current GH Actions behavior. Compare against the
+    # boolean literal `true` instead.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_seed == true }}
+    # Same bound as migrate-database. The seed itself completes in seconds
+    # but `aws ecs wait tasks-stopped` can poll for ~10 min before failing
+    # loudly if the task hangs.
+    timeout-minutes: 15
+    # Second-factor gate on top of the in-script AMS_SEED_CONFIRM=1 check.
+    # Required reviewers configured on the `production-destructive`
+    # environment (Settings → Environments) must approve before this job
+    # starts. Without that one-checkbox approval in the dispatch UI is
+    # enough to wipe production data; with it, the operator who clicks
+    # `Run workflow` cannot also self-approve the job.
+    #
+    # The environment is referenced by name only; if it does not yet
+    # exist in repo settings the job runs without the protection (GitHub
+    # auto-creates an unprotected environment on first reference). Add
+    # required reviewers in Settings before relying on the gate.
+    environment: production-destructive
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Fill placeholders in backend task definition
+        uses: ./.github/actions/render-task-def
+        with:
+          task-def-path: infra/ecs/backend-task-def.json
+          required-vars: |
+            ACCOUNT_ID
+            REGION
+            REPAIR_S3_BUCKET
+            DATABASE_URL_SECRET_NAME
+            APP_SECRET_NAME
+            BOOTSTRAP_MANAGER_EMAIL
+            GC_OTLP_ENDPOINT
+            GC_PYROSCOPE_ENDPOINT
+            GC_SECRET_NAME
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          REGION: ${{ vars.AWS_REGION }}
+          REPAIR_S3_BUCKET: ${{ vars.REPAIR_S3_BUCKET }}
+          DATABASE_URL_SECRET_NAME: ${{ vars.DATABASE_URL_SECRET_NAME }}
+          APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME }}
+          BOOTSTRAP_MANAGER_EMAIL: ${{ vars.BOOTSTRAP_MANAGER_EMAIL }}
+          GC_OTLP_ENDPOINT: ${{ secrets.GC_OTLP_ENDPOINT }}
+          GC_PYROSCOPE_ENDPOINT: ${{ secrets.GC_PYROSCOPE_ENDPOINT }}
+          GC_SECRET_NAME: ${{ vars.GC_SECRET_NAME }}
+
+      - name: Render seed task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
+        with:
+          task-definition: infra/ecs/backend-task-def.json
+          container-name: backend
+          image: ${{ needs.build-and-push.outputs.backend-image }}
+
+      - name: Run seed task
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_MIGRATION_SUBNETS: ${{ vars.ECS_MIGRATION_SUBNETS }}
+          ECS_MIGRATION_SECURITY_GROUPS: ${{ vars.ECS_MIGRATION_SECURITY_GROUPS }}
+          TASK_DEFINITION: ${{ steps.render.outputs.task-definition }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ECS_MIGRATION_SUBNETS}" ] || [ -z "${ECS_MIGRATION_SECURITY_GROUPS}" ]; then
+            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
+            exit 1
+          fi
+          # Shape check — see migrate-database for the rationale.
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SUBNETS}"; then
+            echo "::error::ECS_MIGRATION_SUBNETS must be a JSON array (got: ${ECS_MIGRATION_SUBNETS})"
+            exit 1
+          fi
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SECURITY_GROUPS}"; then
+            echo "::error::ECS_MIGRATION_SECURITY_GROUPS must be a JSON array (got: ${ECS_MIGRATION_SECURITY_GROUPS})"
+            exit 1
+          fi
+          network_config=$(jq -cn \
+            --argjson subnets "${ECS_MIGRATION_SUBNETS}" \
+            --argjson sgs "${ECS_MIGRATION_SECURITY_GROUPS}" \
+            '{awsvpcConfiguration: {subnets: $subnets, securityGroups: $sgs, assignPublicIp: "DISABLED"}}')
+          # AMS_SEED_CONFIRM=1 is the in-script safety gate (see
+          # scripts/seed_demo_data.py). The seed will abort without it
+          # even when invoked directly. Set as an env override here so
+          # the rendered task definition stays unchanged from the one
+          # `deploy-backend` registered. (containerOverrides.environment
+          # is additive, not replacing — the task-def env block survives.)
+          overrides=$(jq -cn '{
+            containerOverrides: [{
+              name: "backend",
+              command: ["python", "scripts/seed_demo_data.py"],
+              environment: [{name: "AMS_SEED_CONFIRM", value: "1"}]
+            }]
+          }')
+          # Register the rendered task definition first -- see migrate-database
+          # for the full rationale (render action outputs a file path, not a
+          # family/ARN, so `run-task --task-definition` rejects it on the
+          # slashes with `family must match ^[a-zA-Z0-9\-_]+$`).
+          task_def_arn=$(aws ecs register-task-definition \
+            --cli-input-json "file://${TASK_DEFINITION}" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "Registered seed task definition: $task_def_arn"
+          # Capture run-task JSON to inspect failures[]. See migrate-database
+          # for the rationale on why `--query 'tasks[0].taskArn' --output text`
+          # is unsafe (silent "None" task ARN swallows ECS launch failures).
+          run_task_output=$(aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --task-definition "${task_def_arn}" \
+            --launch-type FARGATE \
+            --network-configuration "${network_config}" \
+            --overrides "${overrides}" \
+            --output json)
+          if [ "$(jq '.failures | length' <<<"$run_task_output")" -gt 0 ]; then
+            failures_compact=$(jq -c '.failures' <<<"$run_task_output")
+            echo "::error::run-task could not launch the seed task. failures: ${failures_compact}"
+            exit 1
+          fi
+          task_arn=$(jq -r '.tasks[0].taskArn' <<<"$run_task_output")
+          echo "Seed task ARN: $task_arn"
+          # `wait || true` + unconditional describe — same rationale as
+          # migrate-database. A wait timeout or TaskFailedToStart must still
+          # surface stoppedReason / containerReason on the failure path.
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn" || true
+          task_state=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --output json)
+          last_status=$(jq -r '.tasks[0].lastStatus // "UNKNOWN"' <<<"$task_state")
+          exit_code=$(jq -r '.tasks[0].containers[0].exitCode // "null"' <<<"$task_state")
+          stopped_reason=$(jq -r '.tasks[0].stoppedReason // "none"' <<<"$task_state")
+          container_reason=$(jq -r '.tasks[0].containers[0].reason // "none"' <<<"$task_state")
+          echo "Seed task final state: lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}"
+          if [ "$last_status" != "STOPPED" ] || [ "$exit_code" != "0" ]; then
+            echo "::error::Seed failed. lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}. Check CloudWatch logs for task $task_arn."
+            exit 1
+          fi
+
+  # CD: upsert the dashboard JSONs into Grafana Cloud on every main commit
+  # that touches the dashboard set. Blocks on failure - a half-applied
+  # dashboard tree silently drifts from the repo, which is the failure
+  # mode that motivated automating this. Independent of the ECS deploys:
+  # a dashboards-only commit does not roll backend/frontend, and a
+  # backend/frontend-only commit does not re-sync dashboards.
+  #
+  # GC_STACK_URL is the stack URL (https://<slug>.grafana.net), NOT the
+  # OTLP gateway URL already configured for backend telemetry - the
+  # dashboards-DB API lives on the stack, not the gateway. Stored as a
+  # secret (not a variable) for the same defense-in-depth reason as
+  # GC_OTLP_ENDPOINT: the slug + a leaked GC API key would narrow an
+  # attacker's target identification.
+  sync-dashboards:
+    name: Sync dashboards to Grafana Cloud
+    runs-on: ubuntu-latest
+    needs: [quality]
+    # Main-only gate mirrors `build-and-push`: dispatching from a feature
+    # branch must NOT mutate the production GC stack. The validate job is
+    # in `needs:` so a malformed JSON catches before the real upsert; if
+    # validate fails (or is skipped because dashboards didn't change) the
+    # `!failure() + (dashboards == 'true')` clause keeps the sync from
+    # firing.
+    if: |
+      needs.quality.result == 'success' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && needs.quality.outputs.dashboards == 'true')
+      )
+    concurrency:
+      group: sync-dashboards-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Sync dashboards to Grafana Cloud
+        # Script is stdlib only - no pip install. Reads GRAFANA_CLOUD_API_KEY
+        # from env; --stack-url is passed via env indirection to keep the
+        # `${{ ... }}` expression out of the shell command (no injection
+        # surface even though both inputs are operator-controlled secrets).
+        env:
+          GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
+          GC_STACK_URL: ${{ secrets.GC_STACK_URL }}
+          # Stack-specific UID for the AWS CloudWatch datasource; the
+          # sync script substitutes it for the `cloudwatch` placeholder
+          # the dashboard JSONs use. See infra/grafana-cloud/README.md.
+          GC_CLOUDWATCH_UID: ${{ vars.GC_CLOUDWATCH_UID }}
+        run: python scripts/sync_grafana_cloud_dashboards.py --stack-url "$GC_STACK_URL"
