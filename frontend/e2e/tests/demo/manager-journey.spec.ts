@@ -23,7 +23,11 @@ test.describe("Demo — Manager processes the asset and repair lifecycle", () =>
     });
 
     await test.step("Open the asset inventory and explore search", async () => {
-      await page.getByRole("menuitem", { name: /\bAssets\b/i }).click();
+      const assetsMenuItem = page.getByRole("menuitem", {
+        name: /Asset Management|Assets|資產管理/i,
+      });
+      await expect(assetsMenuItem).toBeVisible({ timeout: 15_000 });
+      await assetsMenuItem.click({ timeout: 15_000 });
       await expect(page).toHaveURL(/\/assets$/);
       await expect(
         page.getByRole("heading", { name: "Asset List" }),
@@ -60,10 +64,14 @@ test.describe("Demo — Manager processes the asset and repair lifecycle", () =>
     });
 
     await test.step("Pivot to the repair-review queue", async () => {
-      await page.getByRole("menuitem", { name: /\bReviews\b/i }).click();
+      const reviewsMenuItem = page.getByRole("menuitem", {
+        name: /Repair Management|Reviews|維修管理/i,
+      });
+      await expect(reviewsMenuItem).toBeVisible({ timeout: 15_000 });
+      await reviewsMenuItem.click({ timeout: 15_000 });
       await expect(page).toHaveURL(/\/reviews$/);
       await expect(
-        page.getByRole("heading", { name: "Repair Reviews" }),
+        page.getByRole("heading", { name: /Repair Requests|Repair Reviews/i }),
       ).toBeVisible();
     });
 

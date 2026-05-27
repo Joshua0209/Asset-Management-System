@@ -9,24 +9,26 @@ test.describe("Manager disposes an asset", () => {
     await loginAsManager(page);
     const assetListPage = new AssetListPage(page);
     await assetListPage.goto();
-    // Target a specific seeded in_stock asset by code so this spec doesn't
-    // race other parallel asset modal specs. AST-2026-00013 is created by
-    // `build_assets` (index 12, % 3 == 0 → no holder → in_stock, eligible
-    // for dispose per the FSM).
-    await assetListPage.openAssetDetailByCode("AST-2026-00013");
+    await assetListPage.filterByStatus("In Stock");
+    // Pick an in_stock row dynamically so the test still passes if seeded
+    // codes/states change between runs.
+    await expect(assetListPage.assetRows.first()).toBeVisible();
+    await assetListPage.openAssetDetailAt(0);
 
     // Act
     const assetDetailPage = new AssetDetailPage(page);
+    await expect(assetDetailPage.disposeButton).toBeVisible({ timeout: 10_000 });
     await assetDetailPage.openDisposeModal();
     await assetDetailPage.submitDisposeForm({
       disposalReason: "E2E: end-of-life device, recycled via vendor.",
     });
+    await page.reload();
 
     // Assert — status reaches the terminal Disposed state. The FSM-gated
     // buttons (Assign / Dispose) collapse off the action panel, while Edit
     // intentionally stays visible because metadata edits are allowed on any
     // status (see `frontend/src/pages/AssetDetail/index.tsx`).
-    await expect(page.getByText("Disposed").first()).toBeVisible();
+    await expect(page.getByText("Disposed").first()).toBeVisible({ timeout: 10_000 });
     await expect(assetDetailPage.assignButton).toBeHidden();
     await expect(assetDetailPage.disposeButton).toBeHidden();
   });

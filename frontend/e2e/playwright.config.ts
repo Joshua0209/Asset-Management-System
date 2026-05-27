@@ -56,6 +56,7 @@ export default defineConfig({
     {
       name: "demo",
       testMatch: ["**/demo/**"],
+      workers: 1,
       // Each demo is one continuous test with ~8 narrative steps. At
       // slowMo:500ms the wall time easily exceeds Playwright's 30s default,
       // so give each flow 3 minutes of headroom.

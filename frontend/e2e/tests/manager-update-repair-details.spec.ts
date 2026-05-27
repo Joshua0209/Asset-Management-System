@@ -26,7 +26,11 @@ test.describe("Manager updates repair details mid-flight", () => {
     // Assert — the modal closes (Update Details button reappears on the
     // detail page) and the new plan text is rendered in the result section.
     await expect(reviewDetailPage.updateDetailsButton).toBeVisible();
-    await expect(page.getByText(newPlan)).toBeVisible();
+    const repairResultCard = page
+      .locator(".ant-card")
+      .filter({ has: page.locator(".ant-card-head-title", { hasText: "Repair Result" }) })
+      .first();
+    await expect(repairResultCard.getByText(newPlan)).toBeVisible();
     // Status stays at Under Repair — this is a metadata edit, not a transition.
     await expect(page.getByText("Under Repair").first()).toBeVisible();
   });
