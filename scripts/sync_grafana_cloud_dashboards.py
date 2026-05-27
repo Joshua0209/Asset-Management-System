@@ -44,7 +44,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 # Anchor on this file's location rather than CWD so the runbook command
 # (`python scripts/sync_grafana_cloud_dashboards.py`) works from the repo
@@ -53,7 +53,16 @@ from typing import Any
 DEFAULT_DASHBOARDS_DIR = (
     Path(__file__).resolve().parent.parent / "config" / "grafana" / "dashboards"
 )
+DEFAULT_ALERTS_DIR = (
+    Path(__file__).resolve().parent.parent / "config" / "grafana" / "alerts"
+)
 API_PATH = "/api/dashboards/db"
+# Grafana Alerting provisioning API. Used by the alerts pass to upsert
+# contact points, the root notification policy, and individual rules.
+# See https://grafana.com/docs/grafana/latest/developers/http_api/alerting_provisioning/
+PROVISIONING_CONTACT_POINTS_PATH = "/api/v1/provisioning/contact-points"
+PROVISIONING_POLICIES_PATH = "/api/v1/provisioning/policies"
+PROVISIONING_ALERT_RULES_PATH = "/api/v1/provisioning/alert-rules"
 HTTP_TIMEOUT_SECONDS = 30
 # Fail-fast threshold for consecutive transport errors (URLError, not
 # HTTPError — the latter implies GC is reachable). After this many
@@ -143,6 +152,122 @@ def load_dashboards(
             continue
         loaded.append(dashboard)
     return loaded, malformed
+
+
+class AlertResources(NamedTuple):
+    """Bundle of Grafana Cloud alerting resources loaded from disk.
+
+    ``contact_point`` and ``notification_policy`` are required; either being
+    ``None`` means the corresponding required file was missing or malformed
+    (the offending filename is in the companion ``malformed`` list returned
+    by ``load_alert_resources``). ``rules`` is the flat aggregate of every
+    rule across every ``rules/*.json`` file, in filename-sorted order so a
+    repeat sync POSTs rules in the same sequence as the previous run.
+    """
+
+    contact_point: dict[str, Any] | None
+    notification_policy: dict[str, Any] | None
+    rules: tuple[dict[str, Any], ...]
+
+
+def load_alert_resources(
+    alerts_dir: Path,
+) -> tuple[AlertResources, list[str]]:
+    """Load alert config files under ``alerts_dir``.
+
+    Expected layout::
+
+        alerts_dir/
+          contact-points.json       # required, single contact point object
+          notification-policy.json  # required, root policy object
+          rules/
+            *.json                  # each: {"rules": [<rule>, <rule>, ...]}
+
+    Returns ``(AlertResources, malformed_filenames)``. Same graceful-
+    degradation contract as ``load_dashboards``: missing required files
+    or invalid JSON are recorded by filename in the second list rather
+    than raising, so ``main()`` surfaces them in the final summary
+    alongside publish failures instead of aborting with a bare
+    stacktrace. Each individual rule must carry a ``uid`` (used as the
+    idempotency key for upsert); files containing a rule without ``uid``
+    are reported as malformed and ALL rules from that file are dropped
+    so the operator's editor can catch the typo before GC sees it.
+    """
+    malformed: list[str] = []
+    contact_point: dict[str, Any] | None = _load_required_json(
+        alerts_dir / "contact-points.json", malformed
+    )
+    notification_policy: dict[str, Any] | None = _load_required_json(
+        alerts_dir / "notification-policy.json", malformed
+    )
+
+    rules: list[dict[str, Any]] = []
+    rules_dir = alerts_dir / "rules"
+    if rules_dir.is_dir():
+        for path in sorted(rules_dir.glob("*.json")):
+            try:
+                with path.open() as fh:
+                    payload: Any = json.load(fh)
+            except (json.JSONDecodeError, OSError) as exc:
+                sys.stderr.write(f"FAIL: {path.name} -> malformed ({exc})\n")
+                malformed.append(path.name)
+                continue
+            file_rules = (
+                payload.get("rules") if isinstance(payload, dict) else None
+            )
+            if not isinstance(file_rules, list):
+                sys.stderr.write(
+                    f"FAIL: {path.name} -> missing required 'rules' array\n"
+                )
+                malformed.append(path.name)
+                continue
+            if any(not isinstance(r, dict) or "uid" not in r for r in file_rules):
+                sys.stderr.write(
+                    f"FAIL: {path.name} -> at least one rule missing 'uid'\n"
+                )
+                malformed.append(path.name)
+                continue
+            rules.extend(file_rules)
+
+    return (
+        AlertResources(
+            contact_point=contact_point,
+            notification_policy=notification_policy,
+            rules=tuple(rules),
+        ),
+        malformed,
+    )
+
+
+def _load_required_json(
+    path: Path, malformed: list[str]
+) -> dict[str, Any] | None:
+    """Read a single required JSON file, appending its name to ``malformed``
+    on absence/parse-failure rather than raising.
+
+    Internal helper for ``load_alert_resources``: keeps the missing-file
+    and malformed-JSON branches symmetric (both end up in the same
+    summary line) and avoids three near-identical try/except blocks in
+    the caller.
+    """
+    if not path.is_file():
+        sys.stderr.write(f"FAIL: {path.name} -> required file missing\n")
+        malformed.append(path.name)
+        return None
+    try:
+        with path.open() as fh:
+            data: Any = json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        sys.stderr.write(f"FAIL: {path.name} -> malformed ({exc})\n")
+        malformed.append(path.name)
+        return None
+    if not isinstance(data, dict):
+        sys.stderr.write(
+            f"FAIL: {path.name} -> top-level JSON must be an object\n"
+        )
+        malformed.append(path.name)
+        return None
+    return data
 
 
 def build_payload(dashboard: dict[str, Any]) -> dict[str, Any]:
