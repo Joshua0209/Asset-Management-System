@@ -561,3 +561,536 @@ def test_build_uid_remap_aggregates_across_dashboards_and_alert_rules() -> None:
         "prometheus": "grafanacloud-prom",
         "loki": "grafanacloud-logs",
     }
+
+
+# ---------------------------------------------------------------------------
+# Cycle 4: post_* helpers + main() orchestration
+# ---------------------------------------------------------------------------
+
+
+def _mock_opener_returning(status: int) -> MagicMock:
+    """Build a mock opener whose ``open()`` returns a response with ``.status``.
+
+    Matches how ``post_dashboard`` reads the urlopen result. Returned as
+    a MagicMock so callers can assert ``open`` call args/kwargs."""
+    mock_response = MagicMock()
+    mock_response.status = status
+    mock_response.__enter__ = MagicMock(return_value=mock_response)
+    mock_response.__exit__ = MagicMock(return_value=False)
+    mock_opener = MagicMock()
+    mock_opener.open = MagicMock(return_value=mock_response)
+    return mock_opener
+
+
+def _mock_opener_returning_sequence(*statuses: int) -> MagicMock:
+    """Like ``_mock_opener_returning`` but rotates through statuses for
+    each call — drives the POST-then-PUT upsert dance."""
+    responses = []
+    for status in statuses:
+        response = MagicMock()
+        response.status = status
+        response.__enter__ = MagicMock(return_value=response)
+        response.__exit__ = MagicMock(return_value=False)
+        responses.append(response)
+    mock_opener = MagicMock()
+    mock_opener.open = MagicMock(side_effect=responses)
+    return mock_opener
+
+
+def _raise_http_error(code: int) -> Any:
+    """Build an open() side-effect that raises an HTTPError with ``code``.
+
+    Mirrors how the no-redirect opener turns 3xx and the API's 409 into
+    HTTPError instances that the post_* helpers' exception arm catches.
+    """
+    import urllib.error
+
+    def _raise(*_args: Any, **_kwargs: Any) -> Any:
+        raise urllib.error.HTTPError(
+            url="https://x.grafana.net/api/v1/provisioning/...",
+            code=code,
+            msg="Conflict" if code == 409 else "Error",
+            hdrs={},  # type: ignore[arg-type]
+            fp=None,
+        )
+
+    return _raise
+
+
+def test_post_contact_point_uses_provisioning_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``post_contact_point`` issues a POST to the provisioning API path.
+
+    Uses the same no-redirect opener as ``post_dashboard`` so a 3xx
+    auth-redirect surfaces as a hard failure rather than silently
+    succeeding."""
+    mock_opener = _mock_opener_returning(200)
+    monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
+
+    status = sync_module.post_contact_point(
+        "https://x.grafana.net",
+        "tok",
+        {"uid": "email-default", "type": "email", "settings": {}},
+    )
+
+    assert status == 200
+    request = mock_opener.open.call_args.args[0]
+    assert request.full_url.endswith("/api/v1/provisioning/contact-points")
+
+
+def test_post_contact_point_falls_back_to_put_on_409(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 409 from the create endpoint means the contact point already
+    exists — retry as PUT against ``/contact-points/{uid}`` for upsert.
+
+    Without this fallback, every sync after the first would fail with a
+    confusing 409 line in the summary; with it, the script is idempotent
+    in steady state (PUT runs once a sync against a populated GC stack).
+    """
+    mock_opener = MagicMock()
+    mock_opener.open = MagicMock(
+        side_effect=[
+            _raise_http_error(409)(),
+            _mock_opener_returning(202).open.return_value,
+        ]
+    )
+
+    # The exceptions raised from side_effect are not called as side_effect
+    # by MagicMock when listed in side_effect — we need to use a different
+    # approach. Restructure with a counter:
+    call_count = {"n": 0}
+
+    def _open(*args: Any, **kwargs: Any) -> Any:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            _raise_http_error(409)()
+        response = MagicMock()
+        response.status = 202
+        response.__enter__ = MagicMock(return_value=response)
+        response.__exit__ = MagicMock(return_value=False)
+        return response
+
+    mock_opener.open = MagicMock(side_effect=_open)
+    monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
+
+    status = sync_module.post_contact_point(
+        "https://x.grafana.net",
+        "tok",
+        {"uid": "email-default", "type": "email", "settings": {}},
+    )
+
+    assert status == 202
+    assert mock_opener.open.call_count == 2
+    second_request = mock_opener.open.call_args_list[1].args[0]
+    assert second_request.method == "PUT"
+    assert second_request.full_url.endswith(
+        "/api/v1/provisioning/contact-points/email-default"
+    )
+
+
+def test_post_notification_policy_uses_put_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The root notification policy is a singleton; PUT replaces it."""
+    mock_opener = _mock_opener_returning(202)
+    monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
+
+    status = sync_module.post_notification_policy(
+        "https://x.grafana.net", "tok", {"receiver": "email-default"}
+    )
+
+    assert status == 202
+    request = mock_opener.open.call_args.args[0]
+    assert request.method == "PUT"
+    assert request.full_url.endswith("/api/v1/provisioning/policies")
+
+
+def test_post_alert_rule_tries_post_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """First-run upsert: POST creates with the supplied uid, returns 201."""
+    mock_opener = _mock_opener_returning(201)
+    monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
+
+    rule = _make_rule("ams-rule-warning")
+    status = sync_module.post_alert_rule("https://x.grafana.net", "tok", rule)
+
+    assert status == 201
+    request = mock_opener.open.call_args.args[0]
+    assert request.method == "POST"
+    assert request.full_url.endswith("/api/v1/provisioning/alert-rules")
+
+
+def test_post_alert_rule_falls_back_to_put_on_409(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Steady-state upsert: POST 409 → PUT /alert-rules/{uid}."""
+    call_count = {"n": 0}
+
+    def _open(*args: Any, **kwargs: Any) -> Any:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            _raise_http_error(409)()
+        response = MagicMock()
+        response.status = 200
+        response.__enter__ = MagicMock(return_value=response)
+        response.__exit__ = MagicMock(return_value=False)
+        return response
+
+    mock_opener = MagicMock()
+    mock_opener.open = MagicMock(side_effect=_open)
+    monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
+
+    rule = _make_rule("ams-rule-warning")
+    status = sync_module.post_alert_rule("https://x.grafana.net", "tok", rule)
+
+    assert status == 200
+    assert mock_opener.open.call_count == 2
+    second_request = mock_opener.open.call_args_list[1].args[0]
+    assert second_request.method == "PUT"
+    assert second_request.full_url.endswith(
+        "/api/v1/provisioning/alert-rules/ams-rule-warning"
+    )
+
+
+def test_post_alert_rule_returns_real_status_on_non_409_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 4xx other than 409 (e.g. 401 unauthorized) is a real failure —
+    DO NOT retry with PUT. Return the raw status so main()'s exit code
+    reflects the real auth/permission issue."""
+    call_count = {"n": 0}
+
+    def _open(*args: Any, **kwargs: Any) -> Any:
+        call_count["n"] += 1
+        _raise_http_error(401)()
+
+    mock_opener = MagicMock()
+    mock_opener.open = MagicMock(side_effect=_open)
+    monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
+
+    rule = _make_rule("ams-rule-warning")
+    status = sync_module.post_alert_rule("https://x.grafana.net", "tok", rule)
+
+    assert status == 401
+    # Only one call — must NOT retry with PUT on 401.
+    assert mock_opener.open.call_count == 1
+
+
+# ---------- main() orchestration with --targets flag ----------
+
+
+def test_main_targets_dashboards_only_skips_alerts_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--targets dashboards`` (the pre-extension default) must NOT
+    touch alert resources, even if an alerts dir exists. Keeps existing
+    operator workflows working unchanged."""
+    dashboards_dir = tmp_path / "dashboards"
+    dashboards_dir.mkdir()
+    (dashboards_dir / "d.json").write_text(
+        json.dumps({"uid": "ams-d", "title": "D", "panels": []})
+    )
+    alerts_dir = _write_alerts_layout(tmp_path / "alerts")
+
+    mock_dash = MagicMock(return_value=200)
+    mock_cp = MagicMock(return_value=201)
+    mock_pol = MagicMock(return_value=202)
+    mock_rule = MagicMock(return_value=201)
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_dash)
+    monkeypatch.setattr(sync_module, "post_contact_point", mock_cp)
+    monkeypatch.setattr(sync_module, "post_notification_policy", mock_pol)
+    monkeypatch.setattr(sync_module, "post_alert_rule", mock_rule)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+
+    exit_code = sync_module.main(
+        [
+            "--targets",
+            "dashboards",
+            "--dashboards-dir",
+            str(dashboards_dir),
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 0
+    assert mock_dash.call_count == 1
+    mock_cp.assert_not_called()
+    mock_pol.assert_not_called()
+    mock_rule.assert_not_called()
+
+
+def test_main_targets_alerts_only_skips_dashboards_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--targets alerts`` skips dashboards entirely — lets an operator
+    re-sync only alerts without re-uploading every dashboard."""
+    dashboards_dir = tmp_path / "dashboards"
+    dashboards_dir.mkdir()
+    (dashboards_dir / "d.json").write_text(
+        json.dumps({"uid": "ams-d", "title": "D", "panels": []})
+    )
+    alerts_dir = _write_alerts_layout(tmp_path / "alerts")
+
+    mock_dash = MagicMock(return_value=200)
+    mock_cp = MagicMock(return_value=201)
+    mock_pol = MagicMock(return_value=202)
+    mock_rule = MagicMock(return_value=201)
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_dash)
+    monkeypatch.setattr(sync_module, "post_contact_point", mock_cp)
+    monkeypatch.setattr(sync_module, "post_notification_policy", mock_pol)
+    monkeypatch.setattr(sync_module, "post_alert_rule", mock_rule)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.setenv("GC_ALERT_EMAIL_RECIPIENTS", "ops@example.com")
+
+    exit_code = sync_module.main(
+        [
+            "--targets",
+            "alerts",
+            "--dashboards-dir",
+            str(dashboards_dir),
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 0
+    mock_dash.assert_not_called()
+    assert mock_cp.call_count == 1
+    assert mock_pol.call_count == 1
+    assert mock_rule.call_count == 1  # default rule fixture has one rule
+
+
+def test_main_targets_all_runs_both_passes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--targets all`` (the new default) runs dashboards THEN alerts."""
+    dashboards_dir = tmp_path / "dashboards"
+    dashboards_dir.mkdir()
+    (dashboards_dir / "d.json").write_text(
+        json.dumps({"uid": "ams-d", "title": "D", "panels": []})
+    )
+    alerts_dir = _write_alerts_layout(tmp_path / "alerts")
+
+    mock_dash = MagicMock(return_value=200)
+    mock_cp = MagicMock(return_value=201)
+    mock_pol = MagicMock(return_value=202)
+    mock_rule = MagicMock(return_value=201)
+    monkeypatch.setattr(sync_module, "post_dashboard", mock_dash)
+    monkeypatch.setattr(sync_module, "post_contact_point", mock_cp)
+    monkeypatch.setattr(sync_module, "post_notification_policy", mock_pol)
+    monkeypatch.setattr(sync_module, "post_alert_rule", mock_rule)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.setenv("GC_ALERT_EMAIL_RECIPIENTS", "ops@example.com")
+
+    exit_code = sync_module.main(
+        [
+            "--dashboards-dir",
+            str(dashboards_dir),
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 0
+    assert mock_dash.call_count == 1
+    assert mock_cp.call_count == 1
+    assert mock_pol.call_count == 1
+    assert mock_rule.call_count == 1
+
+
+def test_main_alerts_pass_substitutes_recipients_into_contact_point(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The contact point shipped to GC must carry the resolved
+    recipients in ``settings.addresses``, NOT the placeholder."""
+    alerts_dir = _write_alerts_layout(tmp_path / "alerts")
+    mock_cp = MagicMock(return_value=201)
+    monkeypatch.setattr(sync_module, "post_contact_point", mock_cp)
+    monkeypatch.setattr(
+        sync_module, "post_notification_policy", MagicMock(return_value=202)
+    )
+    monkeypatch.setattr(sync_module, "post_alert_rule", MagicMock(return_value=201))
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.setenv(
+        "GC_ALERT_EMAIL_RECIPIENTS", "ops@example.com,oncall@example.com"
+    )
+
+    exit_code = sync_module.main(
+        [
+            "--targets",
+            "alerts",
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 0
+    posted_cp = mock_cp.call_args.args[2]
+    assert posted_cp["settings"]["addresses"] == "ops@example.com;oncall@example.com"
+
+
+def test_main_alerts_pass_remaps_cloudwatch_uid_in_rules(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: an alert rule with ``datasourceUid="cloudwatch"`` is
+    rewritten to the stack-specific UID before being shipped to GC."""
+    rule = _make_rule("ams-cw-warning")
+    rule["data"] = [
+        {
+            "refId": "A",
+            "datasourceUid": "cloudwatch",
+            "model": {"refId": "A"},
+            "relativeTimeRange": {"from": 600, "to": 0},
+        }
+    ]
+    alerts_dir = _write_alerts_layout(
+        tmp_path / "alerts",
+        rule_files={"cw.json": {"rules": [rule]}},
+    )
+    mock_rule = MagicMock(return_value=201)
+    monkeypatch.setattr(sync_module, "post_alert_rule", mock_rule)
+    monkeypatch.setattr(sync_module, "post_contact_point", MagicMock(return_value=201))
+    monkeypatch.setattr(
+        sync_module, "post_notification_policy", MagicMock(return_value=202)
+    )
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.setenv("GC_ALERT_EMAIL_RECIPIENTS", "ops@example.com")
+    monkeypatch.setenv("GC_CLOUDWATCH_UID", "stack-specific-cw")
+
+    exit_code = sync_module.main(
+        [
+            "--targets",
+            "alerts",
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 0
+    posted_rule = mock_rule.call_args.args[2]
+    assert posted_rule["data"][0]["datasourceUid"] == "stack-specific-cw"
+
+
+def test_main_alerts_dry_run_lists_resources_without_posting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--dry-run`` on the alerts pass must NOT POST and must NOT
+    require ``GC_ALERT_EMAIL_RECIPIENTS`` (PR-side CI path)."""
+    alerts_dir = _write_alerts_layout(tmp_path / "alerts")
+    mock_cp = MagicMock()
+    mock_pol = MagicMock()
+    mock_rule = MagicMock()
+    monkeypatch.setattr(sync_module, "post_contact_point", mock_cp)
+    monkeypatch.setattr(sync_module, "post_notification_policy", mock_pol)
+    monkeypatch.setattr(sync_module, "post_alert_rule", mock_rule)
+    monkeypatch.delenv("GC_ALERT_EMAIL_RECIPIENTS", raising=False)
+
+    exit_code = sync_module.main(
+        [
+            "--targets",
+            "alerts",
+            "--alerts-dir",
+            str(alerts_dir),
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 0
+    mock_cp.assert_not_called()
+    mock_pol.assert_not_called()
+    mock_rule.assert_not_called()
+    out = capsys.readouterr().out
+    assert "email-default" in out  # contact point uid surfaced in dry-run output
+    assert "ams-default-warning" in out  # rule uid surfaced
+
+
+def test_main_alerts_live_run_requires_recipients(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Live alerts sync without GC_ALERT_EMAIL_RECIPIENTS exits non-zero
+    so the operator catches the misconfiguration before GC sees a
+    contact point with no addresses."""
+    alerts_dir = _write_alerts_layout(tmp_path / "alerts")
+    monkeypatch.setattr(sync_module, "post_contact_point", MagicMock(return_value=201))
+    monkeypatch.setattr(
+        sync_module, "post_notification_policy", MagicMock(return_value=202)
+    )
+    monkeypatch.setattr(sync_module, "post_alert_rule", MagicMock(return_value=201))
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.delenv("GC_ALERT_EMAIL_RECIPIENTS", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        sync_module.main(
+            [
+                "--targets",
+                "alerts",
+                "--alerts-dir",
+                str(alerts_dir),
+                "--stack-url",
+                "https://x.grafana.net",
+            ]
+        )
+
+    assert exc_info.value.code == 2
+
+
+def test_main_combined_summary_reports_dashboard_and_alert_counts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """When both passes run successfully the final summary mentions
+    both — operator scanning CI output should not have to grep for OK
+    lines to confirm both surfaces landed."""
+    dashboards_dir = tmp_path / "dashboards"
+    dashboards_dir.mkdir()
+    (dashboards_dir / "d.json").write_text(
+        json.dumps({"uid": "ams-d", "title": "D", "panels": []})
+    )
+    alerts_dir = _write_alerts_layout(tmp_path / "alerts")
+    monkeypatch.setattr(sync_module, "post_dashboard", MagicMock(return_value=200))
+    monkeypatch.setattr(sync_module, "post_contact_point", MagicMock(return_value=201))
+    monkeypatch.setattr(
+        sync_module, "post_notification_policy", MagicMock(return_value=202)
+    )
+    monkeypatch.setattr(sync_module, "post_alert_rule", MagicMock(return_value=201))
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.setenv("GC_ALERT_EMAIL_RECIPIENTS", "ops@example.com")
+
+    exit_code = sync_module.main(
+        [
+            "--dashboards-dir",
+            str(dashboards_dir),
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "dashboard" in out.lower()
+    assert "alert" in out.lower()
