@@ -130,8 +130,14 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          # uv keeps a content-addressed wheel store under ~/.cache/uv;
+          # enabling the cache hashes the dep manifest below so warm runs
+          # reuse it across jobs and across PRs. cuts pip install -e '.[dev]'
+          # from ~15-20s (pip wheel cache) to ~3-5s.
+          enable-cache: true
+          cache-dependency-glob: backend/pyproject.toml
       - name: Cache mypy
         uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
         with:
@@ -141,10 +147,10 @@ jobs:
             mypy-${{ runner.os }}-py3.11-
       - name: Install backend (with dev extras)
         # mypy --strict needs the full installed package + stubs to resolve
-        # third-party types (SQLAlchemy, FastAPI, etc.).
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+        # third-party types (SQLAlchemy, FastAPI, etc.). uv pip install
+        # --system writes to the setup-python interpreter, mirroring what
+        # plain `pip install` would do but ~5x faster.
+        run: uv pip install --system -e '.[dev]'
       - name: Mypy strict
         run: mypy app
 
@@ -205,12 +211,12 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/pyproject.toml
       - name: Install backend (with dev extras)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+        run: uv pip install --system -e '.[dev]'
       - name: Restore pytest-split durations cache
         # pytest-split reads `.test_durations` to balance shards by recorded
         # wall-clock. On a cold cache it falls back to splitting by test
@@ -296,14 +302,13 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
       - name: Install coverage tooling
         # Only `coverage[toml]` is needed for the combine + xml export.
         # The full backend install would take 20-30s for no benefit.
-        run: |
-          python -m pip install --upgrade pip
-          pip install 'coverage[toml]>=7,<8'
+        run: uv pip install --system 'coverage[toml]>=7,<8'
       - name: Download shard coverage data
         # Both .coverage.1 and .coverage.2 land in the same directory so
         # `coverage combine` can pick them up by glob. The merge operation
@@ -495,18 +500,21 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/pyproject.toml
       - name: Install runtime deps
         # Audit only the prod dependency closure - dev tools (pytest, mypy,
         # ruff) never ship to production, so their CVEs would be noise here.
         # The audit action runs in `pip list` mode when `inputs` is omitted,
         # so install the same extras as Dockerfile.prod into an isolated venv.
+        # uv venv + uv pip install replaces python -m venv + pip install,
+        # both for speed (~5x) and so the cached wheel store is shared with
+        # backend-test/typecheck above (same uv cache key family).
         run: |
-          python -m venv .audit-venv
-          . .audit-venv/bin/activate
-          python -m pip install --upgrade pip
-          pip install -e '.[prod]'
+          uv venv .audit-venv
+          uv pip install --python .audit-venv/bin/python -e '.[prod]'
       - name: pip-audit
         uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
         with:
