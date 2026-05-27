@@ -346,14 +346,20 @@ def build_payload(dashboard: dict[str, Any]) -> dict[str, Any]:
     return {"dashboard": dashboard, "overwrite": True}
 
 
-def collect_placeholder_uids(dashboard: dict[str, Any]) -> set[str]:
-    """Return the subset of ``_PLACEHOLDER_UIDS`` that ``dashboard`` references.
+def collect_placeholder_uids(resource: dict[str, Any]) -> set[str]:
+    """Return the subset of ``_PLACEHOLDER_UIDS`` that ``resource`` references.
 
-    Walks every ``datasource.uid`` in the tree (panels, targets, templating
-    variables, annotations) so ``build_uid_remap`` knows exactly which env
-    vars are load-bearing for this batch. Without this, missing
-    ``GC_CLOUDWATCH_UID`` would only fail at GC-side at panel-render time
-    (silently empty panels), not at sync time.
+    Walks the resource tree for both Grafana's datasource shapes:
+
+    * Nested form (dashboards): ``{"datasource": {"type": ..., "uid": ...}}``.
+    * Flat form (alert rules): a sibling ``"datasourceUid": "..."`` on a
+      ``data[]`` query entry. This shape predates the dashboard
+      convention and is what the alerting provisioning API expects.
+
+    Knowing the set up front lets ``build_uid_remap`` validate that
+    every load-bearing env var (notably ``GC_CLOUDWATCH_UID``) is set
+    BEFORE the publish loop — otherwise missing config only surfaces as
+    silently empty panels or non-firing rules at render/evaluation time.
     """
     found: set[str] = set()
 
@@ -364,13 +370,16 @@ def collect_placeholder_uids(dashboard: dict[str, Any]) -> set[str]:
                 uid = ds.get("uid")
                 if isinstance(uid, str) and uid in _PLACEHOLDER_UIDS:
                     found.add(uid)
+            flat_uid = obj.get("datasourceUid")
+            if isinstance(flat_uid, str) and flat_uid in _PLACEHOLDER_UIDS:
+                found.add(flat_uid)
             for value in obj.values():
                 walk(value)
         elif isinstance(obj, list):
             for item in obj:
                 walk(item)
 
-    walk(dashboard)
+    walk(resource)
     return found
 
 
@@ -449,6 +458,14 @@ def remap_datasource_uids(
             for key, value in obj.items():
                 if key == "datasource" and isinstance(value, dict):
                     new[key] = _maybe_remap_datasource(value, remap)
+                elif (
+                    key == "datasourceUid"
+                    and isinstance(value, str)
+                    and value in remap
+                ):
+                    # Flat alert-rule shape: ``data[i].datasourceUid`` is a
+                    # bare string sibling, not a nested ``datasource`` object.
+                    new[key] = remap[value]
                 else:
                     new[key] = walk(value)
             return new
