@@ -716,12 +716,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--targets",
         choices=("dashboards", "alerts", "all"),
-        default="all",
+        default="dashboards",
         help=(
-            "Which surfaces to sync. 'all' (default) runs dashboards then "
-            "alerts. 'dashboards' preserves the pre-extension behavior. "
-            "'alerts' lets an operator re-sync only the alerts without "
-            "re-uploading every dashboard."
+            "Which surfaces to sync. 'dashboards' (default) preserves "
+            "the pre-extension behavior — existing operator runs and "
+            "tests keep working unchanged. 'all' runs dashboards then "
+            "alerts; this is what CI uses. 'alerts' lets an operator "
+            "re-sync only the alerts without re-uploading dashboards."
         ),
     )
     parser.add_argument(

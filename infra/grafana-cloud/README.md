@@ -262,13 +262,16 @@ Create this folder once before the first sync (via the GC UI: Alerting →
 Alert rules → New folder → set UID = `ams-production`). The script does
 not create folders; missing folder = 404 on every alert-rule POST.
 
-**Runbook command:**
+**Runbook command** (the `--targets all` flag is required — the
+script's default is `dashboards` for backward compatibility with
+pre-alerts operator runs):
 
 ```bash
 GRAFANA_CLOUD_API_KEY=<grafana-cloud-api-key> \
 GC_CLOUDWATCH_UID=<see-step-5> \
 GC_ALERT_EMAIL_RECIPIENTS="ops@example.com,oncall@example.com" \
   python scripts/sync_grafana_cloud_dashboards.py \
+    --targets all \
     --stack-url https://<your-stack-slug>.grafana.net
 ```
 

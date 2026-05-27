@@ -864,7 +864,11 @@ def test_main_targets_all_runs_both_passes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``--targets all`` (the new default) runs dashboards THEN alerts."""
+    """``--targets all`` (the CI-side opt-in) runs dashboards THEN alerts.
+
+    The default remains ``dashboards`` for backward compatibility with
+    existing operator runs and pre-alerts tests; CI explicitly passes
+    ``--targets all``."""
     dashboards_dir = tmp_path / "dashboards"
     dashboards_dir.mkdir()
     (dashboards_dir / "d.json").write_text(
@@ -885,6 +889,8 @@ def test_main_targets_all_runs_both_passes(
 
     exit_code = sync_module.main(
         [
+            "--targets",
+            "all",
             "--dashboards-dir",
             str(dashboards_dir),
             "--alerts-dir",
@@ -1071,6 +1077,8 @@ def test_main_combined_summary_reports_dashboard_and_alert_counts(
 
     exit_code = sync_module.main(
         [
+            "--targets",
+            "all",
             "--dashboards-dir",
             str(dashboards_dir),
             "--alerts-dir",
