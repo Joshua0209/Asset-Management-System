@@ -568,6 +568,134 @@ def post_dashboard(stack_url: str, api_key: str, payload: dict[str, Any]) -> int
         return 599
 
 
+def _send_provisioning(
+    stack_url: str,
+    api_key: str,
+    method: str,
+    path: str,
+    payload: dict[str, Any],
+    resource_id: str,
+) -> int:
+    """Issue a single HTTPS request to the Grafana provisioning API.
+
+    Returns the HTTP status code; ``599`` on transport failure; the raw
+    4xx/5xx code on HTTP error. Same opener, headers, and error handling
+    as ``post_dashboard`` — uses ``_NO_REDIRECT_OPENER`` so a 3xx
+    auth-redirect surfaces as a hard failure instead of a misleading
+    200 from the SSO landing page. ``resource_id`` is the operator-facing
+    identifier (rule/contact-point uid; ``"policy"`` for the root
+    notification policy) so the FAIL line tells the operator which
+    resource failed without grepping.
+    """
+    url = stack_url.rstrip("/") + path
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        method=method,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with _NO_REDIRECT_OPENER.open(
+            request, timeout=HTTP_TIMEOUT_SECONDS
+        ) as response:
+            status: int = response.status
+            return status
+    except urllib.error.HTTPError as exc:
+        hint = ""
+        if 300 <= exc.code < 400:
+            hint = (
+                " (3xx on provisioning POST usually means the API key is "
+                "missing the alerting-write scope; check GC API key permissions)"
+            )
+        sys.stderr.write(f"FAIL: {resource_id} -> {exc.code} {exc.reason}{hint}\n")
+        return exc.code
+    except urllib.error.URLError as exc:
+        sys.stderr.write(f"FAIL: {resource_id} -> URL error: {exc.reason}\n")
+        return 599
+
+
+def post_contact_point(
+    stack_url: str, api_key: str, contact_point: dict[str, Any]
+) -> int:
+    """Upsert a contact point via the provisioning API.
+
+    Tries ``POST /api/v1/provisioning/contact-points`` first. The body
+    carries the desired ``uid``; on first run GC accepts it (200/201/202).
+    On steady-state runs GC returns 409 (contact point exists with that
+    uid) and we fall back to ``PUT /api/v1/provisioning/contact-points/{uid}``
+    for the actual update. Returns the final HTTP status.
+    """
+    uid = str(contact_point.get("uid", "<unknown>"))
+    status = _send_provisioning(
+        stack_url,
+        api_key,
+        "POST",
+        PROVISIONING_CONTACT_POINTS_PATH,
+        contact_point,
+        uid,
+    )
+    if status == 409:
+        status = _send_provisioning(
+            stack_url,
+            api_key,
+            "PUT",
+            f"{PROVISIONING_CONTACT_POINTS_PATH}/{uid}",
+            contact_point,
+            uid,
+        )
+    return status
+
+
+def post_notification_policy(
+    stack_url: str, api_key: str, policy: dict[str, Any]
+) -> int:
+    """Replace the root notification policy.
+
+    The root policy is a singleton — there's no create-vs-update
+    distinction, so always PUT. Returns the HTTP status.
+    """
+    return _send_provisioning(
+        stack_url,
+        api_key,
+        "PUT",
+        PROVISIONING_POLICIES_PATH,
+        policy,
+        "policy",
+    )
+
+
+def post_alert_rule(
+    stack_url: str, api_key: str, rule: dict[str, Any]
+) -> int:
+    """Upsert an alert rule via the provisioning API.
+
+    Same POST → 409 → PUT pattern as ``post_contact_point``.
+    """
+    uid = str(rule.get("uid", "<unknown>"))
+    status = _send_provisioning(
+        stack_url,
+        api_key,
+        "POST",
+        PROVISIONING_ALERT_RULES_PATH,
+        rule,
+        uid,
+    )
+    if status == 409:
+        status = _send_provisioning(
+            stack_url,
+            api_key,
+            "PUT",
+            f"{PROVISIONING_ALERT_RULES_PATH}/{uid}",
+            rule,
+            uid,
+        )
+    return status
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -575,6 +703,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         default=DEFAULT_DASHBOARDS_DIR,
         help=f"Directory containing dashboard JSONs (default: {DEFAULT_DASHBOARDS_DIR})",
+    )
+    parser.add_argument(
+        "--alerts-dir",
+        type=Path,
+        default=DEFAULT_ALERTS_DIR,
+        help=(
+            "Directory containing alert config (contact-points.json, "
+            f"notification-policy.json, rules/*.json). Default: {DEFAULT_ALERTS_DIR}"
+        ),
+    )
+    parser.add_argument(
+        "--targets",
+        choices=("dashboards", "alerts", "all"),
+        default="all",
+        help=(
+            "Which surfaces to sync. 'all' (default) runs dashboards then "
+            "alerts. 'dashboards' preserves the pre-extension behavior. "
+            "'alerts' lets an operator re-sync only the alerts without "
+            "re-uploading every dashboard."
+        ),
+    )
+    parser.add_argument(
+        "--recipients",
+        default=None,
+        help=(
+            "Comma-separated email recipients for the alert contact point. "
+            f"Overrides ${_RECIPIENTS_ENV}. Required in live alerts mode "
+            "(skipped under --dry-run)."
+        ),
     )
     parser.add_argument(
         "--stack-url",
@@ -587,28 +744,107 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Parse dashboards and print what would be POSTed; do not send HTTP requests.",
+        help="Parse resources and print what would be POSTed; do not send HTTP requests.",
     )
     args = parser.parse_args(argv)
 
-    if not args.dashboards_dir.is_dir():
-        sys.stderr.write(
-            f"Dashboards directory not found: {args.dashboards_dir}\n"
-        )
-        return 2
+    run_dashboards = args.targets in ("dashboards", "all")
+    run_alerts = args.targets in ("alerts", "all")
 
+    # Pre-flight validation. Dashboards-dir presence is hard-required when
+    # explicit (``--targets dashboards``) but soft-skipped under the
+    # default ``--targets all`` so an operator running the alerts pass
+    # against an alerts-only checkout (or in a test fixture that only
+    # writes an alerts dir) doesn't have to fabricate a dashboards dir.
+    if run_dashboards and not args.dashboards_dir.is_dir():
+        if args.targets == "dashboards":
+            sys.stderr.write(
+                f"Dashboards directory not found: {args.dashboards_dir}\n"
+            )
+            return 2
+        run_dashboards = False
+    # Same skip-vs-error split for the alerts dir. Existing dashboard-
+    # only tests don't pass --alerts-dir and default to the repo
+    # config/grafana/alerts/ path; if that's missing under --targets
+    # all (e.g. on a developer machine that hasn't pulled the alerts
+    # config yet), silently skip the alerts pass instead of failing.
+    if run_alerts and not args.alerts_dir.is_dir():
+        if args.targets == "alerts":
+            sys.stderr.write(
+                f"Alerts directory not found: {args.alerts_dir}\n"
+            )
+            return 2
+        run_alerts = False
+
+    if not run_dashboards and not run_alerts:
+        sys.stderr.write(
+            "Nothing to sync: neither dashboards nor alerts pass will run "
+            f"(targets={args.targets!r}, dashboards-dir={args.dashboards_dir}, "
+            f"alerts-dir={args.alerts_dir}).\n"
+        )
+        return 1
+
+    # Live-mode-only validation. Skipped under --dry-run so PR-side CI
+    # (without secrets) still passes the validate gate.
+    api_key = ""
+    if not args.dry_run:
+        api_key = os.environ.get("GRAFANA_CLOUD_API_KEY", "")
+        if not api_key:
+            sys.stderr.write(
+                "GRAFANA_CLOUD_API_KEY is unset; export it or pass --dry-run\n"
+            )
+            raise SystemExit(2)
+        if not args.stack_url:
+            sys.stderr.write("--stack-url is required when not in --dry-run mode\n")
+            raise SystemExit(2)
+        # M3 finding from the third review: refuse to send the bearer token
+        # over plaintext OR to an unexpected protocol scheme. Without this
+        # guard, a mistyped --stack-url http://... (or an env-driven runbook
+        # that lost the 's') sends Authorization: Bearer <GC_API_KEY> in
+        # cleartext. The GC stack URL is always https://<slug>.grafana.net
+        # — there is no test/dev mode that legitimately needs http://. Fail
+        # closed.
+        if not args.stack_url.startswith("https://"):
+            sys.stderr.write(
+                "--stack-url must use the https:// scheme to avoid leaking the "
+                "GRAFANA_CLOUD_API_KEY over plaintext. Got: "
+                f"{args.stack_url.split(':', 1)[0] or '(empty)'}://...\n"
+            )
+            raise SystemExit(2)
+
+    dashboards_exit_ok = True
+    alerts_exit_ok = True
+
+    if run_dashboards:
+        dashboards_exit_ok = _run_dashboards_pass(args, api_key)
+
+    if run_alerts:
+        alerts_exit_ok = _run_alerts_pass(args, api_key)
+
+    return 0 if (dashboards_exit_ok and alerts_exit_ok) else 1
+
+
+def _run_dashboards_pass(args: argparse.Namespace, api_key: str) -> bool:
+    """Execute the dashboards sync pass. Returns True on success.
+
+    Same behavior as the pre-``--targets`` ``main()``: load dashboards,
+    optionally dry-run (print + structural-check), else build the UID
+    remap and POST each dashboard with transport-fail-aware abort.
+    Splits a previously-inline block out of ``main()`` so the alerts
+    pass can run alongside it without each branch turning into a
+    sprawling if-tree.
+    """
     dashboards, malformed = load_dashboards(args.dashboards_dir)
     if not dashboards and not malformed:
         sys.stderr.write(f"No dashboards found under {args.dashboards_dir}\n")
-        return 1
+        return False
 
     if args.dry_run:
-        # The dry-run / validate job runs on every PR (including from
-        # forks) and on developer laptops where stack-specific env vars
-        # like GC_CLOUDWATCH_UID are not available. Resolve what we
-        # can but do not fail on missing UIDs — strict resolution is
-        # the live sync's job. This keeps the structural check
-        # (malformed JSON, missing dashboard uid) portable.
+        # The dry-run / validate job runs on every PR (including forks)
+        # and on developer laptops where stack-specific env vars like
+        # GC_CLOUDWATCH_UID are not available. Resolve what we can but
+        # do not fail on missing UIDs — strict resolution is the live
+        # sync's job.
         remap = build_uid_remap(dashboards, strict=False)
         if dashboards:
             print(f"DRY RUN: would POST {len(dashboards)} dashboard(s):")
@@ -626,38 +862,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"\n{len(malformed)} dashboard(s) malformed: "
                 f"{', '.join(malformed)}\n"
             )
-            return 1
-        return 0
-
-    api_key = os.environ.get("GRAFANA_CLOUD_API_KEY", "")
-    if not api_key:
-        sys.stderr.write(
-            "GRAFANA_CLOUD_API_KEY is unset; export it or pass --dry-run\n"
-        )
-        raise SystemExit(2)
-    if not args.stack_url:
-        sys.stderr.write("--stack-url is required when not in --dry-run mode\n")
-        raise SystemExit(2)
-    # M3 finding from the third review: refuse to send the bearer token over
-    # plaintext OR to an unexpected protocol scheme. Without this guard:
-    #   * A mistyped ``--stack-url http://...`` (or an env-var-driven runbook
-    #     that lost the ``s``) sends ``Authorization: Bearer <GC_API_KEY>``
-    #     in cleartext to anyone on the network path.
-    #   * A misconfigured stack URL pointing at the EC2 IMDS endpoint
-    #     ``http://169.254.169.254/...`` (or any internal http:// URL)
-    #     would gladly send the GC token to the wrong server.
-    #   * Non-HTTP schemes (file://, ftp://, ldap://) would surprise the
-    #     reader of any error trace without any legitimate use case here.
-    # The Grafana Cloud stack URL is always ``https://<slug>.grafana.net``
-    # — there is no test/dev mode that legitimately needs http://. Fail
-    # closed.
-    if not args.stack_url.startswith("https://"):
-        sys.stderr.write(
-            "--stack-url must use the https:// scheme to avoid leaking the "
-            "GRAFANA_CLOUD_API_KEY over plaintext. Got: "
-            f"{args.stack_url.split(':', 1)[0] or '(empty)'}://...\n"
-        )
-        raise SystemExit(2)
+            return False
+        return True
 
     # Build the UID remap BEFORE the publish loop so a missing
     # GC_CLOUDWATCH_UID aborts with a clear error instead of silently
@@ -675,28 +881,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     aborted = False
     for dashboard in dashboards:
         if aborted:
-            # Don't even attempt the post — GC has already shown itself
-            # unreachable. Record the uid so the summary reports the
-            # full unattempted set, not just the loop-end snapshot.
             skipped_after_abort.append(str(dashboard.get("uid", "<unknown>")))
             continue
         remapped = remap_datasource_uids(dashboard, remap)
         status = post_dashboard(args.stack_url, api_key, build_payload(remapped))
         uid = str(dashboard.get("uid", "<unknown>"))
-        # Strictly 2xx is success. A 3xx redirect (e.g. GC returning a
-        # 302 to a login page when the token has insufficient scope) is
-        # NOT success — the API never legitimately redirects on POST.
-        # _NoRedirectHandler turns 3xx into an HTTPError so post_dashboard's
-        # FAIL line is emitted with a hint pointing at API-key scope.
         if 200 <= status < 300:
             print(f"OK  uid={uid} status={status}")
             consecutive_transport_fails = 0
         else:
             failed_uids.append(uid)
-            # post_dashboard returns 599 specifically for transport-
-            # level URLError (DNS, TCP, TLS). HTTPError-class failures
-            # (4xx/5xx) come back with the real code — those mean GC
-            # *is* reachable, so don't trip the fail-fast.
             if status == 599:
                 consecutive_transport_fails += 1
                 if consecutive_transport_fails >= _CONSECUTIVE_TRANSPORT_FAIL_LIMIT:
@@ -709,11 +903,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             else:
                 consecutive_transport_fails = 0
 
-    # Final summary so an operator scanning CI output doesn't have to
-    # grep individual FAIL lines to know how many dashboards failed and
-    # which uids need investigation. Malformed files (caught in
-    # load_dashboards) are reported alongside publish failures so the
-    # operator sees one consolidated count, not two unrelated sections.
     total = len(dashboards) + len(malformed)
     if failed_uids or skipped_after_abort or malformed:
         all_failures = failed_uids + skipped_after_abort + malformed
@@ -727,9 +916,136 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"\n{len(all_failures)} of {total} dashboard(s) failed to publish"
             f"{suffix}: {', '.join(all_failures)}\n"
         )
-        return 1
+        return False
     print(f"\nAll {total} dashboard(s) published successfully.")
-    return 0
+    return True
+
+
+def _run_alerts_pass(args: argparse.Namespace, api_key: str) -> bool:
+    """Execute the alerts sync pass. Returns True on success.
+
+    Load contact-point + policy + rules from ``args.alerts_dir``. In
+    dry-run, print a structural summary plus the placeholder→UID remap
+    (skipping strict resolution so PR-side CI without
+    ``GC_CLOUDWATCH_UID`` still passes). In live mode, resolve
+    recipients (CLI > env > exit 2), substitute them into the contact-
+    point template, then PUT/POST the contact point, root policy, and
+    every rule in turn. Per-resource FAIL lines are emitted by the
+    post_* helpers; this function aggregates them into the pass summary.
+    """
+    resources, malformed = load_alert_resources(args.alerts_dir)
+    if (
+        resources.contact_point is None
+        and resources.notification_policy is None
+        and not resources.rules
+        and not malformed
+    ):
+        sys.stderr.write(f"No alert resources found under {args.alerts_dir}\n")
+        return False
+
+    walkable: list[dict[str, Any]] = list(resources.rules)
+    if resources.contact_point is not None:
+        walkable.append(resources.contact_point)
+    if resources.notification_policy is not None:
+        walkable.append(resources.notification_policy)
+
+    if args.dry_run:
+        remap = build_uid_remap(walkable, strict=False)
+        if resources.contact_point is not None:
+            print(
+                f"DRY RUN: would upsert contact point uid="
+                f"{resources.contact_point.get('uid', '<unknown>')}"
+            )
+        if resources.notification_policy is not None:
+            print("DRY RUN: would replace root notification policy")
+        if resources.rules:
+            print(f"DRY RUN: would upsert {len(resources.rules)} alert rule(s):")
+            for rule in resources.rules:
+                print(
+                    f"  - uid={rule.get('uid', '<unknown>')}  "
+                    f"title={rule.get('title', '<no-title>')}"
+                )
+        if remap:
+            print("\nDatasource UID remap (alerts):")
+            for placeholder, real in sorted(remap.items()):
+                print(f"  {placeholder} -> {real}")
+        if malformed:
+            sys.stderr.write(
+                f"\n{len(malformed)} alert file(s) malformed: "
+                f"{', '.join(malformed)}\n"
+            )
+            return False
+        return True
+
+    # Live mode: require the loaded resources. A missing required file
+    # surfaces as a malformed entry that we've already printed above;
+    # surface a summary failure instead of trying to publish None.
+    if resources.contact_point is None or resources.notification_policy is None:
+        sys.stderr.write(
+            "\nAlert sync aborted: contact-points.json and notification-"
+            "policy.json are both required (see malformed entries above).\n"
+        )
+        return False
+
+    recipients = resolve_recipients(
+        args.recipients, dict(os.environ), dry_run=False
+    )
+    contact_point = apply_recipients_to_contact_point(
+        resources.contact_point, recipients
+    )
+
+    # Build the UID remap BEFORE publishing so a missing GC_CLOUDWATCH_UID
+    # aborts with a clear error instead of silently shipping rules whose
+    # CloudWatch queries resolve to nothing.
+    remap = build_uid_remap(walkable)
+    if remap:
+        print("Datasource UID remap (alerts):")
+        for placeholder, real in sorted(remap.items()):
+            print(f"  {placeholder} -> {real}")
+        print()
+
+    failed_ids: list[str] = []
+
+    cp_status = post_contact_point(args.stack_url, api_key, contact_point)
+    cp_uid = str(contact_point.get("uid", "<unknown>"))
+    if 200 <= cp_status < 300:
+        print(f"OK  contact-point uid={cp_uid} status={cp_status}")
+    else:
+        failed_ids.append(cp_uid)
+
+    pol_status = post_notification_policy(
+        args.stack_url, api_key, resources.notification_policy
+    )
+    if 200 <= pol_status < 300:
+        print(f"OK  policy status={pol_status}")
+    else:
+        failed_ids.append("policy")
+
+    for rule in resources.rules:
+        remapped = remap_datasource_uids(rule, remap)
+        uid = str(rule.get("uid", "<unknown>"))
+        status = post_alert_rule(args.stack_url, api_key, remapped)
+        if 200 <= status < 300:
+            print(f"OK  alert-rule uid={uid} status={status}")
+        else:
+            failed_ids.append(uid)
+
+    total = (
+        (1 if resources.contact_point is not None else 0)
+        + (1 if resources.notification_policy is not None else 0)
+        + len(resources.rules)
+        + len(malformed)
+    )
+    if failed_ids or malformed:
+        all_failures = failed_ids + malformed
+        suffix = f" ({len(malformed)} malformed)" if malformed else ""
+        sys.stderr.write(
+            f"\n{len(all_failures)} of {total} alert resource(s) failed to "
+            f"publish{suffix}: {', '.join(all_failures)}\n"
+        )
+        return False
+    print(f"\nAll {total} alert resource(s) published successfully.")
+    return True
 
 
 if __name__ == "__main__":

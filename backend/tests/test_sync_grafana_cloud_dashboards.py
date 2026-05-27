@@ -252,16 +252,26 @@ def test_main_missing_dashboards_dir_returns_2(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Pointing at a non-existent directory must surface as a clean failure.
+    """Pointing at a non-existent directory with the dashboards target
+    explicit must surface as a clean failure.
 
     The runbook is invoked from operator laptops; a typo in
     ``--dashboards-dir`` should fail loud, not look like a successful
-    no-op of "zero dashboards published".
+    no-op of "zero dashboards published". Passes ``--targets dashboards``
+    explicitly because the new default (``all``) intentionally
+    soft-skips a missing dashboards dir so the alerts pass can run on
+    its own — that soft-skip path is covered by the alerts-side tests.
     """
     nonexistent = tmp_path / "does-not-exist"
 
     exit_code = sync_module.main(
-        ["--dashboards-dir", str(nonexistent), "--dry-run"]
+        [
+            "--targets",
+            "dashboards",
+            "--dashboards-dir",
+            str(nonexistent),
+            "--dry-run",
+        ]
     )
 
     assert exit_code == 2

@@ -649,20 +649,9 @@ def test_post_contact_point_falls_back_to_put_on_409(
     confusing 409 line in the summary; with it, the script is idempotent
     in steady state (PUT runs once a sync against a populated GC stack).
     """
-    mock_opener = MagicMock()
-    mock_opener.open = MagicMock(
-        side_effect=[
-            _raise_http_error(409)(),
-            _mock_opener_returning(202).open.return_value,
-        ]
-    )
-
-    # The exceptions raised from side_effect are not called as side_effect
-    # by MagicMock when listed in side_effect — we need to use a different
-    # approach. Restructure with a counter:
     call_count = {"n": 0}
 
-    def _open(*args: Any, **kwargs: Any) -> Any:
+    def _open(*_args: Any, **_kwargs: Any) -> Any:
         call_count["n"] += 1
         if call_count["n"] == 1:
             _raise_http_error(409)()
@@ -672,6 +661,7 @@ def test_post_contact_point_falls_back_to_put_on_409(
         response.__exit__ = MagicMock(return_value=False)
         return response
 
+    mock_opener = MagicMock()
     mock_opener.open = MagicMock(side_effect=_open)
     monkeypatch.setattr(sync_module, "_NO_REDIRECT_OPENER", mock_opener)
 
