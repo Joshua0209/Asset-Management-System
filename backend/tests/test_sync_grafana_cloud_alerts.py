@@ -266,3 +266,174 @@ def test_load_alert_resources_rejects_rule_missing_uid(tmp_path: Path) -> None:
 
     assert "missing-uid.json" in malformed
     assert resources.rules == ()
+
+
+# ---------------------------------------------------------------------------
+# Cycle 2: resolve_recipients + apply_recipients_to_contact_point
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_recipients_cli_takes_priority_over_env() -> None:
+    """CLI flag wins over the env var — operator's per-run override."""
+    recipients = sync_module.resolve_recipients(
+        cli="ops@example.com",
+        env={"GC_ALERT_EMAIL_RECIPIENTS": "ignored@example.com"},
+        dry_run=False,
+    )
+
+    assert recipients == ["ops@example.com"]
+
+
+def test_resolve_recipients_falls_back_to_env() -> None:
+    """No CLI flag: the env var supplies the list (CI path)."""
+    recipients = sync_module.resolve_recipients(
+        cli=None,
+        env={"GC_ALERT_EMAIL_RECIPIENTS": "ops@example.com"},
+        dry_run=False,
+    )
+
+    assert recipients == ["ops@example.com"]
+
+
+def test_resolve_recipients_splits_csv_and_strips_whitespace() -> None:
+    """Comma-separated input → list, with surrounding whitespace trimmed.
+
+    Operators paste "ops@example.com, oncall@example.com" with a space
+    after the comma; the script must not propagate that whitespace into
+    the contact point or GC rejects the address as malformed."""
+    recipients = sync_module.resolve_recipients(
+        cli="ops@example.com, oncall@example.com ,  alerts@example.com",
+        env={},
+        dry_run=False,
+    )
+
+    assert recipients == [
+        "ops@example.com",
+        "oncall@example.com",
+        "alerts@example.com",
+    ]
+
+
+def test_resolve_recipients_drops_empty_entries() -> None:
+    """A trailing comma must not produce an empty recipient.
+
+    ``"ops@example.com, "`` and ``"ops@example.com,,oncall@example.com"``
+    are common typos. Both should yield only the real addresses without
+    blank entries that GC would reject."""
+    recipients = sync_module.resolve_recipients(
+        cli="ops@example.com,,oncall@example.com,",
+        env={},
+        dry_run=False,
+    )
+
+    assert recipients == ["ops@example.com", "oncall@example.com"]
+
+
+def test_resolve_recipients_validates_minimal_email_shape() -> None:
+    """An entry that obviously isn't an email exits 2 with a clear error.
+
+    Full RFC 5322 validation is overkill — the goal is to catch the
+    common operator mistake of pasting a name or URL instead of an
+    address. Anything matching ``*@*.*`` is accepted."""
+    with pytest.raises(SystemExit) as exc_info:
+        sync_module.resolve_recipients(
+            cli="not-an-email",
+            env={},
+            dry_run=False,
+        )
+
+    assert exc_info.value.code == 2
+
+
+def test_resolve_recipients_dry_run_tolerates_absence() -> None:
+    """``--dry-run`` returns an empty list when no recipients are set.
+
+    PR-side CI runs ``--dry-run`` without access to the
+    ``GC_ALERT_EMAIL_RECIPIENTS`` secret. Forcing recipients in dry-run
+    would block every fork PR. Return empty so the CI gate is purely
+    structural (parses JSON, walks placeholders)."""
+    recipients = sync_module.resolve_recipients(
+        cli=None,
+        env={},
+        dry_run=True,
+    )
+
+    assert recipients == []
+
+
+def test_resolve_recipients_live_mode_exits_when_missing() -> None:
+    """Live mode without recipients exits 2 with a clear error.
+
+    A live sync that silently sends to no addresses would leave the
+    contact point in a "no recipients" state — alerts would fire but
+    nobody would be paged. Fail fast instead."""
+    with pytest.raises(SystemExit) as exc_info:
+        sync_module.resolve_recipients(
+            cli=None,
+            env={},
+            dry_run=False,
+        )
+
+    assert exc_info.value.code == 2
+
+
+def test_resolve_recipients_blank_env_treated_as_unset() -> None:
+    """Whitespace-only env var must not satisfy the live-mode requirement.
+
+    Same defence as ``test_build_uid_remap_treats_blank_env_as_unset``
+    in the dashboard tests — a frequent CI misconfiguration is a secret
+    that resolves to empty/whitespace."""
+    with pytest.raises(SystemExit):
+        sync_module.resolve_recipients(
+            cli=None,
+            env={"GC_ALERT_EMAIL_RECIPIENTS": "   "},
+            dry_run=False,
+        )
+
+
+def test_apply_recipients_to_contact_point_joins_with_semicolons() -> None:
+    """Grafana's email contact point expects ``settings.addresses`` as a
+    single semicolon-delimited string, not a JSON array."""
+    template = {
+        "uid": "email-default",
+        "type": "email",
+        "settings": {"addresses": "__PLACEHOLDER__"},
+    }
+
+    applied = sync_module.apply_recipients_to_contact_point(
+        template, ["ops@example.com", "oncall@example.com"]
+    )
+
+    assert applied["settings"]["addresses"] == "ops@example.com;oncall@example.com"
+
+
+def test_apply_recipients_to_contact_point_does_not_mutate_template() -> None:
+    """Caller keeps the pre-substitution template around for dry-run
+    output. Mutating in place would corrupt it on the second call."""
+    template = {
+        "uid": "email-default",
+        "type": "email",
+        "settings": {"addresses": "__PLACEHOLDER__"},
+    }
+
+    sync_module.apply_recipients_to_contact_point(template, ["a@b.co"])
+
+    assert template["settings"]["addresses"] == "__PLACEHOLDER__"
+
+
+def test_apply_recipients_to_contact_point_preserves_other_settings() -> None:
+    """Sibling settings (e.g. ``subject``, ``message``) survive substitution."""
+    template = {
+        "uid": "email-default",
+        "type": "email",
+        "settings": {
+            "addresses": "__PLACEHOLDER__",
+            "subject": "[AMS] {{ .CommonLabels.alertname }}",
+            "singleEmail": False,
+        },
+    }
+
+    applied = sync_module.apply_recipients_to_contact_point(template, ["a@b.co"])
+
+    assert applied["settings"]["subject"] == "[AMS] {{ .CommonLabels.alertname }}"
+    assert applied["settings"]["singleEmail"] is False
