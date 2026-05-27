@@ -288,7 +288,7 @@ Buffer  May 26–02  ░░░░░░░░░░  Buffer & Presentation      
 | Task | Target | Notes |
 |------|--------|-------|
 | Unit tests: business logic, validation, auth | Mon–Thu | ⚠ Backend test suite grew through W5 (25 test files, including new `test_image_storage_s3.py`, `test_composite_indexes_migration.py`, `test_rate_limit.py`, `test_alembic_migration_chain.py`). Coverage measurement run is the W6 follow-up |
-| Integration tests: all API endpoints | Wed–Fri | ⚠ Covered piecewise by the per-endpoint backend suites; no dedicated end-to-end pass yet |
+| Integration tests: all API endpoints | Wed–Fri | ✅ Done (PR [#112](https://github.com/Joshua0209/Asset-Management-System/pull/112)). Cross-cutting layer: 3 journey tests, 32-cell FSM matrix, 66-cell RBAC matrix, OpenAPI contract validator (incl. multipart submit + 503 envelope), MySQL-gated migration-drift detector. Strategy in [`backend/tests/README.md`](../backend/tests/README.md) |
 | E2E tests: 6 critical flows | Thu–Fri | ❌ **Carries to W6.** Playwright suite not yet authored. Six flows: login, submit repair, approve, complete, search, register asset |
 
 ### Dev (2 people — W4 carry-over, new FE scope, bug fixes) — ⚠ Partial (DESIGN.md theme carries)
