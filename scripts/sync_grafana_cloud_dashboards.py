@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -237,6 +238,76 @@ def load_alert_resources(
         ),
         malformed,
     )
+
+
+# Env var feeding ``resolve_recipients`` in live mode. Comma-separated.
+# Stored as a GitHub secret so it stays off public PR diffs (recipients
+# leak the alerting team's address list otherwise).
+_RECIPIENTS_ENV: str = "GC_ALERT_EMAIL_RECIPIENTS"
+# Minimal email shape: at least one ``@`` and a ``.`` somewhere AFTER
+# the ``@`` (catches the common "pasted a name" mistake without
+# importing the email-validator package — keeps the script stdlib only
+# per the existing convention). Real validation happens at Grafana's
+# side when the contact point is exercised.
+_MIN_EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def resolve_recipients(
+    cli: str | None,
+    env: dict[str, str],
+    *,
+    dry_run: bool,
+) -> list[str]:
+    """Resolve the alert email recipient list.
+
+    Order: ``cli`` (per-run override) > ``env[_RECIPIENTS_ENV]`` (CI
+    secret) > ``SystemExit(2)`` when not in ``dry_run``. ``dry_run``
+    returns ``[]`` on absence so PR-side CI without access to the secret
+    still passes — the dry-run gate is structural, not behavioural.
+
+    Splits on commas, trims whitespace, drops empty entries, and checks
+    each against ``_MIN_EMAIL_SHAPE``. Whitespace-only env values are
+    treated as unset (same defence as ``build_uid_remap`` for empty UID
+    env vars).
+    """
+    source = cli if cli is not None else env.get(_RECIPIENTS_ENV, "")
+    if source is None or not source.strip():
+        if dry_run:
+            return []
+        sys.stderr.write(
+            "Alert recipients are unset. Pass --recipients <a@b.co,c@d.co> "
+            f"or export {_RECIPIENTS_ENV} (comma-separated) and re-run.\n"
+        )
+        raise SystemExit(2)
+    recipients = [part.strip() for part in source.split(",")]
+    recipients = [r for r in recipients if r]
+    for recipient in recipients:
+        if not _MIN_EMAIL_SHAPE.match(recipient):
+            sys.stderr.write(
+                f"Invalid alert recipient: {recipient!r}. Expected an "
+                "email of shape user@domain.tld.\n"
+            )
+            raise SystemExit(2)
+    return recipients
+
+
+def apply_recipients_to_contact_point(
+    template: dict[str, Any], recipients: list[str]
+) -> dict[str, Any]:
+    """Return a deep copy of ``template`` with ``settings.addresses``
+    set to the semicolon-joined recipient list.
+
+    Grafana's email contact point stores addresses as a single
+    semicolon-delimited string (NOT a JSON array — that quirk pre-dates
+    the unified alerting provisioning API). The template's
+    ``settings.addresses`` placeholder is replaced; sibling settings
+    (``subject``, ``singleEmail``, etc.) survive untouched. The input
+    is not mutated so the caller can keep it for diagnostics.
+    """
+    cloned: dict[str, Any] = json.loads(json.dumps(template))
+    settings = cloned.setdefault("settings", {})
+    settings["addresses"] = ";".join(recipients)
+    return cloned
 
 
 def _load_required_json(
