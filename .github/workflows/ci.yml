@@ -38,6 +38,12 @@ jobs:
       alembic: ${{ steps.aggregate.outputs.alembic }}
       frontend: ${{ steps.aggregate.outputs.frontend }}
       dashboards: ${{ steps.aggregate.outputs.dashboards }}
+      # True when none of the code-side filters fired. Used downstream to
+      # skip backend-test / frontend-test / sonarqube on docs-only PRs.
+      # Security baseline (secrets, sast) keeps running unconditionally
+      # because a markdown snippet can still leak a secret and we want
+      # the same coverage on docs-only PRs.
+      docs_only: ${{ steps.aggregate.outputs.docs_only }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Filter paths
@@ -88,11 +94,20 @@ jobs:
             echo "alembic=true" >> "$GITHUB_OUTPUT"
             echo "frontend=true" >> "$GITHUB_OUTPUT"
             echo "dashboards=true" >> "$GITHUB_OUTPUT"
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
           else
             echo "backend=${BACKEND}" >> "$GITHUB_OUTPUT"
             echo "alembic=${ALEMBIC}" >> "$GITHUB_OUTPUT"
             echo "frontend=${FRONTEND}" >> "$GITHUB_OUTPUT"
             echo "dashboards=${DASHBOARDS}" >> "$GITHUB_OUTPUT"
+            # docs_only when none of the code filters fired. The dorny
+            # action emits the literal string "false" for unmatched
+            # filters, so a string compare is safe.
+            if [ "$BACKEND" = "false" ] && [ "$FRONTEND" = "false" ] && [ "$DASHBOARDS" = "false" ]; then
+              echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
   backend-lint:
@@ -179,11 +194,12 @@ jobs:
     name: Backend - pytest + coverage (${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     needs: changes
-    # No path filter: pytest+coverage runs on every PR / main push so the
-    # SonarQube job downstream always sees a backend coverage artifact.
-    # Skipping this on docs-only PRs would also skip SonarQube (which needs
-    # both coverage files to avoid distorting the project-wide trend), and
-    # we want SonarQube's quality gate to evaluate every change.
+    # Skip on docs-only PRs - coverage hasn't changed, so re-publishing to
+    # SonarQube would just re-emit the previous result. The cost-per-run
+    # saved (~80s/shard) compounds across the 2-3 docs PRs/week we ship.
+    # On main pushes that ARE docs-only the same logic applies: no code
+    # changed, no coverage delta, no new SonarQube data point.
+    if: ${{ needs.changes.outputs.docs_only != 'true' }}
     strategy:
       # One shard's flake should not mask the other's; we want both
       # diagnostic outputs side by side. SonarQube downstream still
@@ -354,9 +370,8 @@ jobs:
     name: Frontend - vitest + coverage
     runs-on: ubuntu-latest
     needs: changes
-    # No path filter: see backend-test for the same rationale. The two
-    # test jobs run unconditionally so SonarQube downstream always has
-    # both coverage files and never has to publish a partial trend.
+    # Skip on docs-only PRs - see backend-test for the same rationale.
+    if: ${{ needs.changes.outputs.docs_only != 'true' }}
     defaults:
       run:
         working-directory: frontend
@@ -1366,6 +1381,51 @@ jobs:
             echo "::error::Seed failed. lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}. Check CloudWatch logs for task $task_arn."
             exit 1
           fi
+
+  # ci-complete is the single required status check for branch protection.
+  # The historical pattern of marking every individual job as required has
+  # two problems: (1) docs-only PRs now skip several quality jobs (see
+  # `docs_only` on the changes job), and required status checks treat
+  # `skipped` as not-pass; (2) renaming or restructuring a job rolls the
+  # required-check name and silently leaves merges unguarded until repo
+  # settings catch up. A single ci-complete gate side-steps both: it
+  # always runs, depends on every quality job, and fails iff any of them
+  # actually failed (not merely skipped).
+  ci-complete:
+    name: CI complete
+    runs-on: ubuntu-latest
+    if: ${{ !cancelled() }}
+    needs:
+      - changes
+      - backend-lint
+      - backend-typecheck
+      - backend-test
+      - backend-coverage-merge
+      - frontend
+      - frontend-test
+      - secrets
+      - sast
+      - pip-audit
+      - npm-audit
+      - trivy
+      - sonarqube
+      - dashboards-validate
+    steps:
+      - name: Aggregate quality results
+        # Echoes each upstream job's status to the log for at-a-glance
+        # diagnosis, then fails the gate if any need is failure/cancelled.
+        # `skipped` is treated as pass (the job's own if: filter decided
+        # the work wasn't needed - which is the whole point of docs_only
+        # and path filters).
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -E '"result"\s*:\s*"(failure|cancelled)"' >/dev/null; then
+            echo "::error::One or more upstream quality jobs failed or were cancelled."
+            exit 1
+          fi
+          echo "All upstream quality jobs passed (or were skipped by their own gates)."
 
   # CD: upsert the dashboard JSONs into Grafana Cloud on every main commit
   # that touches the dashboard set. Blocks on failure - a half-applied
