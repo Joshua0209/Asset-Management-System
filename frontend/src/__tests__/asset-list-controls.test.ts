@@ -36,7 +36,7 @@ function buildAsset(overrides: Partial<AssetRecord>): AssetRecord {
     unassignment_date: null,
     status: 'in_use',
     responsible_person_id: 'holder-1',
-    responsible_person: { id: 'holder-1', name: 'Alice Chen' },
+    responsible_person: { id: 'holder-1', name: 'Alice Chen', department: 'Engineering' },
     disposal_reason: null,
     version: 1,
     created_at: '2026-01-01T00:00:00Z',
@@ -77,7 +77,7 @@ describe('asset list controls', () => {
       purchase_date: 'not-a-date',
       status: 'in_stock',
       responsible_person_id: 'holder-2',
-      responsible_person: { id: 'holder-2', name: 'Bob Lee' },
+      responsible_person: { id: 'holder-2', name: 'Bob Lee', department: 'Operations' },
     }),
     buildAsset({
       id: 'asset-3',

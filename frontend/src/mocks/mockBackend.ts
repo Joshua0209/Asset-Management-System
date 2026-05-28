@@ -478,7 +478,11 @@ export function assignAsset(assetId: string, payload: AssetAssignPayload): Asset
 
   asset.status = "in_use";
   asset.responsible_person_id = holder.id;
-  asset.responsible_person = { id: holder.id, name: holder.name };
+  asset.responsible_person = {
+    id: holder.id,
+    name: holder.name,
+    department: holder.department,
+  };
   asset.assignment_date = payload.assignment_date;
   asset.location = payload.location;
   asset.unassignment_date = null;
