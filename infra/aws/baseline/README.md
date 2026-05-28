@@ -1,6 +1,6 @@
 # AWS Infrastructure Baseline (Reference)
 
-This directory contains sanitized exports of the manually provisioned AWS infrastructure for the Asset Management System, captured on **2026-05-20** against the `ap-east-2` (Hong Kong) region. These files serve as a point-in-time reference for the production environment and can be used to audit configurations or assist in recreating the environment.
+This directory contains sanitized exports of the manually provisioned AWS infrastructure for the Asset Management System, captured on **2026-05-20** against the `ap-east-2` (Taipei) region. These files serve as a point-in-time reference for the production environment and can be used to audit configurations or assist in recreating the environment.
 
 ## Files
 

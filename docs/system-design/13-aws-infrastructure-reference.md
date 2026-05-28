@@ -8,7 +8,7 @@ This document records the manually provisioned AWS infrastructure baseline for t
 |-----------|-------|
 | VPC ID    | `__VPC_ID__` |
 | CIDR Block| `10.0.0.0/16` |
-| Region    | `ap-east-2` (Hong Kong) |
+| Region    | `ap-east-2` (Taipei) |
 
 ### Subnets
 
