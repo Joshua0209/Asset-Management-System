@@ -230,7 +230,8 @@ On pushes to `main` and manual dispatch, after those gates pass, it also runs:
 | `deploy-backend` | Render the backend ECS task definition and perform a rolling update with `wait-for-service-stability` | backend changes only |
 | `deploy-frontend` | Render the frontend ECS task definition and perform a rolling update | frontend changes only |
 | `sync-dashboards` | Sync dashboard JSONs to Grafana Cloud after `dashboards-validate` | dashboards changes |
-| `seed-database` | Destructive demo seed via one-off Fargate task | `workflow_dispatch` with `run_seed=true` only |
+
+Destructive demo-data seeding is a separate manual workflow, [`seed.yml`](.github/workflows/seed.yml): `workflow_dispatch` only, gated behind typing `SEED` to confirm plus the `production-destructive` environment reviewers. It seeds against the backend service's already-running task definition, so it does not rebuild or redeploy.
 
 ### SonarQube / SonarCloud
 

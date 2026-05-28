@@ -48,7 +48,7 @@ jobs:
       # the same coverage on docs-only PRs.
       docs_only: ${{ steps.aggregate.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       - name: Filter paths
         id: filter
         if: github.event_name != 'workflow_dispatch'
@@ -122,8 +122,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
           cache: pip
@@ -132,7 +132,7 @@ jobs:
         # Ruff's incremental cache speeds up reruns on near-identical code
         # (typical PR push churn). Restore-keys lets a partial hit survive
         # source changes; ruff invalidates per-file internally.
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: backend/.ruff_cache
           key: ruff-${{ runner.os }}-py3.11-${{ hashFiles('backend/**/*.py') }}
@@ -158,11 +158,11 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           # uv keeps a content-addressed wheel store under ~/.cache/uv;
           # enabling the cache hashes the dep manifest below so warm runs
@@ -171,7 +171,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/pyproject.toml
       - name: Cache mypy
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: backend/.mypy_cache
           key: mypy-${{ runner.os }}-py3.11-${{ hashFiles('backend/**/*.py') }}
@@ -187,14 +187,14 @@ jobs:
         run: mypy app
 
   backend-test:
-    # 2-way matrix shard via pytest-split. The previous single job took
+    # 3-way matrix shard via pytest-split. The previous single job took
     # ~2m40s on a typical PR (the dominant critical path before SonarQube
-    # could start). Two shards cut wall-clock to ~1m20s each because the
-    # runner's 4 vCPUs already saturate one shard's pytest-xdist workers,
-    # so doubling the workers via a matrix gives near-linear speedup.
-    # Coverage is merged downstream in `backend-coverage-merge` before
-    # being handed to SonarQube.
-    name: Backend - pytest + coverage (${{ matrix.shard }}/2)
+    # could start). Three shards cut per-shard wall-clock further; the
+    # ~30-40s fixed setup floor (uv install + MySQL service + cache
+    # restore) caps the gain, so 3 balances split benefit against that
+    # floor (4 would add a runner + MySQL container for ~12s more).
+    # Coverage is merged in `backend-coverage-merge` before SonarQube.
+    name: Backend - pytest + coverage (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     needs: changes
     # Skip on docs-only PRs - coverage hasn't changed, so re-publishing to
@@ -204,13 +204,13 @@ jobs:
     # changed, no coverage delta, no new SonarQube data point.
     if: ${{ needs.changes.outputs.docs_only != 'true' }}
     strategy:
-      # One shard's flake should not mask the other's; we want both
+      # One shard's flake should not mask the others'; we want all
       # diagnostic outputs side by side. SonarQube downstream still
-      # requires both shards green via `backend-coverage-merge`, so a
+      # requires all shards green via `backend-coverage-merge`, so a
       # single shard failure still blocks the merge gate.
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     defaults:
       run:
         working-directory: backend
@@ -240,11 +240,11 @@ jobs:
           --health-timeout=5s
           --health-retries=20
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           cache-dependency-glob: backend/pyproject.toml
@@ -256,14 +256,22 @@ jobs:
         # count, which can produce 1.5x skew on a real suite. `--store-
         # durations` below refreshes the file so the next run starts hot.
         # `restore-keys` lets a partial hit survive new tests being added.
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        # Both shards restore the SAME key so pytest-split computes an
+        # identical split on each; only shard 1 saves the refreshed file
+        # (step below). Splitting restore from save removes the cross-
+        # shard "(409) Conflict: cache entry ... already exists"
+        # annotation: the combined cache action made every shard try to
+        # save the new key at post-step, and the loser of that race
+        # annotated a 409.
+        id: durations-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: backend/.test_durations
           key: pytest-durations-${{ runner.os }}-py3.11-${{ hashFiles('backend/tests/**/*.py') }}
           restore-keys: |
             pytest-durations-${{ runner.os }}-py3.11-
-      - name: Pytest with coverage (shard ${{ matrix.shard }}/2)
-        # pytest-split (--splits 2 --group N) slices the collected test list
+      - name: Pytest with coverage (shard ${{ matrix.shard }}/3)
+        # pytest-split (--splits 3 --group N) slices the collected test list
         # into 2 balanced groups by recorded duration; pytest-xdist (-n auto
         # --dist=loadfile) then parallelises within the slice. Order matters:
         # pytest-split must see the full collection before xdist distributes,
@@ -284,17 +292,29 @@ jobs:
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
         run: |
           pytest \
-            --splits 2 --group ${{ matrix.shard }} \
+            --splits 3 --group ${{ matrix.shard }} \
             --store-durations --durations-path .test_durations \
             -n auto --dist=loadfile \
             --cov=app --cov-report=term
+      - name: Save pytest-split durations cache
+        # Only shard 1 persists the cache, and only on a non-exact restore
+        # (cache-hit != 'true' => the test set changed this run, so the
+        # freshly recorded `.test_durations` is worth keeping). One writer
+        # means no cross-shard save race; skipping the exact-hit case avoids
+        # re-saving an identical key. Reproduces what the combined cache
+        # action did implicitly, minus the 409 on the losing shard.
+        if: ${{ always() && matrix.shard == 1 && steps.durations-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: backend/.test_durations
+          key: pytest-durations-${{ runner.os }}-py3.11-${{ hashFiles('backend/tests/**/*.py') }}
       - name: Upload partial coverage data
         # Raw .coverage.N files (not XML) so the merge job downstream can
         # call `coverage combine` to produce a single canonical dataset
         # before exporting XML for SonarQube. include-hidden-files=true
-        # because actions/upload-artifact@v4 silently drops dotfiles by
+        # because actions/upload-artifact silently drops dotfiles by
         # default and our coverage files all start with a dot.
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: backend-coverage-data-${{ matrix.shard }}
@@ -305,8 +325,8 @@ jobs:
         # Both shards write the same merged file (pytest-split's --store-
         # durations is idempotent across shards within a run); the cache
         # action above reads it back on the next run. Per-shard artifact
-        # names avoid the v4 upload-artifact same-name-conflict error.
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        # names avoid the upload-artifact same-name-conflict error.
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: pytest-durations-${{ matrix.shard }}
@@ -314,7 +334,7 @@ jobs:
           if-no-files-found: ignore
 
   backend-coverage-merge:
-    # Combine the two shard coverage artifacts into a single coverage.xml
+    # Combine the three shard coverage artifacts into a single coverage.xml
     # that SonarQube can ingest. Without this step SonarQube would only
     # see whichever shard happened to upload last (artifact-name collision)
     # or, with the per-shard naming used above, neither - because the
@@ -331,11 +351,11 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
       - name: Install coverage tooling
@@ -346,7 +366,7 @@ jobs:
         # Both .coverage.1 and .coverage.2 land in the same directory so
         # `coverage combine` can pick them up by glob. The merge operation
         # discards the .coverage.N files once .coverage exists.
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: backend-coverage-data-*
           merge-multiple: true
@@ -362,7 +382,7 @@ jobs:
       - name: Upload merged coverage
         # Keep the artifact name SonarQube already expects (`backend-coverage`)
         # so the downstream job doesn't need a rename.
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: backend-coverage
@@ -379,8 +399,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           cache: npm
@@ -390,7 +410,7 @@ jobs:
         # the same lockfile-pinned tree, so a hit in one warms the other.
         # See `frontend` for the full rationale on the key composition.
         id: node-modules-cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: frontend/node_modules
           key: node-modules-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-node22-${{ hashFiles('frontend/package-lock.json') }}
@@ -400,7 +420,7 @@ jobs:
       - name: Vitest with coverage
         run: npm run test:coverage
       - name: Upload coverage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: frontend-coverage
@@ -416,8 +436,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           cache: npm
@@ -435,7 +455,7 @@ jobs:
         # scripts (esbuild, @swc/core, etc.) cannot survive an OS bump and
         # silently produce ABI-mismatched .so files on a hit.
         id: node-modules-cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: frontend/node_modules
           key: node-modules-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-node22-${{ hashFiles('frontend/package-lock.json') }}
@@ -458,7 +478,7 @@ jobs:
     # so this job must NEVER skip when build-and-push could fire.
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           # Full history. gitleaks-action diff-scans by event type, but a
           # shallow clone can silently truncate the scan range on PRs with
@@ -477,8 +497,8 @@ jobs:
     # workflow_dispatch (the deploy gate treats `skipped` as not-failure).
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
           cache: pip
@@ -499,7 +519,7 @@ jobs:
         # Cache key bumps automatically when the semgrep version in the
         # install step above changes, AND once per ISO week so the upstream
         # OWASP-top-10 ruleset cannot stay frozen for more than 7 days.
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.semgrep
@@ -528,11 +548,11 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           cache-dependency-glob: backend/pyproject.toml
@@ -577,8 +597,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           cache: npm
@@ -601,7 +621,7 @@ jobs:
     # rationale on path-filtering an SCA job.
     if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       - name: Trivy filesystem scan (HIGH + CRITICAL)
         # CVSS 7+ = HIGH/CRITICAL severity, matching the gates used by
         # pip-audit (--audit-level=high) and the old dependency-check
@@ -633,16 +653,16 @@ jobs:
     # coverage trend cannot be distorted by a missing side.
     if: ${{ !cancelled() && needs.backend-coverage-merge.result == 'success' && needs.frontend-test.result == 'success' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
       - name: Download backend coverage
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: backend-coverage
           path: backend
       - name: Download frontend coverage
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: frontend-coverage
           path: frontend/coverage
@@ -653,7 +673,7 @@ jobs:
         # automatically when that pin is upgraded so stale analyzers from
         # the previous scanner release cannot be served against a newer
         # engine.
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.sonar/cache
           key: sonar-${{ runner.os }}-fd88b7d7
@@ -674,8 +694,8 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.dashboards == 'true' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
       - name: Dry-run dashboard sync (parse + validate, no HTTP)
@@ -689,8 +709,20 @@ jobs:
   # browser coverage. Blocks `build-and-push` so a failing E2E cannot
   # ship to ECS.
   e2e:
-    name: E2E - Playwright (chromium)
+    name: E2E - Playwright (chromium) (${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
+    # 2-way shard via Playwright's native --shard. Each shard is a full,
+    # independent runner with its own MySQL service + seeded backend +
+    # browser install, so shards never share a DB (workers:1 in the
+    # Playwright config still serializes specs WITHIN a shard). The ~82s
+    # fixed setup floor (uv install + alembic + seed + uvicorn + npm ci +
+    # chromium install) is paid per shard, so 2 is the sweet spot before
+    # that floor dominates the ~1.3m of test runtime being split.
+    # fail-fast:false keeps both shards' diagnostics side by side.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     needs: [changes, frontend, backend-typecheck]
     # The needs chain (`frontend`, `backend-typecheck`) is path-filtered, so
     # !cancelled() is required to let e2e run when frontend was correctly
@@ -744,12 +776,12 @@ jobs:
       # because uvicorn binds to 127.0.0.1 on the host below.
       VITE_API_BASE_URL: http://localhost:8000/api/v1
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           cache-dependency-glob: backend/pyproject.toml
@@ -798,7 +830,7 @@ jobs:
           tail -200 /tmp/backend.log || true
           exit 1
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           cache: npm
@@ -809,7 +841,7 @@ jobs:
         # warm cache from either of them is reusable here. See `frontend`
         # for the full rationale on ImageOS/ImageVersion in the key.
         id: node-modules-cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: frontend/node_modules
           key: node-modules-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-node22-${{ hashFiles('frontend/package-lock.json') }}
@@ -824,7 +856,7 @@ jobs:
         # Keyed on @playwright/test's resolved version so an SDK bump
         # invalidates the cache - browser binaries are SDK-version-pinned.
         id: playwright-cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
@@ -845,15 +877,18 @@ jobs:
         working-directory: frontend
         run: npx playwright install-deps chromium
 
-      - name: Run E2E suite
+      - name: Run E2E suite (shard ${{ matrix.shard }}/2)
         # Playwright's webServer config in e2e/playwright.config.ts starts
         # `npm run dev` (Vite) automatically and waits for the URL to be up
         # before the first test. `workers: 1` on CI keeps specs serial so
         # they do not race the single shared backend DB.
+        # `--shard=N/2` runs only this shard's slice; Playwright
+        # partitions the collected tests across shards (by file), so the
+        # two runners cover the suite once between them.
         working-directory: frontend
         env:
           E2E_BASE_URL: http://localhost:5173
-        run: npm run test:e2e
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/2
 
       - name: Tail backend log on failure
         if: failure()
@@ -863,17 +898,17 @@ jobs:
 
       - name: Upload Playwright HTML report
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: frontend/playwright-report/
           if-no-files-found: ignore
 
       - name: Upload Playwright traces/screenshots/video
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: playwright-test-results
+          name: playwright-test-results-${{ matrix.shard }}
           path: frontend/test-results/
           if-no-files-found: ignore
 
