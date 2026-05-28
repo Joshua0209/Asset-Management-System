@@ -1139,6 +1139,92 @@ def test_main_alerts_pass_aborts_after_consecutive_transport_failures(
     assert mock_rule.call_count < 5
 
 
+def test_main_alerts_pass_reports_non_transport_failure_without_aborting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A real HTTP failure (403, not a 599 transport blip) on one rule is
+    recorded in the summary, resets the consecutive-transport counter, and
+    does NOT abort the batch: GC is reachable, so every remaining rule is
+    still attempted. Exit 1 because a resource failed."""
+    alerts_dir = _write_alerts_layout(
+        tmp_path / "alerts",
+        rule_files={
+            "many.json": {"rules": [_make_rule(f"ams-rule-{i}") for i in range(5)]}
+        },
+    )
+
+    mock_rule = MagicMock(side_effect=[200, 403, 200, 200, 200])
+    monkeypatch.setattr(sync_module, "post_contact_point", MagicMock(return_value=200))
+    monkeypatch.setattr(
+        sync_module, "post_notification_policy", MagicMock(return_value=200)
+    )
+    monkeypatch.setattr(sync_module, "post_alert_rule", mock_rule)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.setenv("GC_ALERT_EMAIL_RECIPIENTS", "ops@example.com")
+
+    exit_code = sync_module.main(
+        [
+            "--targets",
+            "alerts",
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 1
+    # All 5 rules attempted — a non-599 failure must not trip the abort.
+    assert mock_rule.call_count == 5
+    err = capsys.readouterr().err
+    assert "ams-rule-1" in err  # the 403'd rule appears in the failure summary
+    assert "ABORT" not in err
+
+
+def test_main_alerts_pass_does_not_abort_when_transport_blips_are_interspersed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Isolated 599 transport blips separated by a success must not abort.
+    The consecutive counter resets on each 2xx, so it never reaches the
+    limit of 3. Publish order is contact(599) -> policy(599) -> rules
+    [200, 599, 599, 200, 599]; the max run of consecutive 599s is 2."""
+    alerts_dir = _write_alerts_layout(
+        tmp_path / "alerts",
+        rule_files={
+            "many.json": {"rules": [_make_rule(f"ams-rule-{i}") for i in range(5)]}
+        },
+    )
+
+    mock_rule = MagicMock(side_effect=[200, 599, 599, 200, 599])
+    monkeypatch.setattr(sync_module, "post_contact_point", MagicMock(return_value=599))
+    monkeypatch.setattr(
+        sync_module, "post_notification_policy", MagicMock(return_value=599)
+    )
+    monkeypatch.setattr(sync_module, "post_alert_rule", mock_rule)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.setenv("GC_ALERT_EMAIL_RECIPIENTS", "ops@example.com")
+
+    exit_code = sync_module.main(
+        [
+            "--targets",
+            "alerts",
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 1
+    # No abort: every rule attempted despite the interspersed 599s.
+    assert mock_rule.call_count == 5
+    assert "ABORT" not in capsys.readouterr().err
+
+
 # ---------------------------------------------------------------------------
 # Cycle 5: the SHIPPED config files are wired to the real production stack
 #
