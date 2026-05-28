@@ -41,8 +41,8 @@
       ],
       "labels": {"severity": "warning", "service": "ams-db"},
       "annotations": {
-        "summary": "RDS connections >70% of class max (42 for db.t3.micro)",
-        "description": "Connection count is {{ $values.A.Value }}. Default class max for db.t3.micro is ~60; warning threshold 70% = 42. Adjust the threshold if running a larger instance class."
+        "summary": "RDS connections >70% of an assumed max_connections ≈ 60 (i.e. 42)",
+        "description": "Connection count is {{ $values.A.Value }}. The threshold assumes max_connections ≈ 60; warning at 70% = 42. Recompute if the RDS instance class changes (see docs/system-design/08-deployment-operations.md)."
       },
       "notification_settings": {"receiver": "email-default"},
       "isPaused": false
@@ -88,8 +88,8 @@
       ],
       "labels": {"severity": "critical", "service": "ams-db"},
       "annotations": {
-        "summary": "RDS connections >90% of class max (54 for db.t3.micro)",
-        "description": "Connection count is {{ $values.A.Value }}. Default class max for db.t3.micro is ~60; critical threshold 90% = 54. Scale DB or optimise queries."
+        "summary": "RDS connections >90% of an assumed max_connections ≈ 60 (i.e. 54)",
+        "description": "Connection count is {{ $values.A.Value }}. The threshold assumes max_connections ≈ 60; critical at 90% = 54. Scale DB or optimise queries; recompute if the RDS instance class changes (see docs/system-design/08-deployment-operations.md)."
       },
       "notification_settings": {"receiver": "email-default"},
       "isPaused": false
