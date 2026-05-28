@@ -273,6 +273,19 @@ def build_assets(holders: list[User]) -> list[Asset]:
         holder = holders[index % len(holders)] if index % 3 != 0 else None
         status = AssetStatus.IN_USE if holder else AssetStatus.IN_STOCK
         purchase_date = today - timedelta(days=40 + index * 7)
+        # Issue #97 / Q21: asset.department (owning) is an attribute of the
+        # asset itself, not a sync of holder.department. Most held assets
+        # happen to match their holder's department (real-world common case)
+        # but every 5th held asset is deliberately cross-allocated so the
+        # demo data exercises the distinction the AssetDetail UI exposes.
+        if holder is None:
+            owning_department = DEPARTMENTS[index % len(DEPARTMENTS)]
+        elif index % 5 == 0:
+            owning_department = next(
+                dept for dept in DEPARTMENTS if dept != holder.department
+            )
+        else:
+            owning_department = holder.department
         assets.append(
             Asset(
                 asset_code=f"AST-{today.year}-{index + 1:05d}",
@@ -284,7 +297,7 @@ def build_assets(holders: list[User]) -> list[Asset]:
                 purchase_date=purchase_date,
                 purchase_amount=Decimal("18000.00") + Decimal(index * 350),
                 location=LOCATIONS[index % len(LOCATIONS)],
-                department=holder.department if holder else DEPARTMENTS[index % len(DEPARTMENTS)],
+                department=owning_department,
                 activation_date=purchase_date + timedelta(days=3),
                 warranty_expiry=purchase_date + timedelta(days=365 * 2),
                 status=status,

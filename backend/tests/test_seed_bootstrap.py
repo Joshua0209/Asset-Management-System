@@ -197,6 +197,41 @@ class TestSeedCategories:
 
 
 class TestSeedDemoRealism:
+    def test_held_assets_include_cross_department_allocation(self) -> None:
+        # Issue #97 / Q21: assets.department (owning) is independent of
+        # users.department (holder organisational). The common case is
+        # for them to match, but the seed must also exercise the
+        # cross-allocation case so the AssetDetail UI's "Asset Department
+        # vs Holder Department" distinction is visible from real data.
+        users = build_users()
+        _prime_ids(users)
+        holders = [u for u in users if u.role is UserRole.HOLDER]
+        holder_by_id = {h.id: h for h in holders}
+        assets = build_assets(holders)
+
+        held = [
+            asset for asset in assets if asset.responsible_person_id is not None
+        ]
+        assert held, "seed produced no held assets — fixture broken"
+
+        matching = sum(
+            1
+            for asset in held
+            if asset.department
+            == holder_by_id[asset.responsible_person_id].department
+        )
+        differing = len(held) - matching
+
+        assert matching > differing, (
+            "expected dept-matching held assets to dominate the seed "
+            f"(real-world common case); got {matching} match vs {differing} differ"
+        )
+        assert differing >= 1, (
+            "seed should include at least one held asset whose owning "
+            "department differs from the holder's, to exercise issue #97 "
+            "cross-allocation"
+        )
+
     def test_build_users_has_believable_demo_population(self) -> None:
         users = build_users()
 
