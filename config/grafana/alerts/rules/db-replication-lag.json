@@ -18,8 +18,8 @@
           "model": {
             "refId": "A",
             "namespace": "AWS/RDS",
-            "metricName": "AuroraBinlogReplicaLag",
-            "dimensions": {"DBClusterIdentifier": "ams-production-db"},
+            "metricName": "ReplicaLag",
+            "dimensions": {"DBInstanceIdentifier": "ams-database"},
             "statistic": "Average",
             "period": "60",
             "region": "default"
@@ -65,8 +65,8 @@
           "model": {
             "refId": "A",
             "namespace": "AWS/RDS",
-            "metricName": "AuroraBinlogReplicaLag",
-            "dimensions": {"DBClusterIdentifier": "ams-production-db"},
+            "metricName": "ReplicaLag",
+            "dimensions": {"DBInstanceIdentifier": "ams-database"},
             "statistic": "Average",
             "period": "60",
             "region": "default"
