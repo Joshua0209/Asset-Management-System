@@ -2,7 +2,7 @@
   "rules": [
     {
       "uid": "ams-disk-usage-warning",
-      "title": "RDS disk usage above 70%",
+      "title": "RDS free storage below 30%",
       "ruleGroup": "warning",
       "folderUID": "ams-production",
       "orgID": 1,
@@ -49,7 +49,7 @@
     },
     {
       "uid": "ams-disk-usage-critical",
-      "title": "RDS disk usage above 85%",
+      "title": "RDS free storage below 15%",
       "ruleGroup": "critical",
       "folderUID": "ams-production",
       "orgID": 1,

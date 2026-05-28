@@ -45,7 +45,7 @@
       "labels": {"severity": "warning", "service": "ams-backend"},
       "annotations": {
         "summary": "ECS CPU >70% for 5m",
-        "description": "Average ECS CPU utilization is {{ $values.A.Value }}%; warning threshold 70%. Consider scaling out."
+        "description": "Average ECS CPU utilization is {{ $values.A.Value }}%; warning threshold 70%. Consider scaling out. Scoped to the ams-backend service only; the ams-frontend service is nginx static-serve and is not CPU-bound, so it is intentionally not alerted."
       },
       "notification_settings": {"receiver": "email-default"},
       "isPaused": false
@@ -95,7 +95,7 @@
       "labels": {"severity": "critical", "service": "ams-backend"},
       "annotations": {
         "summary": "ECS CPU >90% for 2m",
-        "description": "Average ECS CPU utilization is {{ $values.A.Value }}%; critical threshold 90%. Scale out immediately."
+        "description": "Average ECS CPU utilization is {{ $values.A.Value }}%; critical threshold 90%. Scale out immediately. Scoped to the ams-backend service only; the ams-frontend service is nginx static-serve and is not CPU-bound, so it is intentionally not alerted."
       },
       "notification_settings": {"receiver": "email-default"},
       "isPaused": false
