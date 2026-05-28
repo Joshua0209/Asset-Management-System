@@ -188,42 +188,37 @@ def _seed_repair_request_in_state(
 _AssetAction = Literal["assign", "unassign", "dispose", "submit_repair"]
 
 
-_ASSET_FSM_MATRIX: list[
-    tuple[str, AssetStatus, _AssetAction, int, AssetStatus]
-] = [
+_ASSET_FSM_MATRIX: list[tuple[str, AssetStatus, _AssetAction, int, AssetStatus]] = [
     # T2: assign — legal only from in_stock
-    ("T2-in_stock",       _AS.IN_STOCK,       "assign",        200, _AS.IN_USE),
-    ("T2-in_use",         _AS.IN_USE,         "assign",        409, _AS.IN_USE),
-    ("T2-pending_repair", _AS.PENDING_REPAIR, "assign",        409, _AS.PENDING_REPAIR),
-    ("T2-under_repair",   _AS.UNDER_REPAIR,   "assign",        409, _AS.UNDER_REPAIR),
-    ("T2-disposed",       _AS.DISPOSED,       "assign",        409, _AS.DISPOSED),
-
+    ("T2-in_stock", _AS.IN_STOCK, "assign", 200, _AS.IN_USE),
+    ("T2-in_use", _AS.IN_USE, "assign", 409, _AS.IN_USE),
+    ("T2-pending_repair", _AS.PENDING_REPAIR, "assign", 409, _AS.PENDING_REPAIR),
+    ("T2-under_repair", _AS.UNDER_REPAIR, "assign", 409, _AS.UNDER_REPAIR),
+    ("T2-disposed", _AS.DISPOSED, "assign", 409, _AS.DISPOSED),
     # T5: unassign — legal only from in_use (and no active repair, which
     # is implicitly true for ``in_use`` by the seeding invariant)
-    ("T5-in_stock",       _AS.IN_STOCK,       "unassign",      409, _AS.IN_STOCK),
-    ("T5-in_use",         _AS.IN_USE,         "unassign",      200, _AS.IN_STOCK),
-    ("T5-pending_repair", _AS.PENDING_REPAIR, "unassign",      409, _AS.PENDING_REPAIR),
-    ("T5-under_repair",   _AS.UNDER_REPAIR,   "unassign",      409, _AS.UNDER_REPAIR),
-    ("T5-disposed",       _AS.DISPOSED,       "unassign",      409, _AS.DISPOSED),
-
+    ("T5-in_stock", _AS.IN_STOCK, "unassign", 409, _AS.IN_STOCK),
+    ("T5-in_use", _AS.IN_USE, "unassign", 200, _AS.IN_STOCK),
+    ("T5-pending_repair", _AS.PENDING_REPAIR, "unassign", 409, _AS.PENDING_REPAIR),
+    ("T5-under_repair", _AS.UNDER_REPAIR, "unassign", 409, _AS.UNDER_REPAIR),
+    ("T5-disposed", _AS.DISPOSED, "unassign", 409, _AS.DISPOSED),
     # T3: dispose — legal only from in_stock with no holder and no
     # active repair (both implied by the in_stock seeding invariant)
-    ("T3-in_stock",       _AS.IN_STOCK,       "dispose",       200, _AS.DISPOSED),
-    ("T3-in_use",         _AS.IN_USE,         "dispose",       409, _AS.IN_USE),
-    ("T3-pending_repair", _AS.PENDING_REPAIR, "dispose",       409, _AS.PENDING_REPAIR),
-    ("T3-under_repair",   _AS.UNDER_REPAIR,   "dispose",       409, _AS.UNDER_REPAIR),
-    ("T3-disposed",       _AS.DISPOSED,       "dispose",       409, _AS.DISPOSED),
-
+    ("T3-in_stock", _AS.IN_STOCK, "dispose", 200, _AS.DISPOSED),
+    ("T3-in_use", _AS.IN_USE, "dispose", 409, _AS.IN_USE),
+    ("T3-pending_repair", _AS.PENDING_REPAIR, "dispose", 409, _AS.PENDING_REPAIR),
+    ("T3-under_repair", _AS.UNDER_REPAIR, "dispose", 409, _AS.UNDER_REPAIR),
+    ("T3-disposed", _AS.DISPOSED, "dispose", 409, _AS.DISPOSED),
     # T4: submit_repair — legal only when the holder owns the asset
     # AND the asset is in_use. The ``in_stock`` / ``disposed`` rows have
     # no holder so they reject with 403 (RBAC-flavoured "not your
     # asset") before the FSM check ever runs; that is the production
     # behaviour we want to lock in.
-    ("T4-in_stock",       _AS.IN_STOCK,       "submit_repair", 403, _AS.IN_STOCK),
-    ("T4-in_use",         _AS.IN_USE,         "submit_repair", 201, _AS.PENDING_REPAIR),
+    ("T4-in_stock", _AS.IN_STOCK, "submit_repair", 403, _AS.IN_STOCK),
+    ("T4-in_use", _AS.IN_USE, "submit_repair", 201, _AS.PENDING_REPAIR),
     ("T4-pending_repair", _AS.PENDING_REPAIR, "submit_repair", 409, _AS.PENDING_REPAIR),
-    ("T4-under_repair",   _AS.UNDER_REPAIR,   "submit_repair", 409, _AS.UNDER_REPAIR),
-    ("T4-disposed",       _AS.DISPOSED,       "submit_repair", 403, _AS.DISPOSED),
+    ("T4-under_repair", _AS.UNDER_REPAIR, "submit_repair", 409, _AS.UNDER_REPAIR),
+    ("T4-disposed", _AS.DISPOSED, "submit_repair", 403, _AS.DISPOSED),
 ]
 
 
@@ -248,6 +243,7 @@ def _call_asset_action(
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGN_DATE.isoformat(),
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
         )
@@ -258,6 +254,7 @@ def _call_asset_action(
             json={
                 "reason": "FSM matrix test",
                 "unassignment_date": date(2026, 3, 1).isoformat(),
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
         )
@@ -299,9 +296,7 @@ class TestAssetFSMMatrix:
 
     @pytest.mark.parametrize(
         ("transition_id", "from_state", "action", "expected_status", "expected_to_state"),
-        [
-            pytest.param(*row, id=row[0]) for row in _ASSET_FSM_MATRIX
-        ],
+        [pytest.param(*row, id=row[0]) for row in _ASSET_FSM_MATRIX],
     )
     def test_asset_transition(
         self,
@@ -363,22 +358,27 @@ _REPAIR_FSM_MATRIX: list[
     tuple[str, RepairRequestStatus, _RepairAction, int, RepairRequestStatus, AssetStatus]
 ] = [
     # T6: approve — legal only from pending_review
-    ("T6-pending_review", _RS.PENDING_REVIEW, "approve",  200, _RS.UNDER_REPAIR,   _AS.UNDER_REPAIR),  # noqa: E501
-    ("T6-under_repair",   _RS.UNDER_REPAIR,   "approve",  409, _RS.UNDER_REPAIR,   _AS.UNDER_REPAIR),  # noqa: E501
-    ("T6-completed",      _RS.COMPLETED,      "approve",  409, _RS.COMPLETED,      _AS.IN_USE),
-    ("T6-rejected",       _RS.REJECTED,       "approve",  409, _RS.REJECTED,       _AS.IN_USE),
-
+    ("T6-pending_review", _RS.PENDING_REVIEW, "approve", 200, _RS.UNDER_REPAIR, _AS.UNDER_REPAIR),  # noqa: E501
+    ("T6-under_repair", _RS.UNDER_REPAIR, "approve", 409, _RS.UNDER_REPAIR, _AS.UNDER_REPAIR),  # noqa: E501
+    ("T6-completed", _RS.COMPLETED, "approve", 409, _RS.COMPLETED, _AS.IN_USE),
+    ("T6-rejected", _RS.REJECTED, "approve", 409, _RS.REJECTED, _AS.IN_USE),
     # T7: reject — legal only from pending_review
-    ("T7-pending_review", _RS.PENDING_REVIEW, "reject",   200, _RS.REJECTED,       _AS.IN_USE),
-    ("T7-under_repair",   _RS.UNDER_REPAIR,   "reject",   409, _RS.UNDER_REPAIR,   _AS.UNDER_REPAIR),  # noqa: E501
-    ("T7-completed",      _RS.COMPLETED,      "reject",   409, _RS.COMPLETED,      _AS.IN_USE),
-    ("T7-rejected",       _RS.REJECTED,       "reject",   409, _RS.REJECTED,       _AS.IN_USE),
-
+    ("T7-pending_review", _RS.PENDING_REVIEW, "reject", 200, _RS.REJECTED, _AS.IN_USE),
+    ("T7-under_repair", _RS.UNDER_REPAIR, "reject", 409, _RS.UNDER_REPAIR, _AS.UNDER_REPAIR),  # noqa: E501
+    ("T7-completed", _RS.COMPLETED, "reject", 409, _RS.COMPLETED, _AS.IN_USE),
+    ("T7-rejected", _RS.REJECTED, "reject", 409, _RS.REJECTED, _AS.IN_USE),
     # T8: complete — legal only from under_repair
-    ("T8-pending_review", _RS.PENDING_REVIEW, "complete", 409, _RS.PENDING_REVIEW, _AS.PENDING_REPAIR),  # noqa: E501
-    ("T8-under_repair",   _RS.UNDER_REPAIR,   "complete", 200, _RS.COMPLETED,      _AS.IN_USE),
-    ("T8-completed",      _RS.COMPLETED,      "complete", 409, _RS.COMPLETED,      _AS.IN_USE),
-    ("T8-rejected",       _RS.REJECTED,       "complete", 409, _RS.REJECTED,       _AS.IN_USE),
+    (
+        "T8-pending_review",
+        _RS.PENDING_REVIEW,
+        "complete",
+        409,
+        _RS.PENDING_REVIEW,
+        _AS.PENDING_REPAIR,
+    ),  # noqa: E501
+    ("T8-under_repair", _RS.UNDER_REPAIR, "complete", 200, _RS.COMPLETED, _AS.IN_USE),
+    ("T8-completed", _RS.COMPLETED, "complete", 409, _RS.COMPLETED, _AS.IN_USE),
+    ("T8-rejected", _RS.REJECTED, "complete", 409, _RS.REJECTED, _AS.IN_USE),
 ]
 
 
@@ -475,8 +475,7 @@ class TestRepairFSMMatrix:
             f"{transition_id}: expected HTTP {expected_status}, got {actual_status}"
         )
         assert rr.status is expected_to_state, (
-            f"{transition_id}: expected RR state {expected_to_state.value}, "
-            f"got {rr.status.value}"
+            f"{transition_id}: expected RR state {expected_to_state.value}, got {rr.status.value}"
         )
         assert asset.status is expected_asset_state, (
             f"{transition_id}: expected asset state {expected_asset_state.value}, "
@@ -557,6 +556,5 @@ class TestRepairFSMMatrix:
             f"{asset_status_before.value} to {asset.status.value}"
         )
         assert rr.version == rr_version_before, (
-            f"{transition_id}: forbidden call bumped RR version "
-            f"{rr_version_before} -> {rr.version}"
+            f"{transition_id}: forbidden call bumped RR version {rr_version_before} -> {rr.version}"
         )

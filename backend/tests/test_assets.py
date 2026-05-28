@@ -150,9 +150,7 @@ class TestListAssets:
             department="資訊維運部",
         )
 
-        response = client.get(
-            "/api/v1/assets?sort=asset_code", headers=auth_headers(manager)
-        )
+        response = client.get("/api/v1/assets?sort=asset_code", headers=auth_headers(manager))
 
         assert response.status_code == 200
         item = response.json()["data"][0]
@@ -729,18 +727,14 @@ class TestAssetUpdateSchema:
 
     def test_future_purchase_date_raises(self) -> None:
         with pytest.raises(ValidationError, match="purchase_date must not be in the future"):
-            AssetUpdate.model_validate(
-                {"purchase_date": "9999-01-01", "version": 1}
-            )
+            AssetUpdate.model_validate({"purchase_date": "9999-01-01", "version": 1})
 
     def test_warranty_expiry_equal_to_purchase_date_raises(self) -> None:
         # Validator says "must be after", so equal also fails. Both dates must
         # be in the past — otherwise the future-purchase-date guard would fire
         # first and this test would pass for the wrong reason once the system
         # clock crosses the chosen date.
-        with pytest.raises(
-            ValidationError, match="warranty_expiry must be after purchase_date"
-        ):
+        with pytest.raises(ValidationError, match="warranty_expiry must be after purchase_date"):
             AssetUpdate.model_validate(
                 {
                     "purchase_date": "2025-06-01",
@@ -752,9 +746,7 @@ class TestAssetUpdateSchema:
     def test_warranty_expiry_before_purchase_date_raises(self) -> None:
         # Both dates must be in the past, otherwise the future-purchase-date
         # guard fires first and the test would pass for the wrong reason.
-        with pytest.raises(
-            ValidationError, match="warranty_expiry must be after purchase_date"
-        ):
+        with pytest.raises(ValidationError, match="warranty_expiry must be after purchase_date"):
             AssetUpdate.model_validate(
                 {
                     "purchase_date": "2025-06-01",
@@ -784,6 +776,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": current_version,
             },
             headers=auth_headers(manager),
@@ -821,6 +814,29 @@ class TestAssignAsset:
         assert response.status_code == 200
         assert response.json()["data"]["location"] == "Hsinchu Fab12"
 
+    def test_assign_requires_registered_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
     def test_holder_cannot_assign(
         self,
         client: TestClient,
@@ -837,6 +853,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(holder),
@@ -856,6 +873,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
         )
@@ -887,6 +905,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -906,6 +925,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": 1,
             },
             headers=auth_headers(manager),
@@ -928,6 +948,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -970,6 +991,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": another_manager.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -992,6 +1014,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1020,6 +1043,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1042,6 +1066,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version + 1,
             },
             headers=auth_headers(manager),
@@ -1065,6 +1090,7 @@ class TestAssignAsset:
                 json={
                     "responsible_person_id": target.id,
                     "assignment_date": _ASSIGNMENT_DATE_ISO,
+                    "location": "Taipei HQ",
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),
@@ -1096,6 +1122,7 @@ class TestUnassignAsset:
             json={
                 "reason": "Employee transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": current_version,
             },
             headers=auth_headers(manager),
@@ -1138,6 +1165,33 @@ class TestUnassignAsset:
         assert response.status_code == 200
         assert response.json()["data"]["location"] == "Taipei Storage"
 
+    def test_unassign_requires_registered_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
     def test_holder_cannot_unassign(
         self,
         client: TestClient,
@@ -1156,6 +1210,7 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(holder),
@@ -1187,6 +1242,7 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1202,7 +1258,12 @@ class TestUnassignAsset:
         manager = make_user(role=UserRole.MANAGER)
         response = client.post(
             "/api/v1/assets/00000000-0000-0000-0000-000000000000/unassign",
-            json={"reason": "transfer", "unassignment_date": _UNASSIGNMENT_DATE_ISO, "version": 1},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
+                "version": 1,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 404
@@ -1225,6 +1286,7 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1250,6 +1312,7 @@ class TestUnassignAsset:
             json={
                 "reason": "",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1275,6 +1338,7 @@ class TestUnassignAsset:
             json={
                 "reason": "x" * 501,
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1300,6 +1364,7 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version + 1,
             },
             headers=auth_headers(manager),
@@ -1339,6 +1404,7 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1376,6 +1442,7 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1409,6 +1476,7 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1435,6 +1503,7 @@ class TestUnassignAsset:
                 json={
                     "reason": "transfer",
                     "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                    "location": "Taipei Storage",
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),
@@ -1743,6 +1812,7 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1773,6 +1843,7 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1797,6 +1868,7 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version + 1,
             },
             headers=auth_headers(manager),
@@ -1820,6 +1892,7 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1854,6 +1927,7 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1884,6 +1958,7 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version + 1,
             },
             headers=auth_headers(manager),
@@ -2023,6 +2098,7 @@ class TestAssignmentDateFields:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2050,6 +2126,7 @@ class TestAssignmentDateFields:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": future.isoformat(),
+                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2099,6 +2176,7 @@ class TestAssignmentDateFields:
             json={
                 "reason": "Employee transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2132,6 +2210,7 @@ class TestAssignmentDateFields:
             json={
                 "reason": "transfer",
                 "unassignment_date": future.isoformat(),
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2162,6 +2241,7 @@ class TestAssignmentDateFields:
                 "reason": "transfer",
                 # One day earlier than assignment_date.
                 "unassignment_date": "2026-04-19",
+                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2239,9 +2319,7 @@ class TestGetAssetDbError:
         with patch.object(
             db_session, "scalar", side_effect=scalar_skip_auth(SQLAlchemyError("DB down"))
         ):
-            response = client.get(
-                f"/api/v1/assets/{asset.id}", headers=auth_headers(manager)
-            )
+            response = client.get(f"/api/v1/assets/{asset.id}", headers=auth_headers(manager))
 
         assert response.status_code == 503
 
@@ -2334,9 +2412,7 @@ class TestRegisterAssetIntegrityErrors:
                 Exception("CHECK constraint failed on purchase_amount"),
             ),
         ):
-            response = client.post(
-                "/api/v1/assets", json=payload, headers=auth_headers(manager)
-            )
+            response = client.post("/api/v1/assets", json=payload, headers=auth_headers(manager))
 
         assert response.status_code == 422
         body = response.json()["error"]
@@ -2426,6 +2502,7 @@ class TestAssetMutationCommitErrors:
                 json={
                     "responsible_person_id": target.id,
                     "assignment_date": _ASSIGNMENT_DATE_ISO,
+                    "location": "Taipei HQ",
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),
@@ -2465,6 +2542,7 @@ class TestAssetMutationCommitErrors:
                 json={
                     "reason": "transfer",
                     "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                    "location": "Taipei Storage",
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),

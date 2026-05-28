@@ -480,6 +480,7 @@ export function assignAsset(assetId: string, payload: AssetAssignPayload): Asset
   asset.responsible_person_id = holder.id;
   asset.responsible_person = { id: holder.id, name: holder.name };
   asset.assignment_date = payload.assignment_date;
+  asset.location = payload.location;
   asset.unassignment_date = null;
   touchAsset(asset);
   return asset;
@@ -507,6 +508,7 @@ export function unassignAsset(assetId: string, payload: AssetUnassignPayload): A
   asset.status = "in_stock";
   asset.responsible_person_id = null;
   asset.responsible_person = null;
+  asset.location = payload.location;
   asset.unassignment_date = payload.unassignment_date;
   touchAsset(asset);
   return asset;

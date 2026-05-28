@@ -8,6 +8,7 @@ import type { UserRecord } from '@/api/users';
 export interface AssignFormValues {
   responsible_person_id?: string;
   assignment_date?: string;
+  location?: string;
   reason?: string;
   unassignment_date?: string;
 }
@@ -51,14 +52,18 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
       form.setFieldsValue({
         reason: '',
         unassignment_date: todayIsoDate,
+        location: asset.location,
       });
     } else {
-      form.setFieldValue('assignment_date', todayIsoDate);
+      form.setFieldsValue({
+        assignment_date: todayIsoDate,
+        location: asset.location,
+      });
       if (asset.responsible_person_id) {
         form.setFieldValue('responsible_person_id', asset.responsible_person_id);
       }
     }
-  }, [open, isUnassign, asset.responsible_person_id, todayIsoDate, form]);
+  }, [open, isUnassign, asset.location, asset.responsible_person_id, todayIsoDate, form]);
 
   const handleOk = async () => {
     let values: AssignFormValues;
@@ -108,6 +113,14 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
                 min={asset.assignment_date ?? undefined}
               />
             </Form.Item>
+
+            <Form.Item
+              name="location"
+              label={t('assetList.form.location')}
+              rules={[{ required: true, message: t('validation.required') }]}
+            >
+              <Input maxLength={120} />
+            </Form.Item>
           </>
         ) : (
           <>
@@ -132,6 +145,14 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
               rules={[{ required: true, message: t('validation.required') }]}
             >
               <Input type="date" max={todayIsoDate} />
+            </Form.Item>
+
+            <Form.Item
+              name="location"
+              label={t('assetList.form.location')}
+              rules={[{ required: true, message: t('validation.required') }]}
+            >
+              <Input maxLength={120} />
             </Form.Item>
           </>
         )}
