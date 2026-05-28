@@ -837,6 +837,94 @@ class TestAssignAsset:
 
         assert response.status_code == 422
 
+    def test_assign_rejects_blank_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # location is Field(min_length=1); an empty string is not the same
+        # code path as an omitted key, so guard the lower bound explicitly.
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_assign_rejects_too_long_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # location is Field(max_length=120), matching the assets.location
+        # String(120) column. Guard the upper bound so a schema/column drift
+        # surfaces as a test failure rather than a runtime DB truncation.
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "x" * 121,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_assign_does_not_mutate_owning_department(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Issue #97 / Q21 core invariant: assign updates the holder and the
+        # registered location but must NEVER sync/overwrite the asset's
+        # owning department from the holder. A future "convenience sync"
+        # regression would silently violate the design; this locks it down.
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER, department="研發中心")
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_STOCK,
+            department="資訊維運部",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Hsinchu Fab12",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["department"] == "資訊維運部"
+        assert data["responsible_person"]["department"] == "研發中心"
+
     def test_holder_cannot_assign(
         self,
         client: TestClient,
@@ -1191,6 +1279,70 @@ class TestUnassignAsset:
         )
 
         assert response.status_code == 422
+
+    def test_unassign_rejects_too_long_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Upper-bound guard mirroring the assign case (max_length=120).
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "x" * 121,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_unassign_does_not_mutate_owning_department(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Issue #97 / Q21 core invariant: unassign clears the holder and
+        # updates the registered location but must NEVER change the asset's
+        # owning department.
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER, department="研發中心")
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+            department="資訊維運部",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["department"] == "資訊維運部"
+        assert data["responsible_person"] is None
 
     def test_holder_cannot_unassign(
         self,
