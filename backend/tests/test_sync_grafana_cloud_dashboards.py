@@ -258,9 +258,10 @@ def test_main_missing_dashboards_dir_returns_2(
     The runbook is invoked from operator laptops; a typo in
     ``--dashboards-dir`` should fail loud, not look like a successful
     no-op of "zero dashboards published". Passes ``--targets dashboards``
-    explicitly because the new default (``all``) intentionally
-    soft-skips a missing dashboards dir so the alerts pass can run on
-    its own — that soft-skip path is covered by the alerts-side tests.
+    so the missing dir is hard-required; under ``--targets all`` a
+    missing dashboards dir is instead soft-skipped (so the alerts pass
+    can run on its own), and that soft-skip path is covered by the
+    alerts-side tests.
     """
     nonexistent = tmp_path / "does-not-exist"
 

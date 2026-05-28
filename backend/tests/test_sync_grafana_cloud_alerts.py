@@ -582,21 +582,6 @@ def _mock_opener_returning(status: int) -> MagicMock:
     return mock_opener
 
 
-def _mock_opener_returning_sequence(*statuses: int) -> MagicMock:
-    """Like ``_mock_opener_returning`` but rotates through statuses for
-    each call — drives the POST-then-PUT upsert dance."""
-    responses = []
-    for status in statuses:
-        response = MagicMock()
-        response.status = status
-        response.__enter__ = MagicMock(return_value=response)
-        response.__exit__ = MagicMock(return_value=False)
-        responses.append(response)
-    mock_opener = MagicMock()
-    mock_opener.open = MagicMock(side_effect=responses)
-    return mock_opener
-
-
 def _raise_http_error(code: int) -> Any:
     """Build an open() side-effect that raises an HTTPError with ``code``.
 
