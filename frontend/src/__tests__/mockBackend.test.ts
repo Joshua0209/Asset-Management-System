@@ -128,7 +128,8 @@ describe("mocks/mockBackend", () => {
     });
 
     const holders = backend.listUsers({ role: "holder" }).data;
-    const holderId = holders[0]?.id;
+    const holder = holders[0];
+    const holderId = holder?.id;
     expect(holderId).toBeTruthy();
 
     const assigned = backend.assignAsset(created.id, {
@@ -140,6 +141,10 @@ describe("mocks/mockBackend", () => {
     expect(assigned.status).toBe("in_use");
     expect(assigned.responsible_person_id).toBe(holderId);
     expect(assigned.location).toBe("Fab12");
+    // Issue #97: the mock must mirror the real backend, which always
+    // returns the holder's department on responsible_person so AssetDetail
+    // can render the "Holder Department" row in demo mode.
+    expect(assigned.responsible_person?.department).toBe(holder?.department);
 
     const unassigned = backend.unassignAsset(created.id, {
       reason: "transfer",

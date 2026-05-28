@@ -137,6 +137,7 @@ function buildResponse(
         responsible_person: {
           id: "holder-1",
           name: "Alice Chen",
+          department: "Engineering",
         },
         disposal_reason: null,
         version: 1,

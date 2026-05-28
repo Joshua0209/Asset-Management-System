@@ -19,12 +19,14 @@ export interface AssetPerson {
   name: string;
   email?: string;
   /**
-   * Holder's organizational department (`users.department`), exposed by
-   * the backend through `AssetRead.responsible_person`. Surfaced in
-   * AssetDetail next to `asset.department` so the owning-vs-using
-   * distinction (issue #97 / 10-design-decisions.md Q21) is visible.
+   * Holder's organizational department (`users.department`), always sent by
+   * the backend through `AssetRead.responsible_person` (the column is
+   * non-nullable). Required here so producers (including the mock backend)
+   * cannot drop it. Surfaced in AssetDetail next to `asset.department` so the
+   * owning-vs-using distinction (issue #97 / 10-design-decisions.md Q21) is
+   * visible.
    */
-  department?: string;
+  department: string;
 }
 
 export interface AssetRecord {
