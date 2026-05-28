@@ -78,7 +78,7 @@ Options: Auto-increment integer, UUID v4, custom business code (e.g., `AST-2026-
 
 **Q21. Does `assets.department` / `assets.location` represent the asset's own attribute, or should they sync from the assigned holder?**
 
-Context: After assigning an asset to a holder, the detail page kept showing the asset's seeded `Department / Location` rather than the holder's values. FR-13 labels these as 「使用部門」/「存放地點」, which is ambiguous — they could mean "the dept currently using it" (derived from the holder) or "the dept the asset belongs to" (an independent attribute). The schema already stores `users.department` and `assets.department` as separate columns, which implicitly commits to treating them as distinct concepts. Issue #97 surfaced this ambiguity.
+Context: After assigning an asset to a holder, the detail page kept showing the asset's seeded `Department / Location` rather than the holder's values. FR-13 labels these as 「使用部門」/「存放地點」, which is ambiguous: they could mean "the dept currently using it" (derived from the holder) or "the dept the asset belongs to" (an independent attribute). The schema already stores `users.department` and `assets.department` as separate columns, which implicitly commits to treating them as distinct concepts. Issue #97 surfaced this ambiguity.
 
 Options considered:
 
@@ -94,7 +94,7 @@ Options considered:
    Implementation footprint:
    - `07-database-design.md`, `11-asset-fsm.md`, `12-api-design.md` get the precise definitions and invariants.
    - Seed data: ~80% of held assets have `asset.department == holder.department`; ~20% deliberately differ to exercise the cross-allocation case.
-   - `AssetDetail` UI displays the asset's own `Department` and `Location` (zh-TW: 歸屬部門 / 地點) alongside a new `Holder Department` row (使用部門) sourced from `responsible_person.department`. In Chinese the 歸屬/使用 contrast pair carries the owning-vs-using distinction; in English the asymmetric `Department` / `Holder Department` pair does the same job. List, form, and filter views — which carry no holder concept — reuse the same i18n keys, since there is nothing to distinguish from there. There is no `Holder Location` row because `users.location` does not exist (and we are deliberately not adding it); assign/unassign ask managers to confirm `assets.location`, not a holder-derived location.
+   - `AssetDetail` UI displays the asset's own `Department` and `Location` (zh-TW: 歸屬部門 / 地點) alongside a new `Holder Department` row (使用部門) sourced from `responsible_person.department`. In Chinese the 歸屬/使用 contrast pair carries the owning-vs-using distinction; in English the asymmetric `Department` / `Holder Department` pair does the same job. List, form, and filter views (which carry no holder concept) reuse the same i18n keys, since there is nothing to distinguish from there. There is no `Holder Location` row because `users.location` does not exist (and we are deliberately not adding it); assign/unassign ask managers to confirm `assets.location`, not a holder-derived location.
    - `GET /assets?department=X` continues to filter on `assets.department` (owning). Filtering by holder dept is a separate future parameter, out of scope here.
 
 ---

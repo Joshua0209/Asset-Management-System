@@ -401,7 +401,7 @@ GET /api/v1/assets
 | `q` | string | Full-text search across asset_code, name, model |
 | `status` | string | Filter by status: `in_stock`, `in_use`, `pending_repair`, `under_repair`, `disposed` |
 | `category` | string | Filter by category |
-| `department` | string | Filter by the asset's **owning department** (`assets.department`). Does NOT filter on the current holder's organizational department — see `10-design-decisions.md` Q21. |
+| `department` | string | Filter by the asset's **owning department** (`assets.department`). Does NOT filter on the current holder's organizational department; see `10-design-decisions.md` Q21. |
 | `location` | string | Filter by the asset's **registered physical location** (`assets.location`). |
 | `responsible_person_id` | uuid | Filter by assigned holder |
 | `sort` | string | Sort field. Prefix `-` for descending. Default: `-created_at`. Allowed: `created_at`, `name`, `asset_code`, `purchase_date`, `status` |
