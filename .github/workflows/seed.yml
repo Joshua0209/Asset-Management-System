@@ -1,0 +1,152 @@
+name: Seed demo data (DESTRUCTIVE)
+
+# Standalone, manual-only demo-data seed. Split out of cd.yml on purpose:
+# the seed is a destructive, operator-triggered action that has nothing to
+# do with shipping code, and bolting it onto the back of the deploy chain
+# meant a reseed had to drag a full quality + build + migrate + rolling
+# deploy (~15 min, plus an unnecessary task-set roll) along with it.
+#
+# Instead of building + rendering a fresh image, this seeds against the
+# task definition the backend ECS service is ALREADY running. That image
+# is by definition deployed and migrated, so its schema matches the live
+# DB the seed writes into — a stronger version of the "seed matches the
+# running image" property the old in-CD job relied on (it rendered a
+# freshly built image that had not necessarily rolled out yet).
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        # Free-text confirmation, NOT a boolean. The old cd.yml job used a
+        # `type: boolean` input compared with `== true`; this typed-string
+        # gate is a stronger anti-fat-finger guard (you have to type the
+        # exact word) and sidesteps the boolean-coercion footgun that once
+        # silently skipped the job even when the operator ticked the box.
+        description: 'Type SEED to confirm wiping ALL data and reseeding'
+        required: true
+        type: string
+
+concurrency:
+  # Share the backend deploy lock so a seed can never run concurrently
+  # with a migration or a backend rolling deploy on the same ref. GitHub
+  # concurrency groups are repo-global by name, so this string is the same
+  # lock migrate-database + deploy-backend hold in cd.yml. A seed
+  # dispatched mid-deploy queues (does not cancel) until the deploy frees
+  # the group.
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  seed-database:
+    name: Seed demo data (DESTRUCTIVE)
+    runs-on: ubuntu-latest
+    # Fail-safe: a wrong/empty confirmation skips the job (no destructive
+    # action) rather than erroring loudly. The required-reviewer gate on
+    # the environment below is only prompted once this guard passes.
+    if: ${{ inputs.confirm == 'SEED' }}
+    # Required reviewers configured on the `production-destructive`
+    # environment (Settings -> Environments) must approve before this job
+    # starts, so the operator who clicks `Run workflow` cannot also
+    # self-approve the wipe. Referenced by name only; if it does not exist
+    # GitHub auto-creates an UNPROTECTED environment, so add the reviewers
+    # in repo settings before relying on the gate.
+    environment: production-destructive
+    # The seed completes in seconds, but `aws ecs wait tasks-stopped` can
+    # poll for ~10 min before failing loudly if the task hangs.
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Run seed task against the running backend service
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_SERVICE_BACKEND: ${{ vars.ECS_SERVICE_BACKEND }}
+          ECS_MIGRATION_SUBNETS: ${{ vars.ECS_MIGRATION_SUBNETS }}
+          ECS_MIGRATION_SECURITY_GROUPS: ${{ vars.ECS_MIGRATION_SECURITY_GROUPS }}
+        run: |
+          set -euo pipefail
+          # run-task is a standalone launch (not tied to the service), so it
+          # needs its own awsvpc network config. Reuse the migration
+          # subnets/SGs — the same DB-reachable private network the
+          # migrate-database job runs in.
+          if [ -z "${ECS_MIGRATION_SUBNETS}" ] || [ -z "${ECS_MIGRATION_SECURITY_GROUPS}" ]; then
+            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
+            exit 1
+          fi
+          # Shape check: a CSV would silently produce broken JSON at jq -cn
+          # time and an aws-cli error that doesn't name the variable.
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SUBNETS}"; then
+            echo "::error::ECS_MIGRATION_SUBNETS must be a JSON array (got: ${ECS_MIGRATION_SUBNETS})"
+            exit 1
+          fi
+          if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"${ECS_MIGRATION_SECURITY_GROUPS}"; then
+            echo "::error::ECS_MIGRATION_SECURITY_GROUPS must be a JSON array (got: ${ECS_MIGRATION_SECURITY_GROUPS})"
+            exit 1
+          fi
+          network_config=$(jq -cn \
+            --argjson subnets "${ECS_MIGRATION_SUBNETS}" \
+            --argjson sgs "${ECS_MIGRATION_SECURITY_GROUPS}" \
+            '{awsvpcConfiguration: {subnets: $subnets, securityGroups: $sgs, assignPublicIp: "DISABLED"}}')
+          # Reuse the task definition the backend service is actively
+          # running. It already carries the deployed image (schema-consistent
+          # with the live DB) plus the correct secrets/env — no render or
+          # rebuild needed, which is the whole point of splitting this out.
+          task_def_arn=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE_BACKEND}" \
+            --query 'services[0].taskDefinition' --output text)
+          if [ -z "$task_def_arn" ] || [ "$task_def_arn" = "None" ]; then
+            echo "::error::Could not resolve the running task definition for service ${ECS_SERVICE_BACKEND} on cluster ${ECS_CLUSTER}. Is the service deployed?"
+            exit 1
+          fi
+          echo "Seeding against running task definition: $task_def_arn"
+          # AMS_SEED_CONFIRM=1 is the in-script safety gate (see
+          # scripts/seed_demo_data.py); the seed aborts without it even when
+          # invoked directly. containerOverrides.environment is additive, so
+          # the task-def's own env block survives this override.
+          overrides=$(jq -cn '{
+            containerOverrides: [{
+              name: "backend",
+              command: ["python", "scripts/seed_demo_data.py"],
+              environment: [{name: "AMS_SEED_CONFIRM", value: "1"}]
+            }]
+          }')
+          # Capture the full run-task JSON: ECS returns HTTP 200 with
+          # `tasks: []` + a populated `failures[]` when it cannot launch
+          # (capacity exhaustion, ENI shortage, IAM denial, image pull). A
+          # bare `--query 'tasks[0].taskArn' --output text` would emit "None"
+          # and the downstream wait would fail with an opaque "task not found".
+          run_task_output=$(aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --task-definition "${task_def_arn}" \
+            --launch-type FARGATE \
+            --network-configuration "${network_config}" \
+            --overrides "${overrides}" \
+            --output json)
+          if [ "$(jq '.failures | length' <<<"$run_task_output")" -gt 0 ]; then
+            failures_compact=$(jq -c '.failures' <<<"$run_task_output")
+            echo "::error::run-task could not launch the seed task. failures: ${failures_compact}"
+            exit 1
+          fi
+          task_arn=$(jq -r '.tasks[0].taskArn' <<<"$run_task_output")
+          echo "Seed task ARN: $task_arn"
+          # `wait || true` so a wait timeout or TaskFailedToStart falls
+          # through to the describe-tasks dump below instead of aborting on
+          # `set -e` with a bare "Max attempts exceeded" and no diagnostics.
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "$task_arn" || true
+          task_state=$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "$task_arn" --output json)
+          last_status=$(jq -r '.tasks[0].lastStatus // "UNKNOWN"' <<<"$task_state")
+          exit_code=$(jq -r '.tasks[0].containers[0].exitCode // "null"' <<<"$task_state")
+          stopped_reason=$(jq -r '.tasks[0].stoppedReason // "none"' <<<"$task_state")
+          container_reason=$(jq -r '.tasks[0].containers[0].reason // "none"' <<<"$task_state")
+          echo "Seed task final state: lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}"
+          if [ "$last_status" != "STOPPED" ] || [ "$exit_code" != "0" ]; then
+            echo "::error::Seed failed. lastStatus=${last_status} exitCode=${exit_code} stoppedReason=${stopped_reason} containerReason=${container_reason}. Check CloudWatch logs for task $task_arn."
+            exit 1
+          fi

@@ -261,12 +261,13 @@ other than ECS tasks (e.g. attaching them to an EC2 instance).
 
 ## Required: configure the `production-destructive` environment
 
-The `seed-database` workflow job is gated on a GitHub environment of
+The `seed-database` job in the seed workflow
+(`.github/workflows/seed.yml`) is gated on a GitHub environment of
 this name (Settings → Environments). The environment provides a
 manual-approval gate on top of the in-script `AMS_SEED_CONFIRM=1`
-check: a workflow_dispatch with `run_seed` ticked queues the job in a
-`waiting` state until one of the configured required reviewers
-clicks Approve. Without the reviewer list, a single operator with
+check: a workflow_dispatch with `SEED` typed into the confirmation
+field queues the job in a `waiting` state until one of the configured
+required reviewers clicks Approve. Without the reviewer list, a single operator with
 dispatch access can wipe all four core tables; with it, the operator
 who clicks `Run workflow` cannot also self-approve.
 
