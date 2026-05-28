@@ -25,7 +25,7 @@
             },
             "statistic": "Average",
             "period": "60",
-            "region": "default"
+            "region": "ap-east-2"
           }
         },
         {
@@ -75,7 +75,7 @@
             },
             "statistic": "Average",
             "period": "60",
-            "region": "default"
+            "region": "ap-east-2"
           }
         },
         {

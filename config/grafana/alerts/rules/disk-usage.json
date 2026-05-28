@@ -22,7 +22,7 @@
             "dimensions": {"DBInstanceIdentifier": "ams-database"},
             "statistic": "Average",
             "period": "300",
-            "region": "default"
+            "region": "ap-east-2"
           }
         },
         {
@@ -69,7 +69,7 @@
             "dimensions": {"DBInstanceIdentifier": "ams-database"},
             "statistic": "Average",
             "period": "300",
-            "region": "default"
+            "region": "ap-east-2"
           }
         },
         {
