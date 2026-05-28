@@ -50,6 +50,19 @@ change without a code PR. The complete runbook lives in
 fire after `for: 5m` (10m for disk, 1m for ALB health); critical rules
 fire faster (2m / 5m / 3m respectively).
 
+The percentage/duration thresholds above map directly to the rule
+expressions, except for two rows that CloudWatch reports as absolute
+values rather than percentages, so the rule thresholds carry an
+instance-size assumption:
+
+- **DB connections** alert on the raw `DatabaseConnections` count at
+  70% / 90% of an assumed `max_connections` ≈ 60 (i.e. 42 / 54).
+- **Disk usage** alerts on `FreeStorageSpace` falling below 30% / 15%
+  free of an assumed 20 GiB `AllocatedStorage` (i.e. ≈ 6 GiB / 3 GiB).
+
+Recompute these two thresholds if the RDS instance class or allocated
+storage changes; the others are size-independent.
+
 ---
 
 ## Backup & Recovery
