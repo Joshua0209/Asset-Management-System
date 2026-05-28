@@ -262,6 +262,49 @@ def load_alert_resources(
     )
 
 
+def find_receiver_binding_errors(resources: AlertResources) -> list[str]:
+    """Return one error string per policy/rule that routes to a receiver
+    the loaded contact point does not define.
+
+    Grafana routes by receiver *name*: the root policy's ``receiver`` and
+    each rule's ``notification_settings.receiver`` must equal the contact
+    point's ``name``. A rule naming a nonexistent receiver still upserts
+    with HTTP 2xx but silently never delivers — the same "provisions fine,
+    never fires" class the rest of this script guards against, except here
+    it is "fires but emails nobody". A future edit that renames the contact
+    point without updating the rules would pass every HTTP check yet page
+    no one, so cross-check the names before publishing.
+
+    A rule with no ``notification_settings.receiver`` is fine: it inherits
+    routing from the policy tree. Returns ``[]`` when ``contact_point`` is
+    ``None`` (that missing-file case is already reported as malformed).
+    """
+    if resources.contact_point is None:
+        return []
+    known = {
+        name
+        for name in (resources.contact_point.get("name"),)
+        if name is not None
+    }
+    errors: list[str] = []
+    policy = resources.notification_policy
+    if policy is not None and policy.get("receiver") not in known:
+        errors.append(
+            f"notification policy routes to receiver "
+            f"{policy.get('receiver')!r} but no contact point defines it "
+            f"(known: {sorted(known)})"
+        )
+    for rule in resources.rules:
+        receiver = rule.get("notification_settings", {}).get("receiver")
+        if receiver is not None and receiver not in known:
+            errors.append(
+                f"rule {rule.get('uid', '<unknown>')!r} routes to receiver "
+                f"{receiver!r} but no contact point defines it "
+                f"(known: {sorted(known)})"
+            )
+    return errors
+
+
 # Env var feeding ``resolve_recipients`` in live mode. Comma-separated.
 # Stored as a GitHub secret so it stays off public PR diffs (recipients
 # leak the alerting team's address list otherwise).
@@ -964,6 +1007,15 @@ def _run_alerts_pass(args: argparse.Namespace, api_key: str) -> bool:
         and not malformed
     ):
         sys.stderr.write(f"No alert resources found under {args.alerts_dir}\n")
+        return False
+
+    # Cross-check receiver names before doing any work: a rule or policy
+    # pointing at a receiver the contact point does not define provisions
+    # 2xx but never delivers. Fail both the dry-run gate and live publish.
+    binding_errors = find_receiver_binding_errors(resources)
+    if binding_errors:
+        for err in binding_errors:
+            sys.stderr.write(f"FAIL: {err}\n")
         return False
 
     walkable: list[dict[str, Any]] = list(resources.rules)

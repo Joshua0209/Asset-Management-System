@@ -1223,3 +1223,94 @@ def test_shipped_backend_rules_query_the_emitted_metric_name() -> None:
         for query in _datasource_queries(rule):
             expr = query.get("model", {}).get("expr", "")
             assert "http_server_request_duration" not in expr, rule["uid"]
+
+
+def test_shipped_rules_and_policy_route_to_a_defined_receiver() -> None:
+    """Every shipped rule + the root policy must route to a receiver the
+    contact point defines. A rename mismatch would provision 2xx but
+    silently email nobody."""
+    resources, malformed = sync_module.load_alert_resources(_REAL_ALERTS_DIR)
+    assert malformed == [], malformed
+    assert sync_module.find_receiver_binding_errors(resources) == []
+
+
+# ---------------------------------------------------------------------------
+# find_receiver_binding_errors: rules/policy must name a receiver the
+# contact point defines, else they upsert 2xx but deliver nothing.
+# ---------------------------------------------------------------------------
+
+
+def _alert_resources(
+    *,
+    contact_point: dict[str, Any] | None = _CONTACT_POINT_TEMPLATE,
+    notification_policy: dict[str, Any] | None = _NOTIFICATION_POLICY,
+    rules: tuple[dict[str, Any], ...] = (),
+) -> Any:
+    return sync_module.AlertResources(
+        contact_point=contact_point,
+        notification_policy=notification_policy,
+        rules=rules,
+    )
+
+
+def test_find_receiver_binding_errors_clean_config_returns_empty() -> None:
+    resources = _alert_resources(rules=(_make_rule("ams-rule-a"),))
+    assert sync_module.find_receiver_binding_errors(resources) == []
+
+
+def test_find_receiver_binding_errors_flags_rule_with_unknown_receiver() -> None:
+    bad_rule = _make_rule("ams-rule-typo")
+    bad_rule["notification_settings"] = {"receiver": "email-defualt"}
+    resources = _alert_resources(rules=(_make_rule("ams-rule-ok"), bad_rule))
+
+    errors = sync_module.find_receiver_binding_errors(resources)
+
+    assert len(errors) == 1
+    assert "ams-rule-typo" in errors[0]
+    assert "email-defualt" in errors[0]
+
+
+def test_find_receiver_binding_errors_flags_policy_with_unknown_receiver() -> None:
+    resources = _alert_resources(
+        notification_policy={"receiver": "pagerduty-default"},
+    )
+
+    errors = sync_module.find_receiver_binding_errors(resources)
+
+    assert len(errors) == 1
+    assert "pagerduty-default" in errors[0]
+
+
+def test_find_receiver_binding_errors_ignores_rule_without_explicit_receiver() -> None:
+    """A rule with no notification_settings.receiver inherits routing from
+    the policy tree — that is valid, not a binding error."""
+    inheriting = _make_rule("ams-rule-inherits")
+    inheriting.pop("notification_settings", None)
+    resources = _alert_resources(rules=(inheriting,))
+    assert sync_module.find_receiver_binding_errors(resources) == []
+
+
+def test_find_receiver_binding_errors_none_contact_point_returns_empty() -> None:
+    """A missing contact point is already reported as malformed; the
+    binding check must not double-report it as a routing error."""
+    resources = _alert_resources(contact_point=None, rules=(_make_rule("x"),))
+    assert sync_module.find_receiver_binding_errors(resources) == []
+
+
+def test_main_alerts_dry_run_fails_on_receiver_mismatch(
+    tmp_path: Path,
+) -> None:
+    """The PR dry-run gate must reject a rule that routes to a receiver the
+    contact point does not define, before it reaches the live deploy."""
+    bad_rule = _make_rule("ams-rule-typo")
+    bad_rule["notification_settings"] = {"receiver": "nope"}
+    alerts_dir = _write_alerts_layout(
+        tmp_path / "alerts",
+        rule_files={"bad.json": {"rules": [bad_rule]}},
+    )
+
+    exit_code = sync_module.main(
+        ["--targets", "alerts", "--alerts-dir", str(alerts_dir), "--dry-run"]
+    )
+
+    assert exit_code == 1
