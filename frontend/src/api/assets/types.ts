@@ -18,6 +18,13 @@ export interface AssetPerson {
   id: string;
   name: string;
   email?: string;
+  /**
+   * Holder's organizational department (`users.department`), exposed by
+   * the backend through `AssetRead.responsible_person`. Surfaced in
+   * AssetDetail next to `asset.department` so the owning-vs-using
+   * distinction (issue #97 / 10-design-decisions.md Q21) is visible.
+   */
+  department?: string;
 }
 
 export interface AssetRecord {

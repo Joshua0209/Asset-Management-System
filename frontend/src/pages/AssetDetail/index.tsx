@@ -225,6 +225,9 @@ const AssetDetail: React.FC = () => {
           <Descriptions.Item label={t('assetList.detail.holder')}>
             {asset.responsible_person?.name ?? t('assetList.detail.unassigned')}
           </Descriptions.Item>
+          <Descriptions.Item label={t('assetList.detail.holderDepartment')}>
+            {asset.responsible_person?.department ?? t('assetList.detail.notAvailable')}
+          </Descriptions.Item>
           <Descriptions.Item label={t('assetList.detail.assignmentDate')}>
             <span className="tabular-nums">{formatDateValue(asset.assignment_date, t)}</span>
           </Descriptions.Item>

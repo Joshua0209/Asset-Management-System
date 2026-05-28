@@ -106,6 +106,8 @@ const mockAsset: AssetRecord = {
   responsible_person: {
     id: "holder-1",
     name: "Alice Chen",
+    email: "alice@example.com",
+    department: "Engineering",
   },
   disposal_reason: null,
   version: 1,
@@ -170,6 +172,31 @@ describe("AssetDetail", () => {
     expect(screen.getByText("Dell Latitude 7440")).toBeInTheDocument();
     expect(screen.getByText("Intel Core i7, 16GB RAM, 512GB SSD")).toBeInTheDocument();
     expect(screen.getByText("Dell")).toBeInTheDocument();
+  });
+
+  it("shows asset department and holder department as separate rows", async () => {
+    // Issue #97 / 10-design-decisions.md Q21: asset.department (owning)
+    // and responsible_person.department (organisational) are distinct
+    // concepts. The detail page must surface both so the asset manager
+    // can see when an asset is cross-allocated.
+    mockGetAsset.mockResolvedValueOnce(mockAsset);
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByText("Asset Detail - AST-2026-00001")).toBeInTheDocument();
+    });
+
+    // Asset's owning department (from asset.department). The label
+    // appears twice — once in the Descriptions list and once in the
+    // hidden edit-asset form — so use getAllByText.
+    expect(screen.getAllByText("Asset Department").length).toBeGreaterThan(0);
+    expect(screen.getByText("IT")).toBeInTheDocument();
+
+    // Holder's organisational department (from responsible_person.department).
+    // Only rendered in the Descriptions list, so getByText is unique.
+    expect(screen.getByText("Holder Department")).toBeInTheDocument();
+    expect(screen.getByText("Engineering")).toBeInTheDocument();
   });
 
   it("renders 404 when asset is not found", async () => {
