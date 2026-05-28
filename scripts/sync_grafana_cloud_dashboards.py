@@ -94,13 +94,12 @@ HTTP_TIMEOUT_SECONDS = 30
 # on a network outage). Operator gets the partial-failure summary
 # immediately instead of after a long CI hang.
 #
-# Raised from 2 to 3 (PR review LOW): with threshold 2, a single bad
-# dashboard transient at iteration 1 followed by a coincidental
-# transient at iteration 2 aborts the remaining four dashboards even
-# though GC is reachable. Threshold 3 keeps the bound on the
-# pathological-outage hang at 3 × 30s = 90s (still well under CI job
-# step timeouts) while letting an isolated double-blip recover via
-# the counter-reset on the next non-599 status.
+# 3 balances two failure modes: a lower limit lets a couple of isolated
+# transient blips (with GC actually reachable) abort the rest of the
+# batch, while a higher limit lengthens the worst-case hang on a true
+# outage. At 3 the outage bound is 3 × 30s = 90s (under CI step
+# timeouts), and an isolated double-blip still recovers via the
+# counter-reset on the next non-599 status.
 _CONSECUTIVE_TRANSPORT_FAIL_LIMIT = 3
 
 # Placeholder UIDs the dashboard JSONs use (left over from the docker-
@@ -847,6 +846,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"Dashboards directory not found: {args.dashboards_dir}\n"
             )
             return 2
+        sys.stderr.write(
+            f"WARNING: --targets all but {args.dashboards_dir} not found; "
+            "skipping the dashboards pass.\n"
+        )
         run_dashboards = False
     # Same skip-vs-error split for the alerts dir. Existing dashboard-
     # only tests don't pass --alerts-dir and default to the repo
@@ -859,6 +862,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"Alerts directory not found: {args.alerts_dir}\n"
             )
             return 2
+        sys.stderr.write(
+            f"WARNING: --targets all but {args.alerts_dir} not found; "
+            "skipping the alerts pass.\n"
+        )
         run_alerts = False
 
     if not run_dashboards and not run_alerts:
@@ -882,7 +889,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.stack_url:
             sys.stderr.write("--stack-url is required when not in --dry-run mode\n")
             raise SystemExit(2)
-        # M3 finding from the third review: refuse to send the bearer token
+        # Refuse to send the bearer token
         # over plaintext OR to an unexpected protocol scheme. Without this
         # guard, a mistyped --stack-url http://... (or an env-driven runbook
         # that lost the 's') sends Authorization: Bearer <GC_API_KEY> in
