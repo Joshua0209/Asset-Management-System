@@ -43,27 +43,25 @@ jobs:
     uses: ./.github/workflows/ci-quality.yml
     secrets: inherit
 
-  # Gated behind every quality + security job above. Runs only on push to
-  # main or manual dispatch. Each job carries its own OIDC token grant so
-  # the rest of the workflow has no AWS-assume capability.
+  # Builds + pushes both images to ECR. Deliberately does NOT depend on the
+  # quality gate: a reusable-workflow call only surfaces its path-filter
+  # outputs once the WHOLE workflow (incl. E2E + SonarQube, ~3.5 min) has
+  # finished, so a `needs: [quality]` would serialize this ~1m20s build
+  # behind the gate. Running it unconditionally in parallel overlaps the
+  # build with the quality jobs and shaves that ~1m20s off the critical
+  # path. The quality gate is preserved on the deploy jobs below, which now
+  # each assert `needs.quality.result == 'success'` explicitly - previously
+  # that came for free because this job depended on quality and the deploys
+  # depended on this job. The one cost: a dashboards-only push to main now
+  # builds both images for nothing (the per-side path filter is not visible
+  # this early), but the image is an immutable :sha tag that simply never
+  # deploys and ECR lifecycle rules prune it. cd.yml only fires on push to
+  # main + workflow_dispatch, so no event guard is needed here. Each job
+  # carries its own OIDC token grant so the rest of the workflow has no
+  # AWS-assume capability.
   build-and-push:
     name: Build and push images to ECR
     runs-on: ubuntu-latest
-    needs: [quality]
-    # cd.yml only fires on main pushes + workflow_dispatch, so the
-    # `github.ref == 'refs/heads/main'` clause that used to live here is
-    # implicit. On a push event we still gate the per-side filter so a
-    # dashboards-only push to main doesn't build container images for
-    # nothing. workflow_dispatch always builds both sides.
-    if: |
-      needs.quality.result == 'success' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        (
-          github.event_name == 'push' &&
-          (needs.quality.outputs.backend == 'true' || needs.quality.outputs.frontend == 'true')
-        )
-      )
     # Cross-run serialization of image builds for the same branch. The
     # group is `build-` (not `deploy-`) so this lock does NOT block the
     # deploy jobs below - previously they all shared the same `deploy-`
@@ -82,28 +80,28 @@ jobs:
       backend-image: ${{ steps.meta.outputs.backend-image }}
       frontend-image: ${{ steps.meta.outputs.frontend-image }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Configure AWS credentials (OIDC)
         # Federated identity - no AWS_ACCESS_KEY_ID secret. The role's trust
         # policy restricts assumption to this repo + branch (see
         # infra/ecs/README.md). Tokens are short-lived (1 hour default).
-        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: ecr-login
-        uses: aws-actions/amazon-ecr-login@4625ce35226a7557230889aae2f52eb50ec3dcda # v2.0.1
+        uses: aws-actions/amazon-ecr-login@fa648b43de3d4d023bcb3f89ed6940096949c419 # v2.1.5
 
       - name: Set up Docker Buildx
         # Buildx enables multi-platform builds and a more efficient cache
         # backend than the legacy builder.
-        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db # v3.6.1
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       - name: Build and push backend image
-        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: ./backend
           file: ./backend/Dockerfile.prod
@@ -120,7 +118,7 @@ jobs:
           cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY_BACKEND }}:cache,mode=max
 
       - name: Build and push frontend image
-        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: ./frontend
           file: ./frontend/Dockerfile.prod
@@ -214,8 +212,13 @@ jobs:
     # had eliminated by adding the explicit form to deploy-backend.
     # The fix has to land here too; otherwise every backend-only main
     # push silently no-ops the deploy.
+    # `needs.quality.result == 'success'` is now load-bearing: build-and-push
+    # no longer depends on quality (it builds in parallel), so a green
+    # build-and-push no longer implies the gate passed. Without this check a
+    # failing test or security scan on main would still run migrations.
     if: |
       always() &&
+      needs.quality.result == 'success' &&
       needs.build-and-push.result == 'success' &&
       needs.quality.outputs.alembic == 'true'
     # Shares `deploy-backend-` with deploy-backend so two queued main
@@ -237,10 +240,10 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -396,8 +399,15 @@ jobs:
     # so a permissive `!contains(failure/cancelled)` would let the deploy
     # run on PRs with no image to deploy. Same for migrate-database: it
     # owns the main+backend gate and a failed migration MUST block deploy.
+    #
+    # `needs.quality.result == 'success'` is now required directly: since
+    # build-and-push builds in parallel with (no longer behind) the quality
+    # gate, a green build-and-push no longer implies the gate passed. The
+    # migrate-database hop also carries it, but deploy-backend can run when
+    # migrate is skipped (code-only deploy), so the check must live here too.
     if: |
       always() &&
+      needs.quality.result == 'success' &&
       needs.build-and-push.result == 'success' &&
       needs.migrate-database.result != 'failure' &&
       needs.migrate-database.result != 'cancelled' &&
@@ -415,10 +425,10 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -466,7 +476,7 @@ jobs:
           image: ${{ needs.build-and-push.outputs.backend-image }}
 
       - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@817071763d92bbe2ae01a5ec32f1d999dd2293a0 # v2.1.0
+        uses: aws-actions/amazon-ecs-deploy-task-definition@a310a830f5c14e583e35d84e4e1ec7dd177c3c9c # v2.6.2
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}
           service: ${{ vars.ECS_SERVICE_BACKEND }}
@@ -488,13 +498,14 @@ jobs:
     # than `!contains(failure/cancelled)`) is what keeps PR runs from
     # rolling a deploy with no image to ship.
     #
-    # `sonarqube` is now a direct dependency (previously it gated
-    # build-and-push, which transitively gated this job). Decoupled so
-    # the image build can run in parallel with the SonarQube scan; the
-    # quality gate is preserved by checking `sonarqube.result == 'success'`
-    # here. deploy-backend inherits the gate via migrate-database.
+    # `needs.quality.result == 'success'` is the full quality + security +
+    # SonarQube gate (all of it runs inside the reusable `quality` workflow).
+    # It is now required directly because build-and-push runs in parallel
+    # with the gate instead of behind it, so a green build no longer implies
+    # the gate passed.
     if: |
       always() &&
+      needs.quality.result == 'success' &&
       needs.build-and-push.result == 'success' &&
       needs.quality.outputs.frontend == 'true'
     # Per-service concurrency: see deploy-backend above. Separate group
@@ -507,10 +518,10 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -535,7 +546,7 @@ jobs:
           image: ${{ needs.build-and-push.outputs.frontend-image }}
 
       - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@817071763d92bbe2ae01a5ec32f1d999dd2293a0 # v2.1.0
+        uses: aws-actions/amazon-ecs-deploy-task-definition@a310a830f5c14e583e35d84e4e1ec7dd177c3c9c # v2.6.2
         with:
           task-definition: ${{ steps.render.outputs.task-definition }}
           service: ${{ vars.ECS_SERVICE_FRONTEND }}
@@ -602,10 +613,10 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@5579c002bb4778aa43395ef1df492868a9a1c83f # v4.0.2
+        uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -754,8 +765,8 @@ jobs:
       group: sync-dashboards-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
       - name: Sync dashboards to Grafana Cloud
