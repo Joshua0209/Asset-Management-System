@@ -237,3 +237,54 @@ no cross-tenant data), but a future production hand-off should:
 
 Until that hand-off, treat the GC stack itself as part of the production
 trust boundary and rotate the GC API key per the schedule in Step 6.
+
+## Alert provisioning
+
+The same `scripts/sync_grafana_cloud_dashboards.py` script also provisions
+the email-based alerting setup described in
+`docs/system-design/08-deployment-operations.md`:
+
+- One contact point (`email-default`) defined in
+  `config/grafana/alerts/contact-points.json`.
+- One root notification policy in
+  `config/grafana/alerts/notification-policy.json`.
+- 14 alert rules (7 thresholds × warning + critical) under
+  `config/grafana/alerts/rules/`.
+
+Recipient configuration: the email addresses are NOT committed. The sync
+script reads them from the `GC_ALERT_EMAIL_RECIPIENTS` GitHub secret
+(comma-separated for multiple recipients) and substitutes them into the
+contact-point template at deploy time. Local runs can pass `--recipients
+<csv>` to override.
+
+**Folder prerequisite:** all rules reference `folderUID: "ams-production"`.
+Create this folder once before the first sync (via the GC UI: Alerting →
+Alert rules → New folder → set UID = `ams-production`). The script does
+not create folders; missing folder = 404 on every alert-rule POST.
+
+**Runbook command** (the `--targets all` flag is required — the
+script's default is `dashboards` for backward compatibility with
+pre-alerts operator runs):
+
+```bash
+GRAFANA_CLOUD_API_KEY=<grafana-cloud-api-key> \
+GC_CLOUDWATCH_UID=<see-step-5> \
+GC_ALERT_EMAIL_RECIPIENTS="ops@example.com,oncall@example.com" \
+  python scripts/sync_grafana_cloud_dashboards.py \
+    --targets all \
+    --stack-url https://<your-stack-slug>.grafana.net
+```
+
+To re-sync only alerts (skip dashboards) after editing a threshold:
+
+```bash
+... python scripts/sync_grafana_cloud_dashboards.py \
+    --targets alerts --stack-url https://<your-stack-slug>.grafana.net
+```
+
+**Changing the recipients without a code PR:** update the
+`GC_ALERT_EMAIL_RECIPIENTS` GitHub Actions secret (Settings → Secrets and
+variables → Actions) and either wait for the next push to `main` that
+touches `config/grafana/**` or trigger the CI workflow manually
+(`gh workflow run ci.yml`). The contact point is upserted on every run
+so the new address list lands within one workflow.

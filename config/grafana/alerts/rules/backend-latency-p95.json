@@ -1,0 +1,92 @@
+{
+  "rules": [
+    {
+      "uid": "ams-backend-latency-p95-warning",
+      "title": "Backend p95 latency above 500ms",
+      "ruleGroup": "warning",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "5m",
+      "noDataState": "NoData",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_duration_seconds_bucket[5m])))",
+            "intervalMs": 60000,
+            "maxDataPoints": 43200
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [0.5]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "warning", "service": "ams-backend"},
+      "annotations": {
+        "summary": "Backend p95 latency >500ms for 5m",
+        "description": "p95 request latency is {{ humanizeDuration $values.A.Value }}; warning threshold 500ms per docs/system-design/08-deployment-operations.md."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    },
+    {
+      "uid": "ams-backend-latency-p95-critical",
+      "title": "Backend p95 latency above 2s",
+      "ruleGroup": "critical",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "2m",
+      "noDataState": "NoData",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "prometheus",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_duration_seconds_bucket[5m])))",
+            "intervalMs": 60000,
+            "maxDataPoints": 43200
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [2.0]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "critical", "service": "ams-backend"},
+      "annotations": {
+        "summary": "Backend p95 latency >2s for 2m",
+        "description": "p95 request latency is {{ humanizeDuration $values.A.Value }}; critical threshold 2s per docs/system-design/08-deployment-operations.md."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    }
+  ]
+}

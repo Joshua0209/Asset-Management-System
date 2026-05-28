@@ -1,0 +1,98 @@
+{
+  "rules": [
+    {
+      "uid": "ams-db-replication-lag-warning",
+      "title": "RDS replication lag above 1s",
+      "ruleGroup": "warning",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "5m",
+      "noDataState": "OK",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "cloudwatch",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "namespace": "AWS/RDS",
+            "metricName": "ReplicaLag",
+            "dimensions": {"DBInstanceIdentifier": "ams-database"},
+            "statistic": "Average",
+            "period": "60",
+            "region": "ap-east-2"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [1]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "warning", "service": "ams-db"},
+      "annotations": {
+        "summary": "RDS replication lag >1s for 5m",
+        "description": "Replication lag is {{ $values.A.Value }}s; warning threshold 1s. noDataState=OK because a single-AZ deployment without a replica legitimately reports no data here."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    },
+    {
+      "uid": "ams-db-replication-lag-critical",
+      "title": "RDS replication lag above 5s",
+      "ruleGroup": "critical",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "2m",
+      "noDataState": "OK",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "cloudwatch",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "namespace": "AWS/RDS",
+            "metricName": "ReplicaLag",
+            "dimensions": {"DBInstanceIdentifier": "ams-database"},
+            "statistic": "Average",
+            "period": "60",
+            "region": "ap-east-2"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [5]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "critical", "service": "ams-db"},
+      "annotations": {
+        "summary": "RDS replication lag >5s for 2m",
+        "description": "Replication lag is {{ $values.A.Value }}s; critical threshold 5s. Investigate replica."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    }
+  ]
+}

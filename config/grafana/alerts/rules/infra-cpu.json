@@ -1,0 +1,104 @@
+{
+  "rules": [
+    {
+      "uid": "ams-infra-cpu-warning",
+      "title": "ECS CPU utilization above 70%",
+      "ruleGroup": "warning",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "5m",
+      "noDataState": "NoData",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "cloudwatch",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "namespace": "AWS/ECS",
+            "metricName": "CPUUtilization",
+            "dimensions": {
+              "ClusterName": "ams-prod",
+              "ServiceName": "ams-backend"
+            },
+            "statistic": "Average",
+            "period": "60",
+            "region": "ap-east-2"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [70]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "warning", "service": "ams-backend"},
+      "annotations": {
+        "summary": "ECS CPU >70% for 5m",
+        "description": "Average ECS CPU utilization is {{ $values.A.Value }}%; warning threshold 70%. Consider scaling out. Scoped to the ams-backend service only; the ams-frontend service is nginx static-serve and is not CPU-bound, so it is intentionally not alerted."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    },
+    {
+      "uid": "ams-infra-cpu-critical",
+      "title": "ECS CPU utilization above 90%",
+      "ruleGroup": "critical",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "2m",
+      "noDataState": "NoData",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "cloudwatch",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "namespace": "AWS/ECS",
+            "metricName": "CPUUtilization",
+            "dimensions": {
+              "ClusterName": "ams-prod",
+              "ServiceName": "ams-backend"
+            },
+            "statistic": "Average",
+            "period": "60",
+            "region": "ap-east-2"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "gt", "params": [90]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "critical", "service": "ams-backend"},
+      "annotations": {
+        "summary": "ECS CPU >90% for 2m",
+        "description": "Average ECS CPU utilization is {{ $values.A.Value }}%; critical threshold 90%. Scale out immediately. Scoped to the ams-backend service only; the ams-frontend service is nginx static-serve and is not CPU-bound, so it is intentionally not alerted."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    }
+  ]
+}

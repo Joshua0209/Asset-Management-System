@@ -1,0 +1,98 @@
+{
+  "rules": [
+    {
+      "uid": "ams-disk-usage-warning",
+      "title": "RDS free storage below 30%",
+      "ruleGroup": "warning",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "10m",
+      "noDataState": "NoData",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "cloudwatch",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "namespace": "AWS/RDS",
+            "metricName": "FreeStorageSpace",
+            "dimensions": {"DBInstanceIdentifier": "ams-database"},
+            "statistic": "Average",
+            "period": "300",
+            "region": "ap-east-2"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "lt", "params": [6442450944]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "warning", "service": "ams-db"},
+      "annotations": {
+        "summary": "RDS free storage <30% of allocated",
+        "description": "Free storage is {{ humanizeBytes $values.A.Value }}. Warning at 30% free (~6 GiB on the default 20 GiB allocated). Adjust the threshold if the AllocatedStorage size differs."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    },
+    {
+      "uid": "ams-disk-usage-critical",
+      "title": "RDS free storage below 15%",
+      "ruleGroup": "critical",
+      "folderUID": "ams-production",
+      "orgID": 1,
+      "condition": "C",
+      "for": "5m",
+      "noDataState": "NoData",
+      "execErrState": "OK",
+      "data": [
+        {
+          "refId": "A",
+          "datasourceUid": "cloudwatch",
+          "relativeTimeRange": {"from": 600, "to": 0},
+          "model": {
+            "refId": "A",
+            "namespace": "AWS/RDS",
+            "metricName": "FreeStorageSpace",
+            "dimensions": {"DBInstanceIdentifier": "ams-database"},
+            "statistic": "Average",
+            "period": "300",
+            "region": "ap-east-2"
+          }
+        },
+        {
+          "refId": "C",
+          "datasourceUid": "__expr__",
+          "relativeTimeRange": {"from": 0, "to": 0},
+          "model": {
+            "refId": "C",
+            "type": "threshold",
+            "expression": "A",
+            "conditions": [
+              {"evaluator": {"type": "lt", "params": [3221225472]}}
+            ]
+          }
+        }
+      ],
+      "labels": {"severity": "critical", "service": "ams-db"},
+      "annotations": {
+        "summary": "RDS free storage <15% of allocated",
+        "description": "Free storage is {{ humanizeBytes $values.A.Value }}. Critical at 15% free (~3 GiB on 20 GiB allocated). Expand volume."
+      },
+      "notification_settings": {"receiver": "email-default"},
+      "isPaused": false
+    }
+  ]
+}
