@@ -192,6 +192,25 @@ class AlertResources(NamedTuple):
     notification_policy: dict[str, Any] | None
     rules: tuple[dict[str, Any], ...]
 
+    @property
+    def is_empty(self) -> bool:
+        """Nothing loaded at all. Distinct from a load that produced
+        ``malformed`` entries — that is a failure, this is an empty dir."""
+        return (
+            self.contact_point is None
+            and self.notification_policy is None
+            and not self.rules
+        )
+
+    @property
+    def required_present(self) -> bool:
+        """Both required singletons (contact point + root policy) loaded
+        successfully. ``False`` means at least one is in ``malformed``."""
+        return (
+            self.contact_point is not None
+            and self.notification_policy is not None
+        )
+
 
 def load_alert_resources(
     alerts_dir: Path,
@@ -1000,12 +1019,7 @@ def _run_alerts_pass(args: argparse.Namespace, api_key: str) -> bool:
     post_* helpers; this function aggregates them into the pass summary.
     """
     resources, malformed = load_alert_resources(args.alerts_dir)
-    if (
-        resources.contact_point is None
-        and resources.notification_policy is None
-        and not resources.rules
-        and not malformed
-    ):
+    if resources.is_empty and not malformed:
         sys.stderr.write(f"No alert resources found under {args.alerts_dir}\n")
         return False
 
@@ -1055,12 +1069,16 @@ def _run_alerts_pass(args: argparse.Namespace, api_key: str) -> bool:
     # Live mode: require the loaded resources. A missing required file
     # surfaces as a malformed entry that we've already printed above;
     # surface a summary failure instead of trying to publish None.
-    if resources.contact_point is None or resources.notification_policy is None:
+    if not resources.required_present:
         sys.stderr.write(
             "\nAlert sync aborted: contact-points.json and notification-"
             "policy.json are both required (see malformed entries above).\n"
         )
         return False
+    # required_present guarantees both are non-None; narrow for the type
+    # checker so the publish plan below can pass them as required dicts.
+    assert resources.contact_point is not None
+    assert resources.notification_policy is not None
 
     recipients = resolve_recipients(
         args.recipients, dict(os.environ), dry_run=False
