@@ -304,6 +304,49 @@ describe("AssetDetail", () => {
     });
   });
 
+  it("prefills the assign location from the asset and submits the edited value", async () => {
+    // Issue #97 / Q21: the Location input opens populated from asset.location
+    // (the manager confirms it without retyping when nothing moved), but an
+    // edit must flow through to the payload. Using a value different from the
+    // asset's location distinguishes a real prefill from a hardcoded default.
+    const user = userEvent.setup({ delay: null });
+    setAuthUser(managerUser);
+    mockAssetReloadSequence(
+      { status: "in_stock", responsible_person: null, responsible_person_id: null },
+      { status: "in_use", responsible_person_id: "holder-2" },
+    );
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Assign" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Assign" }));
+
+    const assignModal = getOpenModalContent();
+    const locationInput = getModalField(assignModal, "#location") as HTMLInputElement;
+    expect(locationInput.value).toBe("Taipei HQ");
+
+    await user.click(within(assignModal).getByRole("combobox", { name: "Holder" }));
+    await user.click(screen.getByText("Bob Lee (bob@example.com)"));
+    const assignDateInput = getModalField(assignModal, "#assignment_date");
+    await user.clear(assignDateInput);
+    await user.type(assignDateInput, "2026-05-08");
+    await user.clear(locationInput);
+    await user.type(locationInput, "Hsinchu Fab12");
+    await user.click(within(assignModal).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockAssignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
+        responsible_person_id: "holder-2",
+        assignment_date: "2026-05-08",
+        location: "Hsinchu Fab12",
+        version: 1,
+      });
+    });
+  });
+
   it("unassigns an in-use asset from detail page", async () => {
     const user = userEvent.setup({ delay: null });
     setAuthUser(managerUser);
