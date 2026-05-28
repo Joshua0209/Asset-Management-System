@@ -133,6 +133,7 @@ class AssetPersonRead(APIModel):
     id: str
     name: str
     email: str
+    department: str
 
 
 class AssetRead(APIModel):

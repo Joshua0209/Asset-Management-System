@@ -122,7 +122,42 @@ class TestListAssets:
             "id": holder.id,
             "name": "Alice",
             "email": holder.email,
+            "department": holder.department,
         }
+
+    def test_responsible_person_exposes_holder_department(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Issue #97 / Q21: the AssetDetail UI renders the holder's
+        # organisational department alongside the asset's owning
+        # department. The API must surface holder.department through
+        # the nested responsible_person object so the frontend can
+        # distinguish the two without a second round-trip.
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(
+            role=UserRole.HOLDER,
+            name="Bob",
+            department="研發中心",
+        )
+        _make_asset(
+            db_session,
+            asset_code="AST-2026-00009",
+            responsible_person_id=holder.id,
+            department="資訊維運部",
+        )
+
+        response = client.get(
+            "/api/v1/assets?sort=asset_code", headers=auth_headers(manager)
+        )
+
+        assert response.status_code == 200
+        item = response.json()["data"][0]
+        assert item["department"] == "資訊維運部"
+        assert item["responsible_person"]["department"] == "研發中心"
 
     def test_excludes_soft_deleted_assets(
         self,
