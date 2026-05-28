@@ -699,8 +699,8 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-      - name: Dry-run dashboard sync (parse + validate, no HTTP)
-        run: python scripts/sync_grafana_cloud_dashboards.py --dry-run
+      - name: Dry-run dashboard + alert sync (parse + validate, no HTTP)
+        run: python scripts/sync_grafana_cloud_dashboards.py --dry-run --targets all
 
   # Playwright browser-driven regression suite (25 tests across 16 specs)
   # against a real FastAPI + MySQL stack. The unit tests mock `@/api`, so
