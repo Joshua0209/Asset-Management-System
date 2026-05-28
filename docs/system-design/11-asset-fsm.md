@@ -35,9 +35,16 @@ stateDiagram-v2
 
 ### Department / location invariant (issue #97)
 
-`assets.department` (owning department) and `assets.location` (registered physical location) are mutated by exactly two operations:
+`assets.department` (owning department) is mutated only by:
 
 1. **T1 — Register Asset.** Initial values supplied by the manager.
-2. **`PATCH /assets/{id}` — Edit Asset.** Manager updates explicitly (e.g. cost-center transfer, physical relocation).
+2. **`PATCH /assets/{id}` — Edit Asset.** Manager updates explicitly (e.g. cost-center transfer).
 
-No FSM transition above (T2–T8) reads or writes these fields. Assign / unassign / repair lifecycle / disposal leave them untouched. This preserves cost-center continuity for accounting and audit purposes, and decouples the holder's organizational department (`users.department`) from the asset's owning department. See `07-database-design.md` "Department / location semantics" and `10-design-decisions.md` Q21.
+`assets.location` (registered physical location) is mutated by:
+
+1. **T1 — Register Asset.** Initial value supplied by the manager.
+2. **`PATCH /assets/{id}` — Edit Asset.** Manager updates explicitly (e.g. physical relocation).
+3. **T2 — Assign to Holder.** Manager confirms the asset's registered location after hand-off.
+4. **T5 — Unassign / Reclaim.** Manager confirms the asset's registered location after reclaim.
+
+No FSM transition derives these fields from the holder. T2/T5 never update `assets.department`, and no transition reads a `holder.location` because `users.location` does not exist. This preserves cost-center continuity for accounting and audit purposes, and decouples the holder's organizational department (`users.department`) from the asset's owning department. See `07-database-design.md` "Department / location semantics" and `10-design-decisions.md` Q21.
