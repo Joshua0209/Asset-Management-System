@@ -83,18 +83,18 @@ Context: After assigning an asset to a holder, the detail page kept showing the 
 Options considered:
 
 1. **Auto-sync on assign with opt-out flag.** Assignment defaults `asset.department` / `asset.location` to the holder's values; a checkbox lets the manager opt out for cross-allocation. Requires a new `users.location` column, `sync_department` / `sync_location` API parameters, UI checkboxes, and history metadata. Closest match to the literal reading of 「使用部門」.
-2. **Keep asset and holder fields independent.** `assets.department` is the asset's owning department (cost-center / financial allocation), set at registration and modified only via explicit asset edit. `assets.location` is the asset's registered physical location, also independent. The 「使用部門」 requirement is satisfied at the UI layer by displaying `responsible_person.department` as a separate `Holder Department` row. FSM transitions never mutate dept/location.
+2. **Keep asset and holder fields independent.** `assets.department` is the asset's owning department (cost-center / financial allocation), set at registration and modified only via explicit asset edit. `assets.location` is the asset's registered physical location, maintained explicitly by managers at registration, edit, assign, and unassign. The 「使用部門」 requirement is satisfied at the UI layer by displaying `responsible_person.department` as a separate `Holder Department` row. FSM transitions never infer dept/location from the holder.
 3. **Close as out-of-scope.** Document the spec ambiguity, ship nothing.
 
 → **Option 2.** Three reasons:
    - The schema already separates `assets.department` and `users.department`; treating them as one concept makes one of the fields redundant.
    - The definition supports large-enterprise reality (central IT purchasing for non-IT users) without inventing a `users.location` field that nobody would maintain accurately.
-   - Backend behaviour on `main` already matches Option 2; the resolution is mostly documentation and UI clarification, not a code rewrite.
+   - The resulting API contract stays explicit: manager hand-off/reclaim actions may update the asset's registered physical location, but they do not sync from holder fields.
 
    Implementation footprint:
    - `07-database-design.md`, `11-asset-fsm.md`, `12-api-design.md` get the precise definitions and invariants.
    - Seed data: ~80% of held assets have `asset.department == holder.department`; ~20% deliberately differ to exercise the cross-allocation case.
-   - `AssetDetail` UI displays the asset's own `Department` and `Location` (zh-TW: 歸屬部門 / 地點) alongside a new `Holder Department` row (使用部門) sourced from `responsible_person.department`. In Chinese the 歸屬/使用 contrast pair carries the owning-vs-using distinction; in English the asymmetric `Department` / `Holder Department` pair does the same job. List, form, and filter views — which carry no holder concept — reuse the same i18n keys, since there is nothing to distinguish from there. There is no `Holder Location` row because `users.location` does not exist (and we are deliberately not adding it).
+   - `AssetDetail` UI displays the asset's own `Department` and `Location` (zh-TW: 歸屬部門 / 地點) alongside a new `Holder Department` row (使用部門) sourced from `responsible_person.department`. In Chinese the 歸屬/使用 contrast pair carries the owning-vs-using distinction; in English the asymmetric `Department` / `Holder Department` pair does the same job. List, form, and filter views — which carry no holder concept — reuse the same i18n keys, since there is nothing to distinguish from there. There is no `Holder Location` row because `users.location` does not exist (and we are deliberately not adding it); assign/unassign ask managers to confirm `assets.location`, not a holder-derived location.
    - `GET /assets?department=X` continues to filter on `assets.department` (owning). Filtering by holder dept is a separate future parameter, out of scope here.
 
 ---
