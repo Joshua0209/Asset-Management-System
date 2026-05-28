@@ -20,7 +20,7 @@
             "namespace": "AWS/ECS",
             "metricName": "CPUUtilization",
             "dimensions": {
-              "ClusterName": "ams-production",
+              "ClusterName": "ams-prod",
               "ServiceName": "ams-backend"
             },
             "statistic": "Average",
@@ -70,7 +70,7 @@
             "namespace": "AWS/ECS",
             "metricName": "CPUUtilization",
             "dimensions": {
-              "ClusterName": "ams-production",
+              "ClusterName": "ams-prod",
               "ServiceName": "ams-backend"
             },
             "statistic": "Average",
