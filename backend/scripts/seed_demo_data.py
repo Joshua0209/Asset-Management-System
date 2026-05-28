@@ -275,14 +275,16 @@ def build_assets(holders: list[User]) -> list[Asset]:
         purchase_date = today - timedelta(days=40 + index * 7)
         # Issue #97 / Q21: asset.department (owning) is an attribute of the
         # asset itself, not a sync of holder.department. Most held assets
-        # happen to match their holder's department (real-world common case)
-        # but every 5th held asset is deliberately cross-allocated so the
-        # demo data exercises the distinction the AssetDetail UI exposes.
+        # happen to match their holder's department (real-world common case),
+        # but assets whose loop index is divisible by 5 (~20% of held assets)
+        # are deliberately cross-allocated so the demo data exercises the
+        # distinction the AssetDetail UI exposes.
         if holder is None:
             owning_department = DEPARTMENTS[index % len(DEPARTMENTS)]
         elif index % 5 == 0:
             owning_department = next(
-                dept for dept in DEPARTMENTS if dept != holder.department
+                (dept for dept in DEPARTMENTS if dept != holder.department),
+                holder.department,
             )
         else:
             owning_department = holder.department
