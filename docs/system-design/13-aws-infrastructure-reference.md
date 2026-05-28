@@ -52,6 +52,7 @@ This document records the manually provisioned AWS infrastructure baseline for t
 | `ams-backend-task-sg` | `__SG_BACKEND_ID__` | 8000 from `ams-alb-sg` | All to `0.0.0.0/0` |
 | `ams-frontend-task-sg` | `__SG_FRONTEND_ID__` | 80 from `ams-alb-sg` | All to `0.0.0.0/0` |
 | `ams-rds-sg` | `__SG_RDS_ID__` | 3306 from `ams-backend-task-sg` | All to `0.0.0.0/0` |
+| `ams-redis-sg` | `__SG_REDIS_ID__` | 6379 from `ams-backend-task-sg` | All to `0.0.0.0/0` |
 
 ---
 
@@ -65,6 +66,8 @@ This document records the manually provisioned AWS infrastructure baseline for t
 - **Storage**: 20GB gp2 (Encrypted via KMS)
 - **Multi-AZ**: No (Phase 2 constraint)
 - **Backup**: 7-day retention, 15:06-15:36 UTC window.
+- **Parameter Group**: `default.mysql8.4` (Custom group deferred to Phase 2)
+- **Subnet Group**: Includes all 4 VPC subnets (public + private). While `PubliclyAccessible: false` provides isolation, a tighter private-only subnet group is recommended for future hardening.
 
 ### S3 Bucket (`__REPAIR_S3_BUCKET__`)
 
@@ -89,3 +92,15 @@ This document records the manually provisioned AWS infrastructure baseline for t
 
 - **ACM Certificate**: `arn:aws:acm:ap-east-2:__ACCOUNT_ID__:certificate/__CERTIFICATE_ID__`
 - **Domain**: Production traffic is expected at the ALB DNS name or a CNAME pointing to it (e.g., `ams.example.com`).
+
+---
+
+## Known Gaps & Future Hardening
+
+The current baseline represents the initial production deployment. The following items are identified as known gaps to be addressed in future infrastructure iterations:
+
+1. **ALB TLS Policy**: Currently using `ELBSecurityPolicy-2016-08`. Should be upgraded to `ELBSecurityPolicy-TLS13-1-2-2021-06` to disable TLS 1.0/1.1.
+2. **Security Group Egress**: All task SGs currently permit `0.0.0.0/0` egress. Egress should be restricted to necessary service endpoints (ECR, Secrets Manager, S3, Grafana Cloud).
+3. **ECR Hygiene**: Repositories are currently `MUTABLE` and `scanOnPush: false`. Production best practice is `IMMUTABLE` with scan-on-push enabled.
+4. **RDS Multi-AZ**: Currently a Single-AZ deployment. Multi-AZ is required for production HA/SLA (planned for Phase 2).
+
