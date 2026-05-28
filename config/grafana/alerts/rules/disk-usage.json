@@ -19,7 +19,7 @@
             "refId": "A",
             "namespace": "AWS/RDS",
             "metricName": "FreeStorageSpace",
-            "dimensions": {"DBInstanceIdentifier": "ams-production-db"},
+            "dimensions": {"DBInstanceIdentifier": "ams-database"},
             "statistic": "Average",
             "period": "300",
             "region": "default"
@@ -66,7 +66,7 @@
             "refId": "A",
             "namespace": "AWS/RDS",
             "metricName": "FreeStorageSpace",
-            "dimensions": {"DBInstanceIdentifier": "ams-production-db"},
+            "dimensions": {"DBInstanceIdentifier": "ams-database"},
             "statistic": "Average",
             "period": "300",
             "region": "default"
