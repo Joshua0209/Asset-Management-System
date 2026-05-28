@@ -173,6 +173,7 @@ describe("mocks/mockBackend", () => {
       backend.assignAsset(stockAsset.id, {
         responsible_person_id: "mock-manager",
         assignment_date: "2026-04-03",
+        location: "HQ",
         version: stockAsset.version,
       }),
     ).toThrow();
@@ -181,6 +182,7 @@ describe("mocks/mockBackend", () => {
       backend.unassignAsset(stockAsset.id, {
         reason: "invalid",
         unassignment_date: "2026-04-03",
+        location: "HQ",
         version: stockAsset.version,
       }),
     ).toThrow();

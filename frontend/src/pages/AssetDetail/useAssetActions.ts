@@ -7,11 +7,13 @@ import { useSubmitAction } from '@/hooks/useSubmitAction';
 export interface AssignValues {
   responsible_person_id: string;
   assignment_date: string;
+  location: string;
 }
 
 export interface UnassignValues {
   reason: string;
   unassignment_date: string;
+  location: string;
 }
 
 export interface DisposeValues {

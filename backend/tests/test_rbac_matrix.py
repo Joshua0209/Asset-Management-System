@@ -111,12 +111,16 @@ _RBAC_MATRIX: list[_RbacCase] = [
     # /api/v1/auth/* — public + manager admin escape hatch
     # -----------------------------------------------------------------
     _RbacCase(
-        "POST", "/api/v1/auth/login",
+        "POST",
+        "/api/v1/auth/login",
         body={"email": "{holder_email}", "password": "Password123"},
-        allow_anon=True, allow_holder=True, allow_manager=True,
+        allow_anon=True,
+        allow_holder=True,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/auth/register",
+        "POST",
+        "/api/v1/auth/register",
         # Each call must use a unique email to avoid a 409 from the
         # second + third role hitting the same row. ``{nonce}`` is a
         # per-call UUID injected by the test, not a fixture value.
@@ -126,15 +130,21 @@ _RBAC_MATRIX: list[_RbacCase] = [
             "name": "RBAC Tester",
             "department": "QA",
         },
-        allow_anon=True, allow_holder=True, allow_manager=True,
+        allow_anon=True,
+        allow_holder=True,
+        allow_manager=True,
     ),
     _RbacCase(
-        "GET", "/api/v1/auth/me",
+        "GET",
+        "/api/v1/auth/me",
         body=None,
-        allow_anon=False, allow_holder=True, allow_manager=True,
+        allow_anon=False,
+        allow_holder=True,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/auth/users",
+        "POST",
+        "/api/v1/auth/users",
         body={
             "email": "admin-create-{nonce}@example.com",
             "password": "Password123",
@@ -142,79 +152,113 @@ _RBAC_MATRIX: list[_RbacCase] = [
             "department": "QA",
             "role": "holder",
         },
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
-
     # -----------------------------------------------------------------
     # /api/v1/users
     # -----------------------------------------------------------------
     _RbacCase(
-        "GET", "/api/v1/users",
+        "GET",
+        "/api/v1/users",
         body=None,
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
-
     # -----------------------------------------------------------------
     # /api/v1/assets/*
     # -----------------------------------------------------------------
     _RbacCase(
-        "GET", "/api/v1/assets",
+        "GET",
+        "/api/v1/assets",
         body=None,
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/assets",
+        "POST",
+        "/api/v1/assets",
         body={
-            "name": "RBAC Asset", "model": "RBAC-X", "category": "computer",
-            "supplier": "ACME", "purchase_date": "2026-01-01",
+            "name": "RBAC Asset",
+            "model": "RBAC-X",
+            "category": "computer",
+            "supplier": "ACME",
+            "purchase_date": "2026-01-01",
             "purchase_amount": "100.00",
         },
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "GET", "/api/v1/assets/mine",
+        "GET",
+        "/api/v1/assets/mine",
         body=None,
-        allow_anon=False, allow_holder=True, allow_manager=False,
+        allow_anon=False,
+        allow_holder=True,
+        allow_manager=False,
     ),
     _RbacCase(
-        "GET", "/api/v1/assets/{asset_id}",
+        "GET",
+        "/api/v1/assets/{asset_id}",
         body=None,
-        allow_anon=False, allow_holder=True, allow_manager=True,
+        allow_anon=False,
+        allow_holder=True,
+        allow_manager=True,
     ),
     _RbacCase(
-        "GET", "/api/v1/assets/{asset_id}/history",
+        "GET",
+        "/api/v1/assets/{asset_id}/history",
         body=None,
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "PATCH", "/api/v1/assets/{asset_id}",
+        "PATCH",
+        "/api/v1/assets/{asset_id}",
         body={"version": 1},
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/assets/{asset_id}/assign",
+        "POST",
+        "/api/v1/assets/{asset_id}/assign",
         body={
             "responsible_person_id": "{holder_id}",
             "assignment_date": "2026-02-01",
+            "location": "Taipei HQ",
             "version": 1,
         },
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/assets/{asset_id}/unassign",
+        "POST",
+        "/api/v1/assets/{asset_id}/unassign",
         body={
             "reason": "RBAC test",
             "unassignment_date": "2026-04-01",
+            "location": "Taipei Storage",
             "version": 2,
         },
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/assets/{asset_id}/dispose",
+        "POST",
+        "/api/v1/assets/{asset_id}/dispose",
         body={"disposal_reason": "RBAC test", "version": 2},
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
-
     # -----------------------------------------------------------------
     # /api/v1/repair-requests/*
     #
@@ -224,32 +268,48 @@ _RBAC_MATRIX: list[_RbacCase] = [
     # is correct here — anonymous calls still hit the auth dep first.
     # -----------------------------------------------------------------
     _RbacCase(
-        "GET", "/api/v1/repair-requests",
+        "GET",
+        "/api/v1/repair-requests",
         body=None,
-        allow_anon=False, allow_holder=True, allow_manager=True,
+        allow_anon=False,
+        allow_holder=True,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/repair-requests",
+        "POST",
+        "/api/v1/repair-requests",
         body=None,
-        allow_anon=False, allow_holder=True, allow_manager=False,
+        allow_anon=False,
+        allow_holder=True,
+        allow_manager=False,
     ),
     _RbacCase(
-        "GET", "/api/v1/repair-requests/{rr_id}",
+        "GET",
+        "/api/v1/repair-requests/{rr_id}",
         body=None,
-        allow_anon=False, allow_holder=True, allow_manager=True,
+        allow_anon=False,
+        allow_holder=True,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/repair-requests/{rr_id}/approve",
+        "POST",
+        "/api/v1/repair-requests/{rr_id}/approve",
         body={"version": 1},
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/repair-requests/{rr_id}/reject",
+        "POST",
+        "/api/v1/repair-requests/{rr_id}/reject",
         body={"version": 1, "rejection_reason": "RBAC test"},
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "POST", "/api/v1/repair-requests/{rr_id}/complete",
+        "POST",
+        "/api/v1/repair-requests/{rr_id}/complete",
         body={
             "repair_date": "2026-04-20",
             "fault_content": "rbac",
@@ -258,32 +318,40 @@ _RBAC_MATRIX: list[_RbacCase] = [
             "repair_vendor": "rbac",
             "version": 1,
         },
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
     _RbacCase(
-        "PATCH", "/api/v1/repair-requests/{rr_id}/repair-details",
+        "PATCH",
+        "/api/v1/repair-requests/{rr_id}/repair-details",
         body={"fault_content": "rbac", "version": 1},
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
-
     # -----------------------------------------------------------------
     # /api/v1/images/{image_id}
     # -----------------------------------------------------------------
     _RbacCase(
-        "GET", "/api/v1/images/{image_id}",
+        "GET",
+        "/api/v1/images/{image_id}",
         body=None,
-        allow_anon=False, allow_holder=True, allow_manager=True,
+        allow_anon=False,
+        allow_holder=True,
+        allow_manager=True,
     ),
-
     # -----------------------------------------------------------------
     # /api/v1/dashboard/*
     # -----------------------------------------------------------------
     _RbacCase(
-        "GET", "/api/v1/dashboard/manager",
+        "GET",
+        "/api/v1/dashboard/manager",
         body=None,
-        allow_anon=False, allow_holder=False, allow_manager=True,
+        allow_anon=False,
+        allow_holder=False,
+        allow_manager=True,
     ),
-
     # -----------------------------------------------------------------
     # /api/v1/observability/* — internal beacon, intentionally anonymous
     #
@@ -295,9 +363,12 @@ _RBAC_MATRIX: list[_RbacCase] = [
     # even for empty bodies — body=None is correct.
     # -----------------------------------------------------------------
     _RbacCase(
-        "POST", "/api/v1/observability/client-error",
+        "POST",
+        "/api/v1/observability/client-error",
         body=None,
-        allow_anon=True, allow_holder=True, allow_manager=True,
+        allow_anon=True,
+        allow_holder=True,
+        allow_manager=True,
     ),
 ]
 
@@ -307,9 +378,7 @@ _RBAC_MATRIX: list[_RbacCase] = [
 # ---------------------------------------------------------------------------
 
 
-def _seed_rbac_world(
-    db: Session, holder: User
-) -> tuple[Asset, RepairRequest, RepairImage]:
+def _seed_rbac_world(db: Session, holder: User) -> tuple[Asset, RepairRequest, RepairImage]:
     """Persist the minimum entities the matrix needs path params for.
 
     One asset assigned to ``holder`` plus a pending-review repair
@@ -391,10 +460,7 @@ class TestRbacMatrix:
 
     @pytest.mark.parametrize(
         ("case", "role", "expected_allowed"),
-        [
-            pytest.param(c, r, a, id=_matrix_param_id(c, r))
-            for (c, r, a) in _expand_matrix()
-        ],
+        [pytest.param(c, r, a, id=_matrix_param_id(c, r)) for (c, r, a) in _expand_matrix()],
     )
     def test_role_gate(
         self,

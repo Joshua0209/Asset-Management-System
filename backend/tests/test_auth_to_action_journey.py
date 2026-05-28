@@ -46,9 +46,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
     Raises if the login does not succeed — journey tests should treat
     that as a hard failure, not silently continue with an empty token.
     """
-    response = client.post(
-        "/api/v1/auth/login", json={"email": email, "password": password}
-    )
+    response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200, response.text
     token: str = response.json()["data"]["token"]
     return token
@@ -97,14 +95,15 @@ class TestAuthToActionJourney:
         assert persisted_user.role == UserRole.HOLDER
 
         # 2. Manager registers an asset and assigns it to the new holder.
-        asset = client.post(
-            "/api/v1/assets", json=_ASSET_PAYLOAD, headers=manager_auth
-        ).json()["data"]
+        asset = client.post("/api/v1/assets", json=_ASSET_PAYLOAD, headers=manager_auth).json()[
+            "data"
+        ]
         assigned = client.post(
             f"/api/v1/assets/{asset['id']}/assign",
             json={
                 "responsible_person_id": new_holder_id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset["version"],
             },
             headers=manager_auth,
@@ -240,14 +239,15 @@ class TestAuthToActionJourney:
         assert persisted_user.role == UserRole.HOLDER
 
         # 2. Manager creates an asset and assigns it to that new holder.
-        asset = client.post(
-            "/api/v1/assets", json=_ASSET_PAYLOAD, headers=admin_auth
-        ).json()["data"]
+        asset = client.post("/api/v1/assets", json=_ASSET_PAYLOAD, headers=admin_auth).json()[
+            "data"
+        ]
         assign_resp = client.post(
             f"/api/v1/assets/{asset['id']}/assign",
             json={
                 "responsible_person_id": new_holder_id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Taipei HQ",
                 "version": asset["version"],
             },
             headers=admin_auth,

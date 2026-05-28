@@ -588,6 +588,7 @@ def assign_asset(
         asset.responsible_person_id = target.id
         asset.responsible_person = target
         asset.assignment_date = payload.assignment_date
+        asset.location = payload.location
         # Reset unassignment_date so the (assignment_date, unassignment_date)
         # pair only ever describes the most recent assignment window.
         asset.unassignment_date = None
@@ -667,6 +668,7 @@ def unassign_asset(
         asset.status = AssetStatus.IN_STOCK
         asset.responsible_person_id = None
         asset.responsible_person = None
+        asset.location = payload.location
         # Per the API spec: assignment_date is preserved on unassign so the
         # pair captures the most recent assignment window. The next assign
         # will overwrite assignment_date and clear unassignment_date.
