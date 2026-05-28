@@ -94,7 +94,7 @@ Options considered:
    Implementation footprint:
    - `07-database-design.md`, `11-asset-fsm.md`, `12-api-design.md` get the precise definitions and invariants.
    - Seed data: ~80% of held assets have `asset.department == holder.department`; ~20% deliberately differ to exercise the cross-allocation case.
-   - `AssetDetail` UI shows `Asset Department` and `Holder Department` as two separate rows. `Asset Location` stands alone — there is no `Holder Location` row because `users.location` does not exist (and we are deliberately not adding it).
+   - `AssetDetail` UI displays the asset's own `Department` and `Location` (zh-TW: 歸屬部門 / 地點) alongside a new `Holder Department` row (使用部門) sourced from `responsible_person.department`. In Chinese the 歸屬/使用 contrast pair carries the owning-vs-using distinction; in English the asymmetric `Department` / `Holder Department` pair does the same job. List, form, and filter views — which carry no holder concept — reuse the same i18n keys, since there is nothing to distinguish from there. There is no `Holder Location` row because `users.location` does not exist (and we are deliberately not adding it).
    - `GET /assets?department=X` continues to filter on `assets.department` (owning). Filtering by holder dept is a separate future parameter, out of scope here.
 
 ---
