@@ -1137,3 +1137,89 @@ def test_main_alerts_pass_aborts_after_consecutive_transport_failures(
     )
     assert mock_rule.call_count == expected_rule_attempts
     assert mock_rule.call_count < 5
+
+
+# ---------------------------------------------------------------------------
+# Cycle 5: the SHIPPED config files are wired to the real production stack
+#
+# The fixtures above use synthetic rules, so a green suite says nothing
+# about whether config/grafana/alerts/*.json point at the right metric,
+# RDS instance, ECS cluster, or region. A rule that targets the wrong one
+# provisions fine and then sits permanently green (noDataState=NoData/OK)
+# while never firing. These tests load the real files and assert the
+# stack-specific invariants so such a misconfiguration fails CI instead.
+# ---------------------------------------------------------------------------
+
+_REAL_ALERTS_DIR = REPO_ROOT / "config" / "grafana" / "alerts"
+
+
+def _shipped_rules() -> tuple[dict[str, Any], ...]:
+    resources, malformed = sync_module.load_alert_resources(_REAL_ALERTS_DIR)
+    assert malformed == [], f"shipped alert files failed to load: {malformed}"
+    return resources.rules
+
+
+def _datasource_queries(rule: dict[str, Any]) -> list[dict[str, Any]]:
+    """Query entries (refId A/B...) of a rule, excluding the ``__expr__``
+    threshold/reduce expression nodes which carry no real datasource."""
+    return [
+        q
+        for q in rule.get("data", [])
+        if isinstance(q, dict) and q.get("datasourceUid") != "__expr__"
+    ]
+
+
+def test_shipped_alert_files_load_without_malformed_entries() -> None:
+    """All 14 shipped rules parse and carry a uid (the load contract)."""
+    rules = _shipped_rules()
+    assert len(rules) == 14
+    assert all(r.get("uid") for r in rules)
+
+
+def test_shipped_cloudwatch_rules_pin_explicit_region() -> None:
+    """No CloudWatch query may use region 'default'. The GC datasource
+    default did not resolve (dashboard PRs #105/#106); pin ap-east-2."""
+    for rule in _shipped_rules():
+        for query in _datasource_queries(rule):
+            region = query.get("model", {}).get("region")
+            if region is not None:
+                assert region == "ap-east-2", (rule["uid"], region)
+
+
+def test_shipped_rds_rules_reference_the_real_instance() -> None:
+    """RDS rules target DBInstanceIdentifier 'ams-database' (the real
+    instance) and never the Aurora-only DBClusterIdentifier dimension."""
+    for rule in _shipped_rules():
+        for query in _datasource_queries(rule):
+            dimensions = query.get("model", {}).get("dimensions", {})
+            assert "DBClusterIdentifier" not in dimensions, rule["uid"]
+            if "DBInstanceIdentifier" in dimensions:
+                assert dimensions["DBInstanceIdentifier"] == "ams-database", rule[
+                    "uid"
+                ]
+
+
+def test_shipped_rules_do_not_use_aurora_metrics() -> None:
+    """This is a single RDS MySQL instance, not Aurora — no Aurora* metric."""
+    for rule in _shipped_rules():
+        for query in _datasource_queries(rule):
+            metric = query.get("model", {}).get("metricName", "")
+            assert not metric.startswith("Aurora"), (rule["uid"], metric)
+
+
+def test_shipped_ecs_rules_reference_the_real_cluster() -> None:
+    """ECS rules target ClusterName 'ams-prod' (the real cluster)."""
+    for rule in _shipped_rules():
+        for query in _datasource_queries(rule):
+            dimensions = query.get("model", {}).get("dimensions", {})
+            if "ClusterName" in dimensions:
+                assert dimensions["ClusterName"] == "ams-prod", rule["uid"]
+
+
+def test_shipped_backend_rules_query_the_emitted_metric_name() -> None:
+    """Backend rules query http_server_duration_seconds_* (the series
+    observability.py actually emits), never the _request_ form."""
+    for rule in _shipped_rules():
+        for query in _datasource_queries(rule):
+            expr = query.get("model", {}).get("expr", "")
+            assert "http_server_request_duration" not in expr, rule["uid"]
