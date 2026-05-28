@@ -1092,3 +1092,48 @@ def test_main_combined_summary_reports_dashboard_and_alert_counts(
     out = capsys.readouterr().out
     assert "dashboard" in out.lower()
     assert "alert" in out.lower()
+
+
+def test_main_alerts_pass_aborts_after_consecutive_transport_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When GC is unreachable, the alerts pass must stop after
+    ``_CONSECUTIVE_TRANSPORT_FAIL_LIMIT`` consecutive 599s instead of
+    waiting out a 30s timeout for every remaining rule (16 resources ×
+    30s ≈ 8 min otherwise). Mirrors the dashboards pass's fail-fast."""
+    alerts_dir = _write_alerts_layout(
+        tmp_path / "alerts",
+        rule_files={
+            "many.json": {"rules": [_make_rule(f"ams-rule-{i}") for i in range(5)]}
+        },
+    )
+
+    mock_rule = MagicMock(return_value=599)
+    monkeypatch.setattr(sync_module, "post_contact_point", MagicMock(return_value=599))
+    monkeypatch.setattr(
+        sync_module, "post_notification_policy", MagicMock(return_value=599)
+    )
+    monkeypatch.setattr(sync_module, "post_alert_rule", mock_rule)
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "tok")
+    monkeypatch.setenv("GC_ALERT_EMAIL_RECIPIENTS", "ops@example.com")
+
+    exit_code = sync_module.main(
+        [
+            "--targets",
+            "alerts",
+            "--alerts-dir",
+            str(alerts_dir),
+            "--stack-url",
+            "https://x.grafana.net",
+        ]
+    )
+
+    assert exit_code == 1
+    # contact-point (599 #1) + policy (599 #2) + first rule (599 #3) trips
+    # the limit of 3; the remaining four rules are skipped, not attempted.
+    expected_rule_attempts = max(
+        0, sync_module._CONSECUTIVE_TRANSPORT_FAIL_LIMIT - 2
+    )
+    assert mock_rule.call_count == expected_rule_attempts
+    assert mock_rule.call_count < 5

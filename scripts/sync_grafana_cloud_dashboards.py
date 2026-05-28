@@ -43,7 +43,8 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from functools import partial
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -1005,31 +1006,72 @@ def _run_alerts_pass(args: argparse.Namespace, api_key: str) -> bool:
             print(f"  {placeholder} -> {real}")
         print()
 
-    failed_ids: list[str] = []
-
-    cp_status = post_contact_point(args.stack_url, api_key, contact_point)
     cp_uid = str(contact_point.get("uid", "<unknown>"))
-    if 200 <= cp_status < 300:
-        print(f"OK  contact-point uid={cp_uid} status={cp_status}")
-    else:
-        failed_ids.append(cp_uid)
 
-    pol_status = post_notification_policy(
-        args.stack_url, api_key, resources.notification_policy
-    )
-    if 200 <= pol_status < 300:
-        print(f"OK  policy status={pol_status}")
-    else:
-        failed_ids.append("policy")
-
+    # Ordered publish plan: contact point first (the policy and rules
+    # reference its receiver), then the singleton root policy, then each
+    # rule. Each entry is (operator-facing id, OK-line label, thunk) — a
+    # uniform shape so the publish loop below can apply one fail-fast rule
+    # across all three resource kinds.
+    publish_plan: list[tuple[str, str, Callable[[], int]]] = [
+        (
+            cp_uid,
+            f"contact-point uid={cp_uid}",
+            partial(post_contact_point, args.stack_url, api_key, contact_point),
+        ),
+        (
+            "policy",
+            "policy",
+            partial(
+                post_notification_policy,
+                args.stack_url,
+                api_key,
+                resources.notification_policy,
+            ),
+        ),
+    ]
     for rule in resources.rules:
-        remapped = remap_datasource_uids(rule, remap)
         uid = str(rule.get("uid", "<unknown>"))
-        status = post_alert_rule(args.stack_url, api_key, remapped)
+        remapped = remap_datasource_uids(rule, remap)
+        publish_plan.append(
+            (
+                uid,
+                f"alert-rule uid={uid}",
+                partial(post_alert_rule, args.stack_url, api_key, remapped),
+            )
+        )
+
+    # Same consecutive-transport-failure fail-fast as the dashboards pass:
+    # a contact point + policy + 14 rules is 16 requests, so an
+    # unreachable GC would otherwise wait out 16 × HTTP_TIMEOUT_SECONDS
+    # (~8 min) before the summary. 599 is post_*'s transport-failure
+    # sentinel (URLError); a real HTTP status means GC is reachable and
+    # must not trip the counter.
+    failed_ids: list[str] = []
+    skipped_after_abort: list[str] = []
+    consecutive_transport_fails = 0
+    aborted = False
+    for resource_id, label, publish in publish_plan:
+        if aborted:
+            skipped_after_abort.append(resource_id)
+            continue
+        status = publish()
         if 200 <= status < 300:
-            print(f"OK  alert-rule uid={uid} status={status}")
+            print(f"OK  {label} status={status}")
+            consecutive_transport_fails = 0
         else:
-            failed_ids.append(uid)
+            failed_ids.append(resource_id)
+            if status == 599:
+                consecutive_transport_fails += 1
+                if consecutive_transport_fails >= _CONSECUTIVE_TRANSPORT_FAIL_LIMIT:
+                    sys.stderr.write(
+                        f"\nABORT: {consecutive_transport_fails} consecutive transport "
+                        f"failures against {args.stack_url}; assuming GC is unreachable "
+                        "and skipping the remaining alert resources.\n"
+                    )
+                    aborted = True
+            else:
+                consecutive_transport_fails = 0
 
     total = (
         (1 if resources.contact_point is not None else 0)
@@ -1037,9 +1079,14 @@ def _run_alerts_pass(args: argparse.Namespace, api_key: str) -> bool:
         + len(resources.rules)
         + len(malformed)
     )
-    if failed_ids or malformed:
-        all_failures = failed_ids + malformed
-        suffix = f" ({len(malformed)} malformed)" if malformed else ""
+    if failed_ids or skipped_after_abort or malformed:
+        all_failures = failed_ids + skipped_after_abort + malformed
+        parts: list[str] = []
+        if skipped_after_abort:
+            parts.append(f"{len(skipped_after_abort)} skipped after abort")
+        if malformed:
+            parts.append(f"{len(malformed)} malformed")
+        suffix = f" ({', '.join(parts)})" if parts else ""
         sys.stderr.write(
             f"\n{len(all_failures)} of {total} alert resource(s) failed to "
             f"publish{suffix}: {', '.join(all_failures)}\n"
