@@ -61,7 +61,7 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
-              - 'infra/ecs/backend-task-def.json'
+              - 'infra/aws/tasks/backend-task-def.json'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
             # Narrower filter than `backend`: only fires when a new
@@ -76,7 +76,7 @@ jobs:
               - 'backend/alembic/versions/**'
             frontend:
               - 'frontend/**'
-              - 'infra/ecs/frontend-task-def.json'
+              - 'infra/aws/tasks/frontend-task-def.json'
               - '.github/workflows/ci.yml'
               - '.github/actions/**'
             dashboards:

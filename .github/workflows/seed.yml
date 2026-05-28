@@ -76,7 +76,7 @@ jobs:
           # subnets/SGs — the same DB-reachable private network the
           # migrate-database job runs in.
           if [ -z "${ECS_MIGRATION_SUBNETS}" ] || [ -z "${ECS_MIGRATION_SECURITY_GROUPS}" ]; then
-            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
+            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/aws/tasks/README.md."
             exit 1
           fi
           # Shape check: a CSV would silently produce broken JSON at jq -cn
