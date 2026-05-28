@@ -17,7 +17,7 @@
           "relativeTimeRange": {"from": 600, "to": 0},
           "model": {
             "refId": "A",
-            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket[5m])))",
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_duration_seconds_bucket[5m])))",
             "intervalMs": 60000,
             "maxDataPoints": 43200
           }
@@ -61,7 +61,7 @@
           "relativeTimeRange": {"from": 600, "to": 0},
           "model": {
             "refId": "A",
-            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket[5m])))",
+            "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_duration_seconds_bucket[5m])))",
             "intervalMs": 60000,
             "maxDataPoints": 43200
           }
