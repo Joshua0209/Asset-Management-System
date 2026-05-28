@@ -32,3 +32,12 @@ stateDiagram-v2
 | T8 | `Under_Repair` | **Repair Completed** *(Manager)* | `In_Use` | Repair details filled (date, fault, plan, cost, vendor). Repair request marked `completed` atomically. `responsible_person_id` unchanged. |
 
 **Forbidden transitions** (rejected at service layer): `Pending_Repair → In_Stock`, `Under_Repair → In_Stock`, `In_Stock → Pending_Repair`, `Disposed → *` (any), self-transitions.
+
+### Department / location invariant (issue #97)
+
+`assets.department` (owning department) and `assets.location` (registered physical location) are mutated by exactly two operations:
+
+1. **T1 — Register Asset.** Initial values supplied by the manager.
+2. **`PATCH /assets/{id}` — Edit Asset.** Manager updates explicitly (e.g. cost-center transfer, physical relocation).
+
+No FSM transition above (T2–T8) reads or writes these fields. Assign / unassign / repair lifecycle / disposal leave them untouched. This preserves cost-center continuity for accounting and audit purposes, and decouples the holder's organizational department (`users.department`) from the asset's owning department. See `07-database-design.md` "Department / location semantics" and `10-design-decisions.md` Q21.
