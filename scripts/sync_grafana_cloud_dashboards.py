@@ -1,4 +1,4 @@
-"""One-shot upload of repo-side Grafana dashboards to a Grafana Cloud stack.
+"""Sync repo-side Grafana dashboards and alert rules to a Grafana Cloud stack.
 
 Phase 4 of `docs/plans/observability-prod-migration-plan.md`. Transient:
 this script is deleted in Phase 6 once Grafana Cloud is the source of
@@ -13,10 +13,27 @@ Usage:
 
     python scripts/sync_grafana_cloud_dashboards.py --dry-run   # parse, no POST
 
-Reads every `*.json` under `config/grafana/dashboards/`, wraps each in the
-dashboards-DB payload shape (`{"dashboard": ..., "overwrite": true}`), and
-POSTs to `<stack-url>/api/dashboards/db`. Idempotent: existing dashboards
-are upserted by `uid`.
+Two surfaces, selected by ``--targets``:
+
+* ``dashboards`` (the default — keeps pre-alerts operator and test callers
+  working unchanged): reads every ``*.json`` under
+  ``config/grafana/dashboards/``, wraps each in the dashboards-DB envelope
+  (``{"dashboard": ..., "overwrite": true}``) and POSTs to
+  ``<stack-url>/api/dashboards/db``.
+* ``alerts``: reads ``config/grafana/alerts/`` (``contact-points.json``,
+  ``notification-policy.json``, ``rules/*.json``) and upserts the email
+  contact point, the root notification policy, and every alert rule via the
+  Grafana Alerting provisioning API (``/api/v1/provisioning/*``). Recipients
+  are NOT committed — they come from ``--recipients`` (CSV) or the
+  ``GC_ALERT_EMAIL_RECIPIENTS`` env var / GitHub secret and are substituted
+  into the contact-point template at deploy time.
+* ``all``: dashboards then alerts (what CI runs; runbook in
+  ``infra/grafana-cloud/README.md`` §"Alert provisioning").
+
+Both surfaces are idempotent: dashboards and rules upsert by ``uid``, the
+singleton root policy is replaced. ``--dry-run`` parses and prints what
+would be sent without POSTing and tolerates missing secrets/UIDs so the
+PR-side validate gate passes on fork PRs.
 
 Datasource UID remapping
 ------------------------
@@ -32,6 +49,10 @@ placeholder to the real GC UID, so panels resolve their datasource in the
 stack the dashboards land in. Defaults match the GC standard names; the
 stack-specific CloudWatch UID is taken from ``GC_CLOUDWATCH_UID`` and is
 required only if any dashboard references the ``cloudwatch`` placeholder.
+
+Alert rules carry the same placeholder UIDs but in the flat
+``data[].datasourceUid`` field (the provisioning API's shape) rather than a
+nested ``datasource.uid``; both forms are walked and remapped the same way.
 """
 
 from __future__ import annotations
