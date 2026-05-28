@@ -189,8 +189,11 @@ describe("AssetDetail", () => {
 
     // Asset's owning department (from asset.department). The label
     // appears twice — once in the Descriptions list and once in the
-    // hidden edit-asset form — so use getAllByText.
-    expect(screen.getAllByText("Asset Department").length).toBeGreaterThan(0);
+    // hidden edit-asset form — so use getAllByText. "Department" is
+    // the exact text of the label cell; React Testing Library's
+    // default exact match means it will not collide with the
+    // "Holder Department" cell.
+    expect(screen.getAllByText("Department").length).toBeGreaterThan(0);
     expect(screen.getByText("IT")).toBeInTheDocument();
 
     // Holder's organisational department (from responsible_person.department).

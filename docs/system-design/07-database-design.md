@@ -70,7 +70,7 @@
   - `assets.location` = the asset's **registered physical location** (where it is stored / kept). Same lifecycle as `assets.department`: set at T1, edited explicitly, never mutated by FSM transitions.
   - `users.department` = the user's **organizational department** (where the person works). Distinct from `assets.department`; the two may differ for assets that are centrally owned but used by another department (e.g. IT-owned laptop in the hands of a Sales-department holder).
   - There is no `users.location` column by design — "where a person usually works" is an organizational fact, not a stable user attribute, and modelling it here would invite stale data.
-  - The asset detail UI surfaces both `Asset Department` (from `assets.department`) and `Holder Department` (from `responsible_person.department`) so the distinction is visible at a glance. `Asset Location` stands alone for the same reason `users.location` does not exist.
+  - The asset detail UI surfaces the asset's `Department` and `Location` (from `assets.*`) alongside a `Holder Department` row (from `responsible_person.department`). The 歸屬/使用 contrast in Chinese (歸屬部門 vs 使用部門) and the `Department` / `Holder Department` pairing in English carry the distinction without requiring a label prefix on the asset side. List / form / filter views reuse the same i18n keys, since they only display the asset attribute. `Location` has no holder-side counterpart because `users.location` does not exist.
 - **Numeric types:**
   - `purchase_amount`: `NUMERIC(15, 2)` — exact decimal, avoids floating-point rounding for financial values.
   - `repair_cost`: `NUMERIC(15, 2)` — same rationale.
