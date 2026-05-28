@@ -5,14 +5,14 @@
             "DBInstanceClass": "db.t3.micro",
             "Engine": "mysql",
             "DBInstanceStatus": "available",
-            "MasterUsername": "admin",
+            "MasterUsername": "__RDS_MASTER_USERNAME__",
             "Endpoint": {
                 "Address": "__RDS_ENDPOINT__",
                 "Port": 3306,
                 "HostedZoneId": "Z0272753185VU5HG1UMAB"
             },
             "AllocatedStorage": 20,
-            "InstanceCreateTime": "2026-05-19T16:16:44.366000+00:00",
+            "InstanceCreateTime": "__TIMESTAMP__",
             "PreferredBackupWindow": "15:06-15:36",
             "BackupRetentionPeriod": 7,
             "DBSecurityGroups": [],
@@ -72,7 +72,7 @@
             "PreferredMaintenanceWindow": "mon:13:38-mon:14:08",
             "UpgradeRolloutOrder": "second",
             "PendingModifiedValues": {},
-            "LatestRestorableTime": "2026-05-27T08:15:16+00:00",
+            "LatestRestorableTime": "__TIMESTAMP__",
             "MultiAZ": false,
             "EngineVersion": "8.4.8",
             "AutoMinorVersionUpgrade": true,
@@ -110,7 +110,7 @@
             "BackupTarget": "region",
             "CertificateDetails": {
                 "CAIdentifier": "rds-ca-rsa2048-g1",
-                "ValidTill": "2027-05-19T16:56:55+00:00"
+                "ValidTill": "__TIMESTAMP__"
             },
             "MasterUserSecret": {
                 "SecretArn": "arn:aws:secretsmanager:ap-east-2:__ACCOUNT_ID__:secret:__RDS_SECRET_ARN__",

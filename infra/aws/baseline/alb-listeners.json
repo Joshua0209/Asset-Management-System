@@ -1,7 +1,7 @@
 {
     "Listeners": [
         {
-            "ListenerArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:listener/app/ams-alb/__ALB_RESOURCE_ID__/e0f473cf64c657bf",
+            "ListenerArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:listener/app/ams-alb/__ALB_RESOURCE_ID__/__LISTENER_ID__",
             "LoadBalancerArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:loadbalancer/app/ams-alb/__ALB_RESOURCE_ID__",
             "Port": 443,
             "Protocol": "HTTPS",
@@ -33,7 +33,7 @@
             }
         },
         {
-            "ListenerArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:listener/app/ams-alb/__ALB_RESOURCE_ID__/f1bf518260882004",
+            "ListenerArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:listener/app/ams-alb/__ALB_RESOURCE_ID__/__LISTENER_ID__",
             "LoadBalancerArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:loadbalancer/app/ams-alb/__ALB_RESOURCE_ID__",
             "Port": 80,
             "Protocol": "HTTP",

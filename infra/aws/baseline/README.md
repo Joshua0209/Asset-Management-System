@@ -1,6 +1,6 @@
 # AWS Infrastructure Baseline (Reference)
 
-This directory contains sanitized exports of the manually provisioned AWS infrastructure for the Asset Management System. These files serve as a point-in-time reference for the production environment and can be used to audit configurations or assist in recreating the environment.
+This directory contains sanitized exports of the manually provisioned AWS infrastructure for the Asset Management System, captured on **2026-05-20** against the `ap-east-2` (Hong Kong) region. These files serve as a point-in-time reference for the production environment and can be used to audit configurations or assist in recreating the environment.
 
 ## Files
 
@@ -24,7 +24,12 @@ All sensitive and account-specific identifiers have been replaced with placehold
 - `__SG_*_ID__`: Security Group identifiers.
 - `__SUBNET_*__`: Subnet identifiers.
 - `__ALB_DNS_NAME__`: The public-facing ALB endpoint.
+- `__ALB_RESOURCE_ID__`: The unique resource ID of the ALB.
+- `__LISTENER_ID__`: Unique identifier for ALB listeners.
 - `__RDS_ENDPOINT__`: The private database endpoint.
+- `__RDS_MASTER_USERNAME__`: RDS administrator username.
+- `__ROLE_ID__`: Unique identifier for IAM roles.
+- `__TIMESTAMP__`: Generic timestamp placeholder.
 - `__REPAIR_S3_BUCKET__`: The S3 bucket for repair image storage.
 
 ## Usage

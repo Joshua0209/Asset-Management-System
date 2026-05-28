@@ -2,7 +2,7 @@
     "Role": {
         "Path": "/",
         "RoleName": "ams-ecs-task-execution",
-        "RoleId": "AROAX4DB3Y4H2SM6L3LN5",
+        "RoleId": "__ROLE_ID__",
         "Arn": "arn:aws:iam::__ACCOUNT_ID__:role/ams-ecs-task-execution",
         "CreateDate": "2026-05-19T17:21:04+00:00",
         "AssumeRolePolicyDocument": {
