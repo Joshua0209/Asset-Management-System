@@ -298,6 +298,7 @@ describe("AssetDetail", () => {
       expect(mockAssignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
         responsible_person_id: "holder-2",
         assignment_date: "2026-05-08",
+        location: "Taipei HQ",
         version: 1,
       });
     });
@@ -329,6 +330,7 @@ describe("AssetDetail", () => {
       expect(mockUnassignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
         reason: "Returned to IT",
         unassignment_date: "2026-05-10",
+        location: "Taipei HQ",
         version: 1,
       });
     });

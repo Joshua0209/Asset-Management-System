@@ -134,18 +134,22 @@ describe("mocks/mockBackend", () => {
     const assigned = backend.assignAsset(created.id, {
       responsible_person_id: holderId,
       assignment_date: "2026-04-03",
+      location: "Fab12",
       version: created.version,
     });
     expect(assigned.status).toBe("in_use");
     expect(assigned.responsible_person_id).toBe(holderId);
+    expect(assigned.location).toBe("Fab12");
 
     const unassigned = backend.unassignAsset(created.id, {
       reason: "transfer",
       unassignment_date: "2026-04-04",
+      location: "Storage A",
       version: assigned.version,
     });
     expect(unassigned.status).toBe("in_stock");
     expect(unassigned.responsible_person_id).toBeNull();
+    expect(unassigned.location).toBe("Storage A");
     expect(unassigned.assignment_date).toBe("2026-04-03");
     expect(unassigned.unassignment_date).toBe("2026-04-04");
 

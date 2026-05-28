@@ -796,6 +796,31 @@ class TestAssignAsset:
         assert data["responsible_person"]["id"] == holder.id
         assert data["version"] == current_version + 1
 
+    def test_assign_updates_registered_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK, location="Taipei HQ")
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Hsinchu Fab12",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"]["location"] == "Hsinchu Fab12"
+
     def test_holder_cannot_assign(
         self,
         client: TestClient,
@@ -1082,6 +1107,36 @@ class TestUnassignAsset:
         assert data["responsible_person_id"] is None
         assert data["responsible_person"] is None
         assert data["version"] == current_version + 1
+
+    def test_unassign_updates_registered_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+            location="Hsinchu Fab12",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"]["location"] == "Taipei Storage"
 
     def test_holder_cannot_unassign(
         self,
