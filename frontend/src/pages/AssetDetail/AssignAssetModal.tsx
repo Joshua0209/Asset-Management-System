@@ -70,6 +70,8 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
     try {
       values = await form.validateFields();
     } catch {
+      // validateFields rejects when a field rule fails; antd already renders
+      // the inline errors, so there is nothing more to surface here.
       return;
     }
     await onSubmit(values);
@@ -113,14 +115,6 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
                 min={asset.assignment_date ?? undefined}
               />
             </Form.Item>
-
-            <Form.Item
-              name="location"
-              label={t('assetList.form.location')}
-              rules={[{ required: true, message: t('validation.required') }]}
-            >
-              <Input maxLength={120} />
-            </Form.Item>
           </>
         ) : (
           <>
@@ -146,16 +140,18 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
             >
               <Input type="date" max={todayIsoDate} />
             </Form.Item>
-
-            <Form.Item
-              name="location"
-              label={t('assetList.form.location')}
-              rules={[{ required: true, message: t('validation.required') }]}
-            >
-              <Input maxLength={120} />
-            </Form.Item>
           </>
         )}
+
+        {/* Asset's registered physical location; common to assign and
+            unassign, prefilled from asset.location (issue #97 / Q21). */}
+        <Form.Item
+          name="location"
+          label={t('assetList.form.location')}
+          rules={[{ required: true, message: t('validation.required') }]}
+        >
+          <Input maxLength={120} />
+        </Form.Item>
       </Form>
     </Modal>
   );
