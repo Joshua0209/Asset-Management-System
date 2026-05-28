@@ -76,6 +76,29 @@ Options: Auto-increment integer, UUID v4, custom business code (e.g., `AST-2026-
 
 ---
 
+**Q21. Does `assets.department` / `assets.location` represent the asset's own attribute, or should they sync from the assigned holder?**
+
+Context: After assigning an asset to a holder, the detail page kept showing the asset's seeded `Department / Location` rather than the holder's values. FR-13 labels these as 「使用部門」/「存放地點」, which is ambiguous — they could mean "the dept currently using it" (derived from the holder) or "the dept the asset belongs to" (an independent attribute). The schema already stores `users.department` and `assets.department` as separate columns, which implicitly commits to treating them as distinct concepts. Issue #97 surfaced this ambiguity.
+
+Options considered:
+
+1. **Auto-sync on assign with opt-out flag.** Assignment defaults `asset.department` / `asset.location` to the holder's values; a checkbox lets the manager opt out for cross-allocation. Requires a new `users.location` column, `sync_department` / `sync_location` API parameters, UI checkboxes, and history metadata. Closest match to the literal reading of 「使用部門」.
+2. **Keep asset and holder fields independent.** `assets.department` is the asset's owning department (cost-center / financial allocation), set at registration and modified only via explicit asset edit. `assets.location` is the asset's registered physical location, also independent. The 「使用部門」 requirement is satisfied at the UI layer by displaying `responsible_person.department` as a separate `Holder Department` row. FSM transitions never mutate dept/location.
+3. **Close as out-of-scope.** Document the spec ambiguity, ship nothing.
+
+→ **Option 2.** Three reasons:
+   - The schema already separates `assets.department` and `users.department`; treating them as one concept makes one of the fields redundant.
+   - The definition supports large-enterprise reality (central IT purchasing for non-IT users) without inventing a `users.location` field that nobody would maintain accurately.
+   - Backend behaviour on `main` already matches Option 2; the resolution is mostly documentation and UI clarification, not a code rewrite.
+
+   Implementation footprint:
+   - `07-database-design.md`, `11-asset-fsm.md`, `12-api-design.md` get the precise definitions and invariants.
+   - Seed data: ~80% of held assets have `asset.department == holder.department`; ~20% deliberately differ to exercise the cross-allocation case.
+   - `AssetDetail` UI shows `Asset Department` and `Holder Department` as two separate rows. `Asset Location` stands alone — there is no `Holder Location` row because `users.location` does not exist (and we are deliberately not adding it).
+   - `GET /assets?department=X` continues to filter on `assets.department` (owning). Filtering by holder dept is a separate future parameter, out of scope here.
+
+---
+
 ## Category D: Non-Functional Trade-offs
 
 **Q11. Acceptable search consistency window (Elasticsearch eventual consistency)?**
