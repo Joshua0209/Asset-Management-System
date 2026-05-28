@@ -65,6 +65,12 @@
   - Asset: `in_stock`, `in_use`, `pending_repair`, `under_repair`, `disposed`
   - Repair request: `pending_review`, `under_repair`, `completed`, `rejected`
 - **`asset_code`:** Business-facing unique identifier (e.g., `AST-2026-00001`). Separate from internal `id` (auto-increment or UUID).
+- **Department / location semantics (issue #97):**
+  - `assets.department` = the asset's **owning department** (cost-center / financial allocation). Set at registration (T1) and modified only via the explicit asset edit endpoint (`PATCH /assets/{id}`). FSM transitions — assign, unassign, repair lifecycle, disposal — do NOT mutate this field. See `11-asset-fsm.md` for the invariant.
+  - `assets.location` = the asset's **registered physical location** (where it is stored / kept). Same lifecycle as `assets.department`: set at T1, edited explicitly, never mutated by FSM transitions.
+  - `users.department` = the user's **organizational department** (where the person works). Distinct from `assets.department`; the two may differ for assets that are centrally owned but used by another department (e.g. IT-owned laptop in the hands of a Sales-department holder).
+  - There is no `users.location` column by design — "where a person usually works" is an organizational fact, not a stable user attribute, and modelling it here would invite stale data.
+  - The asset detail UI surfaces both `Asset Department` (from `assets.department`) and `Holder Department` (from `responsible_person.department`) so the distinction is visible at a glance. `Asset Location` stands alone for the same reason `users.location` does not exist.
 - **Numeric types:**
   - `purchase_amount`: `NUMERIC(15, 2)` — exact decimal, avoids floating-point rounding for financial values.
   - `repair_cost`: `NUMERIC(15, 2)` — same rationale.
