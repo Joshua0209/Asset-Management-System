@@ -127,13 +127,14 @@ class Settings(BaseSettings):
     # `bootstrap_manager_email` and `_password` are REQUIRED (no defaults)
     # so a Secrets Manager injection failure surfaces at boot rather than
     # silently seeding `admin@example.com` / `ChangeMe123` into production.
-    # Same posture as `jwt_secret`. `name` / `department` keep defaults
+    # Same posture as `jwt_secret`. `name` / `department` / `location` keep defaults
     # since they are not credentials. Password is ``SecretStr`` so a
     # log dump never carries the bootstrap manager's plaintext password.
     bootstrap_manager_email: str
     bootstrap_manager_password: SecretStr
     bootstrap_manager_name: str = "Bootstrap Manager"
     bootstrap_manager_department: str = "IT"
+    bootstrap_manager_location: str = "Unknown"
 
     repair_upload_dir: str = "uploads/repair-requests"
     # Image storage backend selector. "local" uses the disk-backed

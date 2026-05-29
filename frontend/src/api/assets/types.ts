@@ -27,6 +27,7 @@ export interface AssetPerson {
    * visible.
    */
   department: string;
+  location: string;
 }
 
 export interface AssetRecord {
@@ -114,14 +115,12 @@ export interface AssetUpdatePayload {
 export interface AssetAssignPayload {
   responsible_person_id: string;
   assignment_date: string;
-  location: string;
   version: number;
 }
 
 export interface AssetUnassignPayload {
   reason: string;
   unassignment_date: string;
-  location: string;
   version: number;
 }
 

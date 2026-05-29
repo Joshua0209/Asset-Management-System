@@ -38,21 +38,21 @@ LOCATIONS = [
     "台南 Fab18 廠辦",
 ]
 MANAGER_NAMES = [
-    ("manager1@example.com", "陳怡君", "資訊維運部"),
-    ("manager2@example.com", "王志豪", "資產管理部"),
-    ("manager3@example.com", "李欣穎", "資產管理部"),
+    ("manager1@example.com", "陳怡君", "資訊維運部", "台北南港總部 8F"),
+    ("manager2@example.com", "王志豪", "資產管理部", "新竹 Fab12 行政樓"),
+    ("manager3@example.com", "李欣穎", "資產管理部", "台中后里廠 R&D Lab"),
 ]
 HOLDER_NAMES = [
-    ("holder1@example.com", "林佳穎", "製造一部"),
-    ("holder2@example.com", "張育誠", "研發中心"),
-    ("holder3@example.com", "黃柏睿", "製造二部"),
-    ("holder4@example.com", "吳思妤", "品保部"),
-    ("holder5@example.com", "周冠廷", "研發中心"),
-    ("holder6@example.com", "蔡宜庭", "製造一部"),
-    ("holder7@example.com", "鄭俊翔", "設備工程部"),
-    ("holder8@example.com", "許雅婷", "品保部"),
-    ("holder9@example.com", "楊承翰", "設備工程部"),
-    ("holder10@example.com", "高芷涵", "製造二部"),
+    ("holder1@example.com", "林佳穎", "製造一部", "新竹 Fab12 行政樓"),
+    ("holder2@example.com", "張育誠", "研發中心", "台中后里廠 R&D Lab"),
+    ("holder3@example.com", "黃柏睿", "製造二部", "台南 Fab18 廠辦"),
+    ("holder4@example.com", "吳思妤", "品保部", "新竹 Fab12 行政樓"),
+    ("holder5@example.com", "周冠廷", "研發中心", "台中后里廠 R&D Lab"),
+    ("holder6@example.com", "蔡宜庭", "製造一部", "新竹 Fab12 行政樓"),
+    ("holder7@example.com", "鄭俊翔", "設備工程部", "台南 Fab18 廠辦"),
+    ("holder8@example.com", "許雅婷", "品保部", "台北南港總部 8F"),
+    ("holder9@example.com", "楊承翰", "設備工程部", "台南 Fab18 廠辦"),
+    ("holder10@example.com", "高芷涵", "製造二部", "台南 Fab18 廠辦"),
 ]
 # Category strings MUST match ``AssetCategory`` in ``app/schemas/asset.py``
 # (the API Literal). The DB column is plain ``String(100)`` so non-canonical
@@ -224,6 +224,7 @@ def build_bootstrap_manager() -> User:
         name=settings.bootstrap_manager_name,
         role=UserRole.MANAGER,
         department=settings.bootstrap_manager_department,
+        location=settings.bootstrap_manager_location,
     )
 
 
@@ -235,7 +236,7 @@ def build_users() -> list[User]:
     # it to e.g. "manager1@example.com" raises a unique-constraint error on flush.
     seen_emails = {bootstrap.email}
 
-    for email, name, department in MANAGER_NAMES:
+    for email, name, department, location in MANAGER_NAMES:
         if email in seen_emails:
             continue
         users.append(
@@ -245,10 +246,11 @@ def build_users() -> list[User]:
                 name=name,
                 role=UserRole.MANAGER,
                 department=department,
+                location=location,
             )
         )
         seen_emails.add(email)
-    for email, name, department in HOLDER_NAMES:
+    for email, name, department, location in HOLDER_NAMES:
         if email in seen_emails:
             continue
         users.append(
@@ -258,6 +260,7 @@ def build_users() -> list[User]:
                 name=name,
                 role=UserRole.HOLDER,
                 department=department,
+                location=location,
             )
         )
         seen_emails.add(email)
@@ -267,27 +270,22 @@ def build_users() -> list[User]:
 def build_assets(holders: list[User]) -> list[Asset]:
     assets: list[Asset] = []
     today = date.today()
+    settings = get_settings()
     for index in range(60):
         category = CATEGORIES[index % len(CATEGORIES)]
         model, supplier = MODEL_BY_CATEGORY[category][index % len(MODEL_BY_CATEGORY[category])]
         holder = holders[index % len(holders)] if index % 3 != 0 else None
         status = AssetStatus.IN_USE if holder else AssetStatus.IN_STOCK
         purchase_date = today - timedelta(days=40 + index * 7)
-        # Issue #97 / Q21: asset.department (owning) is an attribute of the
-        # asset itself, not a sync of holder.department. Most held assets
-        # happen to match their holder's department (real-world common case),
-        # but assets whose loop index is divisible by 5 (~20% of held assets)
-        # are deliberately cross-allocated so the demo data exercises the
-        # distinction the AssetDetail UI exposes.
+        # Issue #97 / Q21: assets reflect their current allocation context.
+        # Held assets sync to the holder's department/location; in-stock
+        # assets use the same manager-side defaults as the T1 endpoint.
         if holder is None:
-            owning_department = DEPARTMENTS[index % len(DEPARTMENTS)]
-        elif index % 5 == 0:
-            owning_department = next(
-                (dept for dept in DEPARTMENTS if dept != holder.department),
-                holder.department,
-            )
+            asset_department = settings.bootstrap_manager_department
+            asset_location = settings.bootstrap_manager_location
         else:
-            owning_department = holder.department
+            asset_department = holder.department
+            asset_location = holder.location
         assets.append(
             Asset(
                 asset_code=f"AST-{today.year}-{index + 1:05d}",
@@ -298,8 +296,8 @@ def build_assets(holders: list[User]) -> list[Asset]:
                 supplier=supplier,
                 purchase_date=purchase_date,
                 purchase_amount=Decimal("18000.00") + Decimal(index * 350),
-                location=LOCATIONS[index % len(LOCATIONS)],
-                department=owning_department,
+                location=asset_location,
+                department=asset_department,
                 activation_date=purchase_date + timedelta(days=3),
                 warranty_expiry=purchase_date + timedelta(days=365 * 2),
                 status=status,

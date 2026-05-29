@@ -134,7 +134,7 @@ def _validation_error(message: str, *, code: str = "validation_error") -> HTTPEx
     )
 
 
-def _asset_from_payload(payload: AssetCreate, asset_code: str) -> Asset:
+def _asset_from_payload(payload: AssetCreate, asset_code: str, manager: User) -> Asset:
     return Asset(
         asset_code=asset_code,
         name=payload.name,
@@ -144,8 +144,8 @@ def _asset_from_payload(payload: AssetCreate, asset_code: str) -> Asset:
         supplier=payload.supplier,
         purchase_date=payload.purchase_date,
         purchase_amount=payload.purchase_amount,
-        location=payload.location or "",
-        department=payload.department or "",
+        location=payload.location or manager.location,
+        department=payload.department or manager.department,
         activation_date=payload.activation_date,
         warranty_expiry=payload.warranty_expiry,
         status=AssetStatus.IN_STOCK,
@@ -277,7 +277,7 @@ def register_asset(
     last_integrity_error: IntegrityError | None = None
     for attempt in range(1, _ASSET_CODE_CREATE_ATTEMPTS + 1):
         try:
-            asset = _asset_from_payload(payload, _next_asset_code(db))
+            asset = _asset_from_payload(payload, _next_asset_code(db), _manager)
             db.add(asset)
             db.flush()
             response.headers["Location"] = f"/api/v1/assets/{asset.id}"
@@ -588,7 +588,8 @@ def assign_asset(
         asset.responsible_person_id = target.id
         asset.responsible_person = target
         asset.assignment_date = payload.assignment_date
-        asset.location = payload.location
+        asset.department = target.department
+        asset.location = target.location
         # Reset unassignment_date so the (assignment_date, unassignment_date)
         # pair only ever describes the most recent assignment window.
         asset.unassignment_date = None
@@ -668,7 +669,8 @@ def unassign_asset(
         asset.status = AssetStatus.IN_STOCK
         asset.responsible_person_id = None
         asset.responsible_person = None
-        asset.location = payload.location
+        asset.department = manager.department
+        asset.location = manager.location
         # Per the API spec: assignment_date is preserved on unassign so the
         # pair captures the most recent assignment window. The next assign
         # will overwrite assignment_date and clear unassignment_date.

@@ -26,6 +26,7 @@ export interface AssetRecord {
     id: string;
     name: string;
     department: string;
+    location: string;
   } | null;
   disposal_reason: string | null;
   version: number;
@@ -41,12 +42,28 @@ export interface DemoHolder {
   id: string;
   label: string;
   department: string;
+  location: string;
 }
 
 export const DUMMY_HOLDERS: DemoHolder[] = [
-  { id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1001', label: 'Alice Chen', department: 'Engineering' },
-  { id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1002', label: 'Brian Lin', department: 'Operations' },
-  { id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1003', label: 'Cindy Wu', department: 'Finance' },
+  {
+    id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1001',
+    label: 'Alice Chen',
+    department: 'Engineering',
+    location: 'Hsinchu Fab12',
+  },
+  {
+    id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1002',
+    label: 'Brian Lin',
+    department: 'Operations',
+    location: 'Taipei HQ',
+  },
+  {
+    id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1003',
+    label: 'Cindy Wu',
+    department: 'Finance',
+    location: 'Taichung Office',
+  },
 ];
 
 const RAW_DUMMY_ASSETS: RawAssetRecord[] = [
@@ -441,6 +458,7 @@ export const DUMMY_ASSETS: AssetRecord[] = RAW_DUMMY_ASSETS.map(({ responsible_p
           id: responsible_person_id,
           name: holder?.label ?? 'Unknown Holder',
           department: holder?.department ?? 'Unknown',
+          location: holder?.location ?? 'Unknown',
         }
       : null,
   };

@@ -12,6 +12,7 @@ class UserRead(APIModel):
     name: str
     role: UserRole
     department: str
+    location: str
     version: int
     created_at: datetime
     updated_at: datetime

@@ -236,9 +236,8 @@ describe("AssetDetail", () => {
     expect(screen.getByText("IT")).toBeInTheDocument();
 
     // Holder's organisational department (from responsible_person.department).
-    // Only rendered in the Descriptions list, so getByText is unique.
     expect(screen.getByText("Holder Department")).toBeInTheDocument();
-    expect(screen.getByText("Engineering")).toBeInTheDocument();
+    expect(screen.getAllByText("Engineering").length).toBeGreaterThan(0);
   });
 
   it("renders 404 when asset is not found", async () => {

@@ -96,7 +96,6 @@ class AssetAssignRequest(APIModel):
 
     responsible_person_id: UUIDString
     assignment_date: date
-    location: str = Field(min_length=1, max_length=120)
     version: int = Field(ge=1)
 
     @model_validator(mode="after")
@@ -111,7 +110,6 @@ class AssetUnassignRequest(APIModel):
 
     reason: str = Field(min_length=1, max_length=500)
     unassignment_date: date
-    location: str = Field(min_length=1, max_length=120)
     version: int = Field(ge=1)
 
     @model_validator(mode="after")
@@ -136,6 +134,7 @@ class AssetPersonRead(APIModel):
     name: str
     email: str
     department: str
+    location: str
 
 
 class AssetRead(APIModel):

@@ -6,6 +6,7 @@ export interface UserRecord {
   name: string;
   role: UserRole;
   department: string;
+  location: string;
   created_at: string | null;
 }
 

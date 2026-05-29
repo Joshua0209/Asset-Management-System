@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo } from 'react';
-import { Form, Input, Modal, Select } from 'antd';
+import { Form, Input, Modal, Select, Space, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import type { AssetRecord } from '@/api/assets';
 import type { UserRecord } from '@/api/users';
+import { useAuth } from '@/auth/AuthContext';
 
 export interface AssignFormValues {
   responsible_person_id?: string;
   assignment_date?: string;
-  location?: string;
   reason?: string;
   unassignment_date?: string;
 }
@@ -39,9 +39,13 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
   onSubmit,
 }) => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [form] = Form.useForm<AssignFormValues>();
   const isUnassign = asset.status === 'in_use';
   const todayIsoDate = useMemo(() => getTodayIsoDate(), []);
+  const selectedHolderId = Form.useWatch('responsible_person_id', form);
+  const selectedHolder = holders.find((holder) => holder.id === selectedHolderId);
+  const syncTarget = isUnassign ? user : selectedHolder;
 
   useEffect(() => {
     if (!open) {
@@ -52,18 +56,16 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
       form.setFieldsValue({
         reason: '',
         unassignment_date: todayIsoDate,
-        location: asset.location,
       });
     } else {
       form.setFieldsValue({
         assignment_date: todayIsoDate,
-        location: asset.location,
       });
       if (asset.responsible_person_id) {
         form.setFieldValue('responsible_person_id', asset.responsible_person_id);
       }
     }
-  }, [open, isUnassign, asset.location, asset.responsible_person_id, todayIsoDate, form]);
+  }, [open, isUnassign, asset.responsible_person_id, todayIsoDate, form]);
 
   const handleOk = async () => {
     let values: AssignFormValues;
@@ -143,15 +145,16 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
           </>
         )}
 
-        {/* Asset's registered physical location; common to assign and
-            unassign, prefilled from asset.location (issue #97 / Q21). */}
-        <Form.Item
-          name="location"
-          label={t('assetList.form.location')}
-          rules={[{ required: true, message: t('validation.required') }]}
-        >
-          <Input maxLength={120} />
-        </Form.Item>
+        <Space orientation="vertical" size={4}>
+          <Typography.Text type="secondary">
+            {t('assetList.form.syncDepartment')}
+          </Typography.Text>
+          <Typography.Text>{syncTarget?.department ?? t('assetList.detail.notAvailable')}</Typography.Text>
+          <Typography.Text type="secondary">
+            {t('assetList.form.syncLocation')}
+          </Typography.Text>
+          <Typography.Text>{syncTarget?.location ?? t('assetList.detail.notAvailable')}</Typography.Text>
+        </Space>
       </Form>
     </Modal>
   );

@@ -60,6 +60,7 @@ class TestBootstrapManager:
         assert user.role is UserRole.MANAGER
         assert user.name == settings.bootstrap_manager_name
         assert user.department == settings.bootstrap_manager_department
+        assert user.location == settings.bootstrap_manager_location
         # Password is stored hashed, verifies against the configured plaintext.
         assert verify_password(
             settings.bootstrap_manager_password.get_secret_value(),
@@ -197,12 +198,9 @@ class TestSeedCategories:
 
 
 class TestSeedDemoRealism:
-    def test_held_assets_include_cross_department_allocation(self) -> None:
-        # Issue #97 / Q21: assets.department (owning) is independent of
-        # users.department (holder organisational). The common case is
-        # for them to match, but the seed must also exercise the
-        # cross-allocation case so the AssetDetail UI's "Asset Department
-        # vs Holder Department" distinction is visible from real data.
+    def test_held_assets_match_holder_department_and_location(self) -> None:
+        # Issue #97 / Q21: assigned assets reflect the holder's current
+        # allocation context.
         users = build_users()
         _prime_ids(users)
         holders = [u for u in users if u.role is UserRole.HOLDER]
@@ -214,23 +212,29 @@ class TestSeedDemoRealism:
         ]
         assert held, "seed produced no held assets — fixture broken"
 
-        matching = sum(
-            1
-            for asset in held
-            if asset.department
-            == holder_by_id[asset.responsible_person_id].department
-        )
-        differing = len(held) - matching
+        for asset in held:
+            holder = holder_by_id[asset.responsible_person_id]
+            assert asset.department == holder.department
+            assert asset.location == holder.location
 
-        assert matching > differing, (
-            "expected dept-matching held assets to dominate the seed "
-            f"(real-world common case); got {matching} match vs {differing} differ"
-        )
-        assert differing >= 1, (
-            "seed should include at least one held asset whose owning "
-            "department differs from the holder's, to exercise issue #97 "
-            "cross-allocation"
-        )
+    def test_in_stock_assets_match_bootstrap_manager_department_and_location(self) -> None:
+        # Issue #97 / Q21: unassigned stock uses the same manager-side
+        # allocation defaults as T1 when department/location are omitted.
+        users = build_users()
+        _prime_ids(users)
+        holders = [u for u in users if u.role is UserRole.HOLDER]
+        settings = get_settings()
+        assets = build_assets(holders)
+
+        in_stock = [
+            asset for asset in assets if asset.status is AssetStatus.IN_STOCK
+        ]
+        assert in_stock, "seed produced no in-stock assets — fixture broken"
+
+        for asset in in_stock:
+            assert asset.responsible_person_id is None
+            assert asset.department == settings.bootstrap_manager_department
+            assert asset.location == settings.bootstrap_manager_location
 
     def test_build_users_has_believable_demo_population(self) -> None:
         users = build_users()

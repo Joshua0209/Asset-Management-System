@@ -14,7 +14,7 @@ interface LoginEnvelope {
   data: {
     token: string;
     expires_at: string;
-    user: { id: string; email: string; name: string; role: UserRole };
+    user: AuthUser;
   };
 }
 
@@ -32,11 +32,25 @@ interface MockUserRecord {
 const MOCK_USERS: ReadonlyArray<MockUserRecord> = [
   {
     password: "admin",
-    user: { id: "mock-manager", email: "admin@example.com", name: "Admin Manager", role: "manager" },
+    user: {
+      id: "mock-manager",
+      email: "admin@example.com",
+      name: "Admin Manager",
+      role: "manager",
+      department: "Operations",
+      location: "Taipei HQ",
+    },
   },
   {
     password: "holder",
-    user: { id: "mock-holder", email: "holder@example.com", name: "Demo Holder", role: "holder" },
+    user: {
+      id: "mock-holder",
+      email: "holder@example.com",
+      name: "Demo Holder",
+      role: "holder",
+      department: "Engineering",
+      location: "Hsinchu Fab12",
+    },
   },
 ];
 
@@ -88,6 +102,8 @@ export async function register(payload: RegisterPayload): Promise<AuthUser> {
       id: `mock-holder-${Date.now()}`,
       email: payload.email,
       name: payload.name,
+      department: payload.department,
+      location: payload.location,
       role: "holder",
     };
   }

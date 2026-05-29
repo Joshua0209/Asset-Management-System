@@ -9,6 +9,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 interface RegisterFormValues {
   name: string;
   department: string;
+  location: string;
   email: string;
   password: string;
 }
@@ -74,6 +75,13 @@ const Register: React.FC = () => {
               rules={[{ required: true, message: t("validation.required") }]}
             >
               <Input autoComplete="organization" />
+            </Form.Item>
+            <Form.Item
+              label={t("auth.register.location")}
+              name="location"
+              rules={[{ required: true, message: t("validation.required") }]}
+            >
+              <Input autoComplete="street-address" maxLength={120} />
             </Form.Item>
             <Form.Item
               label={t("auth.register.email")}
