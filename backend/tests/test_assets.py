@@ -128,6 +128,7 @@ class TestListAssets:
             "name": "Alice",
             "email": holder.email,
             "department": holder.department,
+            "location": holder.location,
         }
 
     def test_responsible_person_exposes_holder_department(
@@ -795,8 +796,8 @@ class TestAssignAsset:
         assert data["status"] == "in_use"
         assert data["responsible_person_id"] == holder.id
         assert data["responsible_person"]["id"] == holder.id
-        assert data["department"] == "Engineering"
-        assert data["location"] == "Hsinchu Fab12"
+        assert data["department"] == holder.department
+        assert data["location"] == holder.location
         assert data["version"] == current_version + 1
 
     def test_assign_syncs_department_and_location_from_holder(
@@ -932,7 +933,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(holder),
@@ -952,7 +952,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
         )
@@ -988,7 +987,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1008,7 +1006,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": 1,
             },
             headers=auth_headers(manager),
@@ -1031,7 +1028,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1074,7 +1070,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": another_manager.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1097,7 +1092,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1126,7 +1120,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1149,7 +1142,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version + 1,
             },
             headers=auth_headers(manager),
@@ -1173,7 +1165,6 @@ class TestAssignAsset:
                 json={
                     "responsible_person_id": target.id,
                     "assignment_date": _ASSIGNMENT_DATE_ISO,
-                    "location": "Taipei HQ",
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),
@@ -1215,8 +1206,8 @@ class TestUnassignAsset:
         assert data["status"] == "in_stock"
         assert data["responsible_person_id"] is None
         assert data["responsible_person"] is None
-        assert data["department"] == "資訊維運部"
-        assert data["location"] == "Taipei Storage"
+        assert data["department"] == manager.department
+        assert data["location"] == manager.location
         assert data["version"] == current_version + 1
 
     def test_unassign_syncs_department_and_location_from_manager(
@@ -1364,7 +1355,6 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(holder),
@@ -1396,7 +1386,6 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1415,7 +1404,6 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": 1,
             },
             headers=auth_headers(manager),
@@ -1440,7 +1428,6 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1466,7 +1453,6 @@ class TestUnassignAsset:
             json={
                 "reason": "",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1492,7 +1478,6 @@ class TestUnassignAsset:
             json={
                 "reason": "x" * 501,
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1518,7 +1503,6 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version + 1,
             },
             headers=auth_headers(manager),
@@ -1558,7 +1542,6 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1596,7 +1579,6 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1630,7 +1612,6 @@ class TestUnassignAsset:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1657,7 +1638,6 @@ class TestUnassignAsset:
                 json={
                     "reason": "transfer",
                     "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                    "location": "Taipei Storage",
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),
@@ -1966,7 +1946,6 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1997,7 +1976,6 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2022,7 +2000,6 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "responsible_person_id": target.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version + 1,
             },
             headers=auth_headers(manager),
@@ -2046,7 +2023,6 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2081,7 +2057,6 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2112,7 +2087,6 @@ class TestAssetTransition409ErrorCodes:
             json={
                 "reason": "transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version + 1,
             },
             headers=auth_headers(manager),
@@ -2252,7 +2226,6 @@ class TestAssignmentDateFields:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2280,7 +2253,6 @@ class TestAssignmentDateFields:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": future.isoformat(),
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2330,7 +2302,6 @@ class TestAssignmentDateFields:
             json={
                 "reason": "Employee transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2364,7 +2335,6 @@ class TestAssignmentDateFields:
             json={
                 "reason": "transfer",
                 "unassignment_date": future.isoformat(),
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2395,7 +2365,6 @@ class TestAssignmentDateFields:
                 "reason": "transfer",
                 # One day earlier than assignment_date.
                 "unassignment_date": "2026-04-19",
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -2656,7 +2625,6 @@ class TestAssetMutationCommitErrors:
                 json={
                     "responsible_person_id": target.id,
                     "assignment_date": _ASSIGNMENT_DATE_ISO,
-                    "location": "Taipei HQ",
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),
@@ -2696,7 +2664,6 @@ class TestAssetMutationCommitErrors:
                 json={
                     "reason": "transfer",
                     "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                    "location": "Taipei Storage",
                     "version": asset.version,
                 },
                 headers=auth_headers(manager),

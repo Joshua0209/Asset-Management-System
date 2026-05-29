@@ -79,6 +79,7 @@ class TestAuthToActionJourney:
                 "password": _HOLDER_PASSWORD,
                 "name": "Charlie",
                 "department": "Engineering",
+                "location": "Taipei HQ",
             },
         )
         assert register_response.status_code == 201
@@ -103,7 +104,6 @@ class TestAuthToActionJourney:
             json={
                 "responsible_person_id": new_holder_id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset["version"],
             },
             headers=manager_auth,
@@ -172,6 +172,7 @@ class TestAuthToActionJourney:
                 "password": "Password123",
                 "name": "Intruder",
                 "department": "Engineering",
+                "location": "Taipei HQ",
                 "role": "manager",  # the attempted self-elevation
             },
         )
@@ -222,6 +223,7 @@ class TestAuthToActionJourney:
                 "password": _NEW_USER_PASSWORD,
                 "name": "Dana",
                 "department": "Finance",
+                "location": "Taipei HQ",
                 "role": "holder",
             },
             headers=admin_auth,
@@ -247,7 +249,6 @@ class TestAuthToActionJourney:
             json={
                 "responsible_person_id": new_holder_id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": asset["version"],
             },
             headers=admin_auth,

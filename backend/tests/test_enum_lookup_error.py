@@ -26,10 +26,11 @@ def test_user_role_loads_when_db_stores_lowercase_value(db_session: Session) -> 
         text(
             """
             INSERT INTO users (
-                id, email, password_hash, name, role, department, created_at, updated_at, version
+                id, email, password_hash, name, role, department, location,
+                created_at, updated_at, version
             )
             VALUES (
-                :id, 'admin@example.com', 'hash', 'Admin', 'manager', 'IT',
+                :id, 'admin@example.com', 'hash', 'Admin', 'manager', 'IT', 'HQ',
                 '2023-01-01 00:00:00', '2023-01-01 00:00:00', 1
             )
             """
@@ -84,6 +85,7 @@ def test_repair_request_status_loads_when_db_stores_lowercase_value(db_session: 
             name="Requester",
             role=UserRole.HOLDER,
             department="IT",
+            location="HQ",
         )
     )
     db_session.add(
@@ -139,10 +141,11 @@ def test_login_succeeds_when_db_stores_lowercase_role(
         text(
             """
             INSERT INTO users (
-                id, email, password_hash, name, role, department, created_at, updated_at, version
+                id, email, password_hash, name, role, department, location,
+                created_at, updated_at, version
             )
             VALUES (
-                :id, 'boss@example.com', :pw, 'Boss', 'manager', 'IT',
+                :id, 'boss@example.com', :pw, 'Boss', 'manager', 'IT', 'HQ',
                 '2024-01-01 00:00:00', '2024-01-01 00:00:00', 1
             )
             """

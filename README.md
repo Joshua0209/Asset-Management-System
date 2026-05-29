@@ -265,7 +265,8 @@ Key variables:
 | `BOOTSTRAP_MANAGER_EMAIL` | Yes | Email for the seeded first manager |
 | `BOOTSTRAP_MANAGER_PASSWORD` | Yes | Password for the seeded first manager — **change before exposing outside the team** |
 | `BOOTSTRAP_MANAGER_NAME` | No | Display name for the seeded manager |
-| `BOOTSTRAP_MANAGER_DEPARTMENT` | No | Department for the seeded manager |
+| `BOOTSTRAP_MANAGER_DEPARTMENT` | No | Department for the seeded first manager |
+| `BOOTSTRAP_MANAGER_LOCATION` | No | Regular workplace/site for the seeded first manager |
 | `CORS_ALLOWED_ORIGINS` | No | JSON array of allowed origins (default `["http://localhost:5173"]`) |
 | `CORS_ALLOWED_METHODS` | No | JSON array of allowed HTTP methods (default `["GET","POST","PATCH","OPTIONS"]` — matches the API's actual surface; broaden when a new verb is needed) |
 | `CORS_ALLOWED_HEADERS` | No | JSON array of allowed request headers (default `["Authorization","Content-Type"]`) |

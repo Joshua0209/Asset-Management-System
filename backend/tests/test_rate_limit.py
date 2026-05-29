@@ -347,6 +347,7 @@ def test_auth_register_2xx_carries_x_ratelimit_headers(
             "password": "Password123",
             "name": "RL Headers",
             "department": "IT",
+            "location": "Taipei HQ",
         },
     )
     assert response.status_code == 201, response.text

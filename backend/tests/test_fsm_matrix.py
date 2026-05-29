@@ -243,7 +243,6 @@ def _call_asset_action(
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGN_DATE.isoformat(),
-                "location": "Taipei HQ",
                 "version": asset.version,
             },
         )
@@ -254,7 +253,6 @@ def _call_asset_action(
             json={
                 "reason": "FSM matrix test",
                 "unassignment_date": date(2026, 3, 1).isoformat(),
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
         )

@@ -256,7 +256,6 @@ class TestTransitionsRecordHistory:
                 "responsible_person_id": holder.id,
                 "version": asset.version,
                 "assignment_date": "2026-05-01",
-                "location": "Taipei HQ",
             },
             headers=auth_headers(manager),
         )
@@ -293,7 +292,6 @@ class TestTransitionsRecordHistory:
                 "reason": "End of project",
                 "version": asset.version,
                 "unassignment_date": "2026-05-06",
-                "location": "Taipei Storage",
             },
             headers=auth_headers(manager),
         )
@@ -510,7 +508,6 @@ class TestHistoryEndpoint:
                 "responsible_person_id": holder.id,
                 "version": asset.version,
                 "assignment_date": "2026-05-01",
-                "location": "Taipei HQ",
             },
             headers=auth_headers(manager),
         )
@@ -521,7 +518,6 @@ class TestHistoryEndpoint:
                 "reason": "Returned",
                 "version": asset.version,
                 "unassignment_date": "2026-05-06",
-                "location": "Taipei Storage",
             },
             headers=auth_headers(manager),
         )
@@ -761,7 +757,6 @@ class TestAtomicityOnHistoryFailure:
                         "responsible_person_id": holder.id,
                         "version": starting_version,
                         "assignment_date": "2026-05-01",
-                        "location": "Taipei HQ",
                     },
                     headers=auth_headers(manager),
                 )
@@ -1440,7 +1435,6 @@ class TestConcurrentAssign:
                 "responsible_person_id": holder.id,
                 "version": starting_version,
                 "assignment_date": "2026-05-01",
-                "location": "Taipei HQ",
             },
             headers=auth_headers(manager_a),
         )
@@ -1452,7 +1446,6 @@ class TestConcurrentAssign:
                 "responsible_person_id": holder.id,
                 "version": starting_version,
                 "assignment_date": "2026-05-01",
-                "location": "Taipei HQ",
             },
             headers=auth_headers(manager_b),
         )

@@ -133,8 +133,8 @@ class Settings(BaseSettings):
     bootstrap_manager_email: str
     bootstrap_manager_password: SecretStr
     bootstrap_manager_name: str = "Bootstrap Manager"
-    bootstrap_manager_department: str = "IT"
-    bootstrap_manager_location: str = "Unknown"
+    bootstrap_manager_department: str = "資產管理部"
+    bootstrap_manager_location: str = "台北南港總部 8F"
 
     repair_upload_dir: str = "uploads/repair-requests"
     # Image storage backend selector. "local" uses the disk-backed

@@ -41,7 +41,9 @@ test.describe("Manager assigns and unassigns an asset", () => {
 
     // Assert 2 — back to In Stock; Assign button is back, Unassign gone.
     await expect(page.getByText("In Stock").first()).toBeVisible();
-    await expect(page.getByRole("row", { name: "Department IT Location Unknown" })).toBeVisible();
+    await expect(
+      page.getByRole("row", { name: "Department 資產管理部 Location 台北南港總部 8F" }),
+    ).toBeVisible();
     await expect(assetDetailPage.assignButton).toBeVisible();
     await expect(assetDetailPage.unassignButton).toBeHidden();
   });

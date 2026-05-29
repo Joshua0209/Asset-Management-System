@@ -26,7 +26,7 @@ class User(TimestampVersionMixin, Base):
         Enum(UserRole, name="user_role", values_callable=enum_values)
     )
     department: Mapped[str] = mapped_column(String(100))
-    location: Mapped[str] = mapped_column(String(120))
+    location: Mapped[str] = mapped_column(String(120), default="Unknown")
 
     assets = relationship("Asset", back_populates="responsible_person")
     submitted_repair_requests = relationship(

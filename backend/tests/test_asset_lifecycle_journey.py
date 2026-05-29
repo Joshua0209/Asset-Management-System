@@ -60,7 +60,6 @@ def _register_and_assign_via_api(
         json={
             "responsible_person_id": holder.id,
             "assignment_date": _ASSIGNMENT_DATE_ISO,
-            "location": "Taipei HQ",
             "version": registered["version"],
         },
         headers=manager_auth,
@@ -108,7 +107,6 @@ class TestAssetLifecycleJourney:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": registered["version"],
             },
             headers=manager_auth,
@@ -125,7 +123,6 @@ class TestAssetLifecycleJourney:
             json={
                 "reason": "Employee transfer to another department.",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": assigned["version"],
             },
             headers=manager_auth,
@@ -182,7 +179,6 @@ class TestAssetLifecycleJourney:
             json={
                 "reason": "Alice left the company.",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": assigned_to_first["version"],
             },
             headers=manager_auth,
@@ -196,7 +192,6 @@ class TestAssetLifecycleJourney:
             json={
                 "responsible_person_id": second_holder.id,
                 "assignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": unassigned["version"],
             },
             headers=manager_auth,
@@ -256,7 +251,6 @@ class TestAssetLifecycleJourney:
             json={
                 "reason": "Trying anyway.",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": current_asset["version"],
             },
             headers=manager_auth,
@@ -301,7 +295,6 @@ class TestAssetLifecycleJourney:
             json={
                 "reason": "Now safe — repair completed.",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": latest_asset["version"],
             },
             headers=manager_auth,
@@ -375,7 +368,6 @@ class TestAssetLifecycleJourney:
             json={
                 "reason": "Holder leaving anyway.",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": current_asset["version"],
             },
             headers=manager_auth,
