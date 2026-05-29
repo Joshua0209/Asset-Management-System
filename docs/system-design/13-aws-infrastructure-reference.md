@@ -5,43 +5,43 @@ This document records the manually provisioned AWS infrastructure baseline for t
 ## Architecture Diagram
 
 ```mermaid
-graph TD
-   %% External Traffic
-   User((User Browser)) -- "HTTPS (443)" --> R53[Route 53: ams-group30.online]
-   R53 -- "Alias Record" --> ALB[Application Load Balancer: ams-alb]
-   subgraph "AWS Cloud (ap-east-2)"
-       subgraph "VPC: 10.0.0.0/16"
-           subgraph "Public Subnets"
+flowchart TD
+   User((User Browser)) -- "HTTPS (443)" --> R53["Route 53: ams-group30.online"]
+   R53 -- "Alias Record" --> ALB["Application Load Balancer: ams-alb"]
+   
+   subgraph AWS["AWS Cloud (ap-east-2)"]
+       subgraph VPC["VPC: 10.0.0.0/16"]
+           subgraph Public["Public Subnets"]
                ALB
-               ACM[AWS Certificate Manager] -.-> ALB
+               ACM["AWS Certificate Manager"] -.-> ALB
            end
-           subgraph "Private Subnets"
-               subgraph "ECS Fargate Cluster: ams-prod"
-                   FE[ECS Service: ams-frontend]
-                   BE[ECS Service: ams-backend]
+           subgraph Private["Private Subnets"]
+               subgraph ECS["ECS Fargate Cluster: ams-prod"]
+                   FE["ECS Service: ams-frontend"]
+                   BE["ECS Service: ams-backend"]
                end
-               RDS[(RDS: ams-database <br/>MySQL)]
+               RDS[("RDS: ams-database MySQL")]
            end
        end
-       subgraph "Management & Storage"
-           S3[S3 Bucket: <br/>ams-repair-images-prod]
-           SM[Secrets Manager: <br/>DB & App Secrets]
-           CW[CloudWatch Logs]
+       subgraph Mgmt["Management & Storage"]
+           S3["S3 Bucket: ams-repair-images-prod"]
+           SM["Secrets Manager: DB & App Secrets"]
+           CW["CloudWatch Logs"]
        end
    end
-   %% Traffic Routing Rules
+   
    ALB -- "/ (Default)" --> FE
    ALB -- "/api/v1/*" --> BE
-   %% Internal Connections
+   
    BE -- "SQL Connection" --> RDS
    BE -- "IAM: PutObject" --> S3
    BE -- "Read Secrets" --> SM
-   %% Logs & Telemetry
+   
    BE -- "Push OTLP/Profiles" --> GC((Grafana Cloud))
    FE -- "Frontend Logs" --> CW
    BE -- "Backend Logs" --> CW
-   GC -- "Pull metrics/logs" -.-> CW
-   %% Style
+   GC -. "Pull metrics/logs" .-> CW
+   
    style User fill:#f9f,stroke:#333,stroke-width:2px
    style GC fill:#ff9,stroke:#333,stroke-width:2px
    style RDS fill:#79f,stroke:#333,stroke-width:2px
