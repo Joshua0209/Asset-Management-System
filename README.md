@@ -202,7 +202,7 @@ Hooks in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 
 ## CI pipeline
 
-`.github/workflows/ci.yml` runs quality, security, and deploy gates. A `changes` job (dorny/paths-filter) emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
+`.github/workflows/ci.yml` runs quality and security gates on PRs. `.github/workflows/cd.yml` runs the same quality gates plus deploy jobs on pushes to `main`. A `changes` job (dorny/paths-filter) inside the quality workflow emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
 
 On pull requests and pushes to `main`, it runs:
 
