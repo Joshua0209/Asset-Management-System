@@ -66,11 +66,11 @@
   - Repair request: `pending_review`, `under_repair`, `completed`, `rejected`
 - **`asset_code`:** Business-facing unique identifier (e.g., `AST-2026-00001`). Separate from internal `id` (auto-increment or UUID).
 - **Department / location semantics (issue #97):**
-  - `assets.department` = the asset's **owning department** (cost-center / financial allocation). May be set at registration (T1) and is otherwise modified only via the explicit asset edit endpoint (`PATCH /assets/{id}`). FSM transitions (assign, unassign, repair lifecycle, disposal) do NOT mutate this field. See `11-asset-fsm.md` for the invariant.
-  - `assets.location` = the asset's **registered physical location** (where it is stored / kept). Set at T1, edited explicitly, and confirmed by managers during assign (T2) / unassign (T5). It is never inferred from holder fields.
-  - `users.department` = the user's **organizational department** (where the person works). Distinct from `assets.department`; the two may differ for assets that are centrally owned but used by another department (e.g. IT-owned laptop in the hands of a Sales-department holder).
-  - There is no `users.location` column by design: "where a person usually works" is an organizational fact, not a stable user attribute, and modelling it here would invite stale data.
-  - The asset detail UI surfaces the asset's `Department` and `Location` (from `assets.*`) alongside a `Holder Department` row (from `responsible_person.department`). The 歸屬/使用 contrast in Chinese (歸屬部門 vs 使用部門) and the `Department` / `Holder Department` pairing in English carry the distinction without requiring a label prefix on the asset side. List / form / filter views reuse the same i18n keys, since they only display the asset attribute. `Location` has no holder-side counterpart because `users.location` does not exist.
+  - `assets.department` = the asset's current responsible/using department.
+  - `assets.location` = the asset's current physical location.
+  - `users.department` = the user's organizational department.
+  - `users.location` = the user's regular workplace/site.
+  - T1 defaults missing asset `department` / `location` to the current manager's user fields; T2 syncs them to the assigned holder; T5 syncs them back to the reclaiming manager. `PATCH /assets/{id}` remains available for manager corrections.
 - **Numeric types:**
   - `purchase_amount`: `NUMERIC(15, 2)` — exact decimal, avoids floating-point rounding for financial values.
   - `repair_cost`: `NUMERIC(15, 2)` — same rationale.

@@ -76,26 +76,19 @@ Options: Auto-increment integer, UUID v4, custom business code (e.g., `AST-2026-
 
 ---
 
-**Q21. Does `assets.department` / `assets.location` represent the asset's own attribute, or should they sync from the assigned holder?**
+**Q21. Does `assets.department` / `assets.location` represent the asset's current assignment context?**
 
-Context: After assigning an asset to a holder, the detail page kept showing the asset's seeded `Department / Location` rather than the holder's values. FR-13 labels these as 「使用部門」/「存放地點」, which is ambiguous: they could mean "the dept currently using it" (derived from the holder) or "the dept the asset belongs to" (an independent attribute). The schema already stores `users.department` and `assets.department` as separate columns, which implicitly commits to treating them as distinct concepts. Issue #97 surfaced this ambiguity.
+Context: FR-13 labels these fields as 「使用部門」 and 「存放地點」. The user-study answer says: 「備十台電腦，沒預設給誰，用部門經費才能 assign 給持用者，資產管理員收到申請後會分配給部門」. Issue #97 surfaced that the system must make this lifecycle meaning explicit instead of leaving seeded asset values stale after assignment.
 
-Options considered:
+→ **Yes.** `assets.department` and `assets.location` represent the asset's current allocation context:
 
-1. **Auto-sync on assign with opt-out flag.** Assignment defaults `asset.department` / `asset.location` to the holder's values; a checkbox lets the manager opt out for cross-allocation. Requires a new `users.location` column, `sync_department` / `sync_location` API parameters, UI checkboxes, and history metadata. Closest match to the literal reading of 「使用部門」.
-2. **Keep asset and holder fields independent.** `assets.department` is the asset's owning department (cost-center / financial allocation), set at registration and modified only via explicit asset edit. `assets.location` is the asset's registered physical location, maintained explicitly by managers at registration, edit, assign, and unassign. The 「使用部門」 requirement is satisfied at the UI layer by displaying `responsible_person.department` as a separate `Holder Department` row. FSM transitions never infer dept/location from the holder.
-3. **Close as out-of-scope.** Document the spec ambiguity, ship nothing.
-
-→ **Option 2.** Three reasons:
-   - The schema already separates `assets.department` and `users.department`; treating them as one concept makes one of the fields redundant.
-   - The definition supports large-enterprise reality (central IT purchasing for non-IT users) without inventing a `users.location` field that nobody would maintain accurately.
-   - The resulting API contract stays explicit: manager hand-off/reclaim actions may update the asset's registered physical location, but they do not sync from holder fields.
-
-   Implementation footprint:
-   - `07-database-design.md`, `11-asset-fsm.md`, `12-api-design.md` get the precise definitions and invariants.
-   - Seed data: ~80% of held assets have `asset.department == holder.department`; ~20% deliberately differ to exercise the cross-allocation case.
-   - `AssetDetail` UI displays the asset's own `Department` and `Location` (zh-TW: 歸屬部門 / 地點) alongside a new `Holder Department` row (使用部門) sourced from `responsible_person.department`. In Chinese the 歸屬/使用 contrast pair carries the owning-vs-using distinction; in English the asymmetric `Department` / `Holder Department` pair does the same job. List, form, and filter views (which carry no holder concept) reuse the same i18n keys, since there is nothing to distinguish from there. There is no `Holder Location` row because `users.location` does not exist (and we are deliberately not adding it); assign/unassign ask managers to confirm `assets.location`, not a holder-derived location.
-   - `GET /assets?department=X` continues to filter on `assets.department` (owning). Filtering by holder dept is a separate future parameter, out of scope here.
+- `assets.department` is the department currently responsible for or using the asset.
+- `assets.location` is the asset's current physical location.
+- `users.department` and `users.location` are the user's department and regular workplace/site.
+- T1 (register asset): if the manager omits `department` or `location`, the asset defaults to the current manager's department/location because unassigned stock is managed by the asset-management side.
+- T2 (assign): the asset's `department` and `location` are synced to the assigned holder's `department` and `location`.
+- T5 (unassign/reclaim): the asset's `department` and `location` are synced back to the current manager's `department` and `location`.
+- `PATCH /assets/{id}` may still correct `department` or `location` when a manager needs to fix asset records outside a lifecycle transition.
 
 ---
 

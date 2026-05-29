@@ -235,16 +235,18 @@ POST /api/v1/auth/register
   "email": "alice@example.com",
   "password": "securePassword123",
   "name": "Alice Chen",
-  "department": "IT"
+  "department": "IT",
+  "location": "Taipei HQ"
 }
 ```
 
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `email` | string | yes | Valid email, globally unique (a soft-deleted user still occupies the address) |
-| `password` | string | yes | 8–128 chars, at least 1 letter + 1 digit |
-| `name` | string | yes | 1–100 chars |
-| `department` | string | yes | 1–100 chars |
+| `password` | string | yes | 8-128 chars, at least 1 letter + 1 digit |
+| `name` | string | yes | 1-100 chars |
+| `department` | string | yes | 1-100 chars |
+| `location` | string | yes | 1-120 chars |
 
 **Response:** `201 Created`
 
@@ -255,6 +257,7 @@ POST /api/v1/auth/register
     "email": "alice@example.com",
     "name": "Alice Chen",
     "department": "IT",
+    "location": "Taipei HQ",
     "role": "holder",
     "version": 1,
     "created_at": "2026-04-15T10:30:00Z",
@@ -295,6 +298,8 @@ POST /api/v1/auth/login
       "id": "a1b2c3d4-...",
       "email": "alice@example.com",
       "name": "Alice Chen",
+      "department": "IT",
+      "location": "Taipei HQ",
       "role": "holder"
     }
   }
@@ -322,6 +327,7 @@ GET /api/v1/auth/me
     "email": "alice@example.com",
     "name": "Alice Chen",
     "department": "IT",
+    "location": "Taipei HQ",
     "role": "holder",
     "version": 1,
     "created_at": "2026-04-15T10:30:00Z",
@@ -364,6 +370,7 @@ This endpoint is how managers promote/add other managers (since [1.1 Register](#
   "password": "securePassword123",
   "name": "New Manager",
   "department": "Operations",
+  "location": "Taipei HQ",
   "role": "manager"
 }
 ```
@@ -371,9 +378,10 @@ This endpoint is how managers promote/add other managers (since [1.1 Register](#
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
 | `email` | string | yes | Valid email, globally unique (a soft-deleted user still occupies the address) |
-| `password` | string | yes | 8–128 chars, at least 1 letter + 1 digit |
-| `name` | string | yes | 1–100 chars |
-| `department` | string | yes | 1–100 chars |
+| `password` | string | yes | 8-128 chars, at least 1 letter + 1 digit |
+| `name` | string | yes | 1-100 chars |
+| `department` | string | yes | 1-100 chars |
+| `location` | string | yes | 1-120 chars |
 | `role` | string | yes | `"holder"` or `"manager"` |
 
 **Response:** `201 Created` with the same `UserRead` shape as [1.1 Register](#11-register-public-self-registration--holder-only).
@@ -401,8 +409,8 @@ GET /api/v1/assets
 | `q` | string | Full-text search across asset_code, name, model |
 | `status` | string | Filter by status: `in_stock`, `in_use`, `pending_repair`, `under_repair`, `disposed` |
 | `category` | string | Filter by category |
-| `department` | string | Filter by the asset's **owning department** (`assets.department`). Does NOT filter on the current holder's organizational department; see `10-design-decisions.md` Q21. |
-| `location` | string | Filter by the asset's **registered physical location** (`assets.location`). |
+| `department` | string | Filter by the asset's current responsible/using department (`assets.department`). |
+| `location` | string | Filter by the asset's current physical location (`assets.location`). |
 | `responsible_person_id` | uuid | Filter by assigned holder |
 | `sort` | string | Sort field. Prefix `-` for descending. Default: `-created_at`. Allowed: `created_at`, `name`, `asset_code`, `purchase_date`, `status` |
 
@@ -617,7 +625,6 @@ POST /api/v1/assets/:id/assign
 {
   "responsible_person_id": "holder-user-uuid",
   "assignment_date": "2026-04-15",
-  "location": "Building B, Floor 1",
   "version": 1
 }
 ```
@@ -626,7 +633,6 @@ POST /api/v1/assets/:id/assign
 |-------|------|----------|------------|
 | `responsible_person_id` | uuid | yes | Must reference an active user with role `holder` |
 | `assignment_date` | string (date) | yes | ISO 8601 date, not in the future. Client-supplied so managers can backdate to the actual hand-off day. |
-| `location` | string | yes | 1–120 chars. Registered physical location of the asset after hand-off; supplied explicitly by the manager, not inferred from the holder. |
 | `version` | int | yes | Current asset version |
 
 **Preconditions (FSM T2):**
@@ -646,6 +652,7 @@ POST /api/v1/assets/:id/assign
     },
     "assignment_date": "2026-04-15",
     "unassignment_date": null,
+    "department": "Engineering",
     "location": "Building B, Floor 1",
     "version": 2
   }
@@ -654,10 +661,10 @@ POST /api/v1/assets/:id/assign
 
 **Side effects:**
 - `assignment_date` stored from the request body
-- `location` stored from the request body as the asset's registered physical location
+- `department` and `location` synced from the assigned holder
 - `unassignment_date` cleared to `null`
 - Audit log entry written 
-**Errors:** `409 invalid_transition` (wrong state), `409 conflict` (version mismatch), `422` (invalid holder, missing/future `assignment_date`, missing/invalid `location`)
+**Errors:** `409 invalid_transition` (wrong state), `409 conflict` (version mismatch), `422` (invalid holder, missing/future `assignment_date`)
 
 ---
 
@@ -675,16 +682,14 @@ POST /api/v1/assets/:id/unassign
 {
   "reason": "Employee transfer to another department",
   "unassignment_date": "2026-04-20",
-  "location": "Storage A",
   "version": 2
 }
 ```
 
 | Field | Type | Required | Validation |
 |-------|------|----------|------------|
-| `reason` | string | yes | 1–500 chars |
+| `reason` | string | yes | 1-500 chars |
 | `unassignment_date` | string (date) | yes | ISO 8601 date, not in the future, **and not earlier than the asset's current `assignment_date`**. Violations return `422` with `code: "invalid_unassignment_date"`. |
-| `location` | string | yes | 1–120 chars. Registered physical location of the asset after reclaim; supplied explicitly by the manager, not inferred from the holder. |
 | `version` | int | yes | Current asset version |
 
 **Preconditions (FSM T5):**
@@ -701,6 +706,7 @@ POST /api/v1/assets/:id/unassign
     "responsible_person": null,
     "assignment_date": "2026-02-01",
     "unassignment_date": "2026-04-20",
+    "department": "IT",
     "location": "Storage A",
     "version": 3
   }
@@ -709,9 +715,9 @@ POST /api/v1/assets/:id/unassign
 
 **Side effects:**
 - `unassignment_date` stored from the request body; `assignment_date` is preserved so the pair records the most recent assignment window
-- `location` stored from the request body as the asset's registered physical location
+- `department` and `location` synced from the reclaiming manager
 - Audit log entry written 
-**Errors:** `409 invalid_transition` (active repair exists or wrong state), `409 conflict` (version mismatch), `422 invalid_unassignment_date` (date in future or earlier than `assignment_date`), `422` (missing/invalid `location`)
+**Errors:** `409 invalid_transition` (active repair exists or wrong state), `409 conflict` (version mismatch), `422 invalid_unassignment_date` (date in future or earlier than `assignment_date`)
 
 ---
 
