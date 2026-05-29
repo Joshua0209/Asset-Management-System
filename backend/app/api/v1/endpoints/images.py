@@ -14,6 +14,7 @@ from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.models.repair_image import RepairImage
 from app.models.repair_request import RepairRequest
+from app.models.user import UserRole
 from app.schemas.common import UUIDPath, error_responses
 from app.services.image_storage import (
     ImageStorageDep,
@@ -75,12 +76,17 @@ def get_image(
     request: Request,
     image_id: ImageIdPath,
     db: DbSession,
-    # Auth required, identity unused.
-    current_user: CurrentUser,  # noqa: ARG001
+    current_user: CurrentUser,
     storage: ImageStorageDep,
 ) -> Response:
+    # Object-level authorization (issue #123 / OWASP API1:2023): a holder may
+    # only fetch images attached to their own repair requests; managers retain
+    # full access. The ownership predicate is folded into the WHERE clause so a
+    # non-owning holder yields no row → the shared 404 branch below, which does
+    # not confirm the image's existence (preferred over 403). This mirrors the
+    # requester_id filter on GET /repair-requests and its 403 on the parent.
     try:
-        image = db.scalar(
+        stmt = (
             select(RepairImage)
             .join(RepairRequest, RepairImage.repair_request_id == RepairRequest.id)
             .where(
@@ -88,6 +94,9 @@ def get_image(
                 RepairRequest.deleted_at.is_(None),
             )
         )
+        if current_user.role is UserRole.HOLDER:
+            stmt = stmt.where(RepairRequest.requester_id == current_user.id)
+        image = db.scalar(stmt)
     except SQLAlchemyError as exc:
         logger.exception("Failed to load image %s", image_id)
         raise HTTPException(

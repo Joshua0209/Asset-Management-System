@@ -1187,11 +1187,11 @@ POST /api/v1/repair-requests/:id/complete
 GET /api/v1/images/:id
 ```
 
-**Access:** Authenticated (any role — images are viewable by all authenticated users per FR-31)
+**Access:** Authenticated. Object-level authorization applies (FR-31): a **manager** may view any image; a **holder** may view only images attached to their own repair requests. A non-owning holder receives `404` (not `403`) so the endpoint does not confirm the image's existence. This mirrors the ownership rule on the parent resource ([`GET /repair-requests/:id`](#33-get-repair-request)) — closing the broken-object-level-authorization gap reported in issue #123.
 
 **Response:** `200 OK` — binary image data with appropriate `Content-Type` header (`image/jpeg` or `image/png`). Sets `Cache-Control: private, max-age=3600`.
 
-**Errors:** `401` (unauthenticated), `404` (image not found, owning repair-request soft-deleted, or backing file missing).
+**Errors:** `401` (unauthenticated), `404` (image not found, not owned by the requesting holder, owning repair-request soft-deleted, or backing file missing).
 
 **Note:** Image upload is handled as part of repair request submission ([3.1](#31-submit-repair-request)). There is no standalone upload endpoint.
 

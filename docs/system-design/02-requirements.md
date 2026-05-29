@@ -49,7 +49,7 @@
 | ID | Requirement | Role |
 |----|------------|------|
 | FR-30 | Upload fault photos when submitting repair request (max 5 images, max 5 MB each) | Holder |
-| FR-31 | View uploaded images on repair request detail page | All |
+| FR-31 | View uploaded images on repair request detail page (object-level ownership applies: holders see only their own requests' images, managers see all) | All |
 
 ---
 

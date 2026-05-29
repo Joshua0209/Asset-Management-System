@@ -150,7 +150,9 @@ class TestGetImage:
         auth_headers: Callable[[User], dict[str, str]],
         upload_dir: Path,
     ) -> None:
-        # FR-31: any authenticated user can view repair-request images.
+        # FR-31: both roles may view repair images; managers retain full
+        # access regardless of ownership (object-level ownership is enforced
+        # only for holders — see test_other_holder_gets_404).
         holder = make_user(role=UserRole.HOLDER)
         manager = make_user(role=UserRole.MANAGER)
         rr = _seed_repair_request(db_session, holder)
@@ -167,7 +169,7 @@ class TestGetImage:
         assert response.status_code == 200
         assert response.content == _PNG_BYTES
 
-    def test_other_holder_can_view_image_per_fr31(
+    def test_other_holder_gets_404(
         self,
         client: TestClient,
         db_session: Session,
@@ -175,6 +177,10 @@ class TestGetImage:
         auth_headers: Callable[[User], dict[str, str]],
         upload_dir: Path,
     ) -> None:
+        # Object-level authorization (issue #123 / OWASP API1:2023): a holder
+        # may only fetch images on their OWN repair requests. A non-owning
+        # holder gets 404 (not 403) so the endpoint does not confirm the
+        # image's existence, and the bytes must not be served.
         owner = make_user(role=UserRole.HOLDER, email="owner@example.com")
         other = make_user(role=UserRole.HOLDER, email="other@example.com")
         rr = _seed_repair_request(db_session, owner)
@@ -188,7 +194,8 @@ class TestGetImage:
             headers=auth_headers(other),
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 404
+        assert response.content != _PNG_BYTES
 
     def test_unauthenticated_returns_401(
         self,
