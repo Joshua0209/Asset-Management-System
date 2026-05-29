@@ -19,6 +19,7 @@ def _payload(**overrides: object) -> dict[str, object]:
         "password": "Password123",
         "name": "Created User",
         "department": "Ops",
+        "location": "Taichung Office",
         "role": "manager",
     }
     base.update(overrides)
@@ -57,6 +58,8 @@ class TestAdminCreateUser:
         body = response.json()["data"]
         assert body["email"] == "created@example.com"
         assert body["role"] == "manager"
+        assert body["department"] == "Ops"
+        assert body["location"] == "Taichung Office"
 
         db_session.expire_all()
         created = db_session.scalar(
@@ -64,6 +67,7 @@ class TestAdminCreateUser:
         )
         assert created is not None
         assert created.role is UserRole.MANAGER
+        assert created.location == "Taichung Office"
 
     def test_manager_can_create_holder(
         self,
@@ -119,6 +123,22 @@ class TestAdminCreateUser:
         response = client.post(
             "/api/v1/auth/users",
             json=_payload(password="short"),
+            headers=auth_headers(admin),
+        )
+        assert response.status_code == 422
+
+    def test_missing_location_returns_422(
+        self,
+        client: TestClient,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        admin = make_user(role=UserRole.MANAGER, email="admin@example.com")
+        bad = _payload()
+        del bad["location"]
+        response = client.post(
+            "/api/v1/auth/users",
+            json=bad,
             headers=auth_headers(admin),
         )
         assert response.status_code == 422

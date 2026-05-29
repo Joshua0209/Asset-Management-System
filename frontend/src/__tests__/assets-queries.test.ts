@@ -303,7 +303,6 @@ describe("api/assets/queries", () => {
       await mod.assignAsset("asset-1", {
         responsible_person_id: "holder-1",
         assignment_date: "2026-05-08",
-        location: "Taipei HQ",
         version: 1,
       });
 
@@ -313,7 +312,6 @@ describe("api/assets/queries", () => {
         data: {
           responsible_person_id: "holder-1",
           assignment_date: "2026-05-08",
-          location: "Taipei HQ",
           version: 1,
         },
       });
@@ -325,7 +323,6 @@ describe("api/assets/queries", () => {
       await mod.unassignAsset("asset-1", {
         reason: "transfer",
         unassignment_date: "2026-05-10",
-        location: "Taipei Storage",
         version: 1,
       });
 
@@ -335,7 +332,6 @@ describe("api/assets/queries", () => {
         data: {
           reason: "transfer",
           unassignment_date: "2026-05-10",
-          location: "Taipei Storage",
           version: 1,
         },
       });

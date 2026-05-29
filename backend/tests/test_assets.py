@@ -110,7 +110,12 @@ class TestListAssets:
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
-        holder = make_user(role=UserRole.HOLDER, name="Alice")
+        holder = make_user(
+            role=UserRole.HOLDER,
+            name="Alice",
+            department="Engineering",
+            location="Hsinchu Fab12",
+        )
         _make_asset(db_session, responsible_person_id=holder.id)
 
         response = client.get("/api/v1/assets?sort=asset_code", headers=auth_headers(manager))
@@ -343,13 +348,17 @@ class TestRegisterAsset:
         assert data["status"] == "in_stock"
         assert data["responsible_person_id"] is None
 
-    def test_registers_asset_without_optional_location_department(
+    def test_registers_asset_defaults_missing_location_department_to_manager(
         self,
         client: TestClient,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
+        manager = make_user(
+            role=UserRole.MANAGER,
+            department="資訊維運部",
+            location="Taipei Storage",
+        )
         payload = {
             "name": "Business Laptop",
             "model": "Dell Latitude 7440",
@@ -363,8 +372,8 @@ class TestRegisterAsset:
 
         assert response.status_code == 201
         data = response.json()["data"]
-        assert data["location"] == ""
-        assert data["department"] == ""
+        assert data["location"] == "Taipei Storage"
+        assert data["department"] == "資訊維運部"
 
     def test_retries_when_generated_asset_code_conflicts(
         self,
@@ -776,7 +785,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Taipei HQ",
                 "version": current_version,
             },
             headers=auth_headers(manager),
@@ -787,9 +795,45 @@ class TestAssignAsset:
         assert data["status"] == "in_use"
         assert data["responsible_person_id"] == holder.id
         assert data["responsible_person"]["id"] == holder.id
+        assert data["department"] == "Engineering"
+        assert data["location"] == "Hsinchu Fab12"
         assert data["version"] == current_version + 1
 
-    def test_assign_updates_registered_location(
+    def test_assign_syncs_department_and_location_from_holder(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(
+            role=UserRole.HOLDER,
+            department="研發中心",
+            location="Hsinchu Fab12",
+        )
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_STOCK,
+            department="資訊維運部",
+            location="Taipei HQ",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"]["department"] == "研發中心"
+        assert response.json()["data"]["location"] == "Hsinchu Fab12"
+
+    def test_assign_rejects_client_supplied_location(
         self,
         client: TestClient,
         db_session: Session,
@@ -798,7 +842,7 @@ class TestAssignAsset:
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
         holder = make_user(role=UserRole.HOLDER)
-        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK, location="Taipei HQ")
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
 
         response = client.post(
             f"/api/v1/assets/{asset.id}/assign",
@@ -811,10 +855,9 @@ class TestAssignAsset:
             headers=auth_headers(manager),
         )
 
-        assert response.status_code == 200
-        assert response.json()["data"]["location"] == "Hsinchu Fab12"
+        assert response.status_code == 422
 
-    def test_assign_requires_registered_location(
+    def test_assign_rejects_client_supplied_department(
         self,
         client: TestClient,
         db_session: Session,
@@ -830,6 +873,7 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "department": "研發中心",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -837,72 +881,19 @@ class TestAssignAsset:
 
         assert response.status_code == 422
 
-    def test_assign_rejects_blank_location(
+    def test_assign_syncs_holder_department(
         self,
         client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        # location is Field(min_length=1); an empty string is not the same
-        # code path as an omitted key, so guard the lower bound explicitly.
         manager = make_user(role=UserRole.MANAGER)
-        holder = make_user(role=UserRole.HOLDER)
-        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
-
-        response = client.post(
-            f"/api/v1/assets/{asset.id}/assign",
-            json={
-                "responsible_person_id": holder.id,
-                "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "",
-                "version": asset.version,
-            },
-            headers=auth_headers(manager),
+        holder = make_user(
+            role=UserRole.HOLDER,
+            department="研發中心",
+            location="Hsinchu Fab12",
         )
-
-        assert response.status_code == 422
-
-    def test_assign_rejects_too_long_location(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        # location is Field(max_length=120), matching the assets.location
-        # String(120) column. Guard the upper bound so a schema/column drift
-        # surfaces as a test failure rather than a runtime DB truncation.
-        manager = make_user(role=UserRole.MANAGER)
-        holder = make_user(role=UserRole.HOLDER)
-        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
-
-        response = client.post(
-            f"/api/v1/assets/{asset.id}/assign",
-            json={
-                "responsible_person_id": holder.id,
-                "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "x" * 121,
-                "version": asset.version,
-            },
-            headers=auth_headers(manager),
-        )
-
-        assert response.status_code == 422
-
-    def test_assign_does_not_mutate_owning_department(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        # Issue #97 / Q21 core invariant: assign updates the holder and the
-        # registered location but must NEVER sync/overwrite the asset's
-        # owning department from the holder. A future "convenience sync"
-        # regression would silently violate the design; this locks it down.
-        manager = make_user(role=UserRole.MANAGER)
-        holder = make_user(role=UserRole.HOLDER, department="研發中心")
         asset = _make_asset(
             db_session,
             status=AssetStatus.IN_STOCK,
@@ -914,7 +905,6 @@ class TestAssignAsset:
             json={
                 "responsible_person_id": holder.id,
                 "assignment_date": _ASSIGNMENT_DATE_ISO,
-                "location": "Hsinchu Fab12",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -922,7 +912,8 @@ class TestAssignAsset:
 
         assert response.status_code == 200
         data = response.json()["data"]
-        assert data["department"] == "資訊維運部"
+        assert data["department"] == "研發中心"
+        assert data["location"] == "Hsinchu Fab12"
         assert data["responsible_person"]["department"] == "研發中心"
 
     def test_holder_cannot_assign(
@@ -984,7 +975,11 @@ class TestAssignAsset:
         auth_headers: Callable[[User], dict[str, str]],
         current_status: AssetStatus,
     ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
+        manager = make_user(
+            role=UserRole.MANAGER,
+            department="資訊維運部",
+            location="Taipei Storage",
+        )
         target = make_user(role=UserRole.HOLDER)
         asset = _make_asset(db_session, status=current_status)
 
@@ -1210,7 +1205,6 @@ class TestUnassignAsset:
             json={
                 "reason": "Employee transfer",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": current_version,
             },
             headers=auth_headers(manager),
@@ -1221,9 +1215,46 @@ class TestUnassignAsset:
         assert data["status"] == "in_stock"
         assert data["responsible_person_id"] is None
         assert data["responsible_person"] is None
+        assert data["department"] == "資訊維運部"
+        assert data["location"] == "Taipei Storage"
         assert data["version"] == current_version + 1
 
-    def test_unassign_updates_registered_location(
+    def test_unassign_syncs_department_and_location_from_manager(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(
+            role=UserRole.MANAGER,
+            department="資訊維運部",
+            location="Taipei Storage",
+        )
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+            department="研發中心",
+            location="Hsinchu Fab12",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"]["department"] == "資訊維運部"
+        assert response.json()["data"]["location"] == "Taipei Storage"
+
+    def test_unassign_rejects_client_supplied_location(
         self,
         client: TestClient,
         db_session: Session,
@@ -1236,7 +1267,6 @@ class TestUnassignAsset:
             db_session,
             status=AssetStatus.IN_USE,
             responsible_person_id=holder.id,
-            location="Hsinchu Fab12",
         )
 
         response = client.post(
@@ -1250,10 +1280,9 @@ class TestUnassignAsset:
             headers=auth_headers(manager),
         )
 
-        assert response.status_code == 200
-        assert response.json()["data"]["location"] == "Taipei Storage"
+        assert response.status_code == 422
 
-    def test_unassign_requires_registered_location(
+    def test_unassign_rejects_client_supplied_department(
         self,
         client: TestClient,
         db_session: Session,
@@ -1273,6 +1302,7 @@ class TestUnassignAsset:
             json={
                 "reason": "Returned to storage",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "department": "資訊維運部",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1280,46 +1310,18 @@ class TestUnassignAsset:
 
         assert response.status_code == 422
 
-    def test_unassign_rejects_too_long_location(
+    def test_unassign_syncs_manager_department(
         self,
         client: TestClient,
         db_session: Session,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        # Upper-bound guard mirroring the assign case (max_length=120).
-        manager = make_user(role=UserRole.MANAGER)
-        holder = make_user(role=UserRole.HOLDER)
-        asset = _make_asset(
-            db_session,
-            status=AssetStatus.IN_USE,
-            responsible_person_id=holder.id,
+        manager = make_user(
+            role=UserRole.MANAGER,
+            department="資訊維運部",
+            location="Taipei Storage",
         )
-
-        response = client.post(
-            f"/api/v1/assets/{asset.id}/unassign",
-            json={
-                "reason": "Returned to storage",
-                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "x" * 121,
-                "version": asset.version,
-            },
-            headers=auth_headers(manager),
-        )
-
-        assert response.status_code == 422
-
-    def test_unassign_does_not_mutate_owning_department(
-        self,
-        client: TestClient,
-        db_session: Session,
-        make_user: Callable[..., User],
-        auth_headers: Callable[[User], dict[str, str]],
-    ) -> None:
-        # Issue #97 / Q21 core invariant: unassign clears the holder and
-        # updates the registered location but must NEVER change the asset's
-        # owning department.
-        manager = make_user(role=UserRole.MANAGER)
         holder = make_user(role=UserRole.HOLDER, department="研發中心")
         asset = _make_asset(
             db_session,
@@ -1333,7 +1335,6 @@ class TestUnassignAsset:
             json={
                 "reason": "Returned to storage",
                 "unassignment_date": _UNASSIGNMENT_DATE_ISO,
-                "location": "Taipei Storage",
                 "version": asset.version,
             },
             headers=auth_headers(manager),
@@ -1342,6 +1343,7 @@ class TestUnassignAsset:
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["department"] == "資訊維運部"
+        assert data["location"] == "Taipei Storage"
         assert data["responsible_person"] is None
 
     def test_holder_cannot_unassign(

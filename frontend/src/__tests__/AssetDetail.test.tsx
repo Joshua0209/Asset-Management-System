@@ -85,11 +85,9 @@ function mockAssetReloadSequence(
   mockGetAsset.mockResolvedValueOnce(buildAsset(initialAsset)).mockResolvedValueOnce(buildAsset(refreshedAsset));
 }
 
-// Drives the manager assign flow for an in-stock asset: opens the modal,
-// asserts the Location field is prefilled from asset.location (Issue #97 / Q21),
-// picks the holder and date, optionally overrides the location, and confirms.
-// Callers assert the resulting assignAsset payload.
-async function assignInStockAsset({ location }: { location?: string } = {}): Promise<void> {
+// Drives the manager assign flow for an in-stock asset. Issue #97 / Q21:
+// location is now synced from the selected holder, not edited in the modal.
+async function assignInStockAsset(): Promise<void> {
   const user = userEvent.setup({ delay: null });
   setAuthUser(managerUser);
   mockAssetReloadSequence(
@@ -106,19 +104,14 @@ async function assignInStockAsset({ location }: { location?: string } = {}): Pro
   await user.click(screen.getByRole("button", { name: "Assign" }));
 
   const assignModal = getOpenModalContent();
-  const locationInput = getModalField(assignModal, "#location") as HTMLInputElement;
-  expect(locationInput.value).toBe("Taipei HQ");
-
   await user.click(within(assignModal).getByRole("combobox", { name: "Holder" }));
   await user.click(screen.getByText("Bob Lee (bob@example.com)"));
+  expect(within(assignModal).getByText("Hsinchu Fab12")).toBeInTheDocument();
   const assignDateInput = getModalField(assignModal, "#assignment_date");
   await user.clear(assignDateInput);
   await user.type(assignDateInput, "2026-05-08");
 
-  if (location !== undefined) {
-    await user.clear(locationInput);
-    await user.type(locationInput, location);
-  }
+  expect(assignModal.querySelector("#location")).not.toBeInTheDocument();
 
   await user.click(within(assignModal).getByRole("button", { name: "Confirm" }));
 }
@@ -146,6 +139,7 @@ const mockAsset: AssetRecord = {
     name: "Alice Chen",
     email: "alice@example.com",
     department: "Engineering",
+    location: "Hsinchu Fab12",
   },
   disposal_reason: null,
   version: 1,
@@ -170,7 +164,14 @@ describe("AssetDetail", () => {
     mockDisposeAsset.mockResolvedValue({});
     mockListUsers.mockResolvedValue({
       data: [
-        { id: "holder-2", name: "Bob Lee", email: "bob@example.com", role: "holder" },
+        {
+          id: "holder-2",
+          name: "Bob Lee",
+          email: "bob@example.com",
+          role: "holder",
+          department: "Engineering",
+          location: "Hsinchu Fab12",
+        },
       ],
       meta: {
         total: 1,
@@ -315,24 +316,6 @@ describe("AssetDetail", () => {
       expect(mockAssignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
         responsible_person_id: "holder-2",
         assignment_date: "2026-05-08",
-        location: "Taipei HQ",
-        version: 1,
-      });
-    });
-  });
-
-  it("prefills the assign location from the asset and submits the edited value", async () => {
-    // Issue #97 / Q21: the Location input opens populated from asset.location
-    // (the manager confirms it without retyping when nothing moved), but an
-    // edit must flow through to the payload. Using a value different from the
-    // asset's location distinguishes a real prefill from a hardcoded default.
-    await assignInStockAsset({ location: "Hsinchu Fab12" });
-
-    await waitFor(() => {
-      expect(mockAssignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
-        responsible_person_id: "holder-2",
-        assignment_date: "2026-05-08",
-        location: "Hsinchu Fab12",
         version: 1,
       });
     });
@@ -358,13 +341,14 @@ describe("AssetDetail", () => {
     const unassignDateInput = getModalField(unassignModal, "#unassignment_date");
     await user.clear(unassignDateInput);
     await user.type(unassignDateInput, "2026-05-10");
+    expect(within(unassignModal).getByText("Taipei HQ")).toBeInTheDocument();
+    expect(unassignModal.querySelector("#location")).not.toBeInTheDocument();
     await user.click(within(unassignModal).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
       expect(mockUnassignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
         reason: "Returned to IT",
         unassignment_date: "2026-05-10",
-        location: "Taipei HQ",
         version: 1,
       });
     });

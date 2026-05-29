@@ -67,7 +67,14 @@ function renderRegister() {
 const validSession = () => ({
   token: "tkn",
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
-  user: { id: "u", email: "x@example.com", name: "X", role: "holder" as const },
+  user: {
+    id: "u",
+    email: "x@example.com",
+    name: "X",
+    role: "holder" as const,
+    department: "IT",
+    location: "Taipei HQ",
+  },
 });
 
 describe("Login page", () => {
@@ -136,6 +143,8 @@ describe("Register page", () => {
       email: "new@example.com",
       name: "New",
       role: "holder",
+      department: "IT",
+      location: "Taipei HQ",
     });
     mockLogin.mockResolvedValueOnce(validSession());
     const user = userEvent.setup({ delay: null });
@@ -143,6 +152,7 @@ describe("Register page", () => {
 
     await user.type(screen.getByLabelText(/name/i), "New User");
     await user.type(screen.getByLabelText(/department/i), "IT");
+    await user.type(screen.getByLabelText(/location/i), "Taipei HQ");
     await user.type(screen.getByLabelText(/email/i), "new@example.com");
     await user.type(screen.getByLabelText(/password/i), "abcd1234");
     await user.click(screen.getByRole("button", { name: /register/i }));
@@ -161,6 +171,7 @@ describe("Register page", () => {
 
     await user.type(screen.getByLabelText(/name/i), "Dup");
     await user.type(screen.getByLabelText(/department/i), "IT");
+    await user.type(screen.getByLabelText(/location/i), "Taipei HQ");
     await user.type(screen.getByLabelText(/email/i), "admin@example.com");
     await user.type(screen.getByLabelText(/password/i), "abcd1234");
     await user.click(screen.getByRole("button", { name: /register/i }));

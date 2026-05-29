@@ -6,6 +6,8 @@ export const holderUser = {
   email: "holder@example.com",
   name: "Holder",
   role: "holder" as const,
+  department: "Engineering",
+  location: "Hsinchu Fab12",
 };
 
 export const managerUser = {
@@ -13,6 +15,8 @@ export const managerUser = {
   email: "manager@example.com",
   name: "Manager",
   role: "manager" as const,
+  department: "IT",
+  location: "Taipei HQ",
 };
 
 export const mockApi = {
@@ -68,6 +72,7 @@ export function buildAssetResponse(assetCode: string, assetName: string, total: 
           id: "holder-1",
           name: "Alice Chen",
           department: "Engineering",
+          location: "Hsinchu Fab12",
         },
         disposal_reason: null,
         version: 1,

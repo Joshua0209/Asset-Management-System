@@ -15,7 +15,13 @@ class TestLoginHappyPath:
     def test_returns_token_and_user(
         self, client: TestClient, make_user: Callable[..., User]
     ) -> None:
-        make_user(email="alice@example.com", password="Password123", name="Alice")
+        make_user(
+            email="alice@example.com",
+            password="Password123",
+            name="Alice",
+            department="Engineering",
+            location="Hsinchu Fab12",
+        )
 
         response = client.post(
             "/api/v1/auth/login",
@@ -26,6 +32,8 @@ class TestLoginHappyPath:
         assert body["token"]
         assert body["expires_at"]
         assert body["user"]["email"] == "alice@example.com"
+        assert body["user"]["department"] == "Engineering"
+        assert body["user"]["location"] == "Hsinchu Fab12"
         assert body["user"]["role"] == "holder"
         # expires_at must parse as an ISO 8601 UTC datetime in the future
         exp = datetime.fromisoformat(body["expires_at"].replace("Z", "+00:00"))
@@ -130,12 +138,19 @@ class TestAuthMe:
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        u = make_user(email="alice@example.com", role=UserRole.MANAGER)
+        u = make_user(
+            email="alice@example.com",
+            role=UserRole.MANAGER,
+            department="IT",
+            location="Taipei HQ",
+        )
         response = client.get("/api/v1/auth/me", headers=auth_headers(u))
         assert response.status_code == 200
         body = response.json()["data"]
         assert body["email"] == "alice@example.com"
         assert body["role"] == "manager"
+        assert body["department"] == "IT"
+        assert body["location"] == "Taipei HQ"
         assert body["id"] == u.id
 
     def test_expired_token_returns_401(
