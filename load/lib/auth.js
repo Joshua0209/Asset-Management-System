@@ -16,7 +16,8 @@
 // haven't been planted.
 
 import http from "k6/http";
-import { check, fail, Counter } from "k6";
+import { check, fail } from "k6";
+import { Counter } from "k6/metrics";
 
 // Default targets the host-network backend (developer runs `k6` on their
 // laptop against `docker compose up backend`). For a container-run k6 use

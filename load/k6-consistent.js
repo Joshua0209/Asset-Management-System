@@ -5,16 +5,22 @@
 // search vs. approve traffic the dashboards see during a demo. Setting
 // any rate to 0 drops that scenario.
 //
+// Defaults total 240 req/min ≈ 4 QPS — matches the "Peak ~4 QPS"
+// architectural claim in Slide 6 and is the headline number for
+// Slide 12's load-test evidence. Requires RATE_LIMIT_ENABLED=false on
+// the backend (4 QPS exceeds the 100/min authenticated rate limit).
+//
 // Default rates per minute (override via env):
 //
-//   SEARCH_PER_MIN   = 30
-//   MY_ASSETS_PER_MIN = 15
-//   LIST_REPAIRS_PER_MIN = 10
-//   SUBMIT_PER_MIN   = 4
-//   APPROVE_PER_MIN  = 4
-//   COMPLETE_PER_MIN = 4
-//   REGISTER_PER_MIN = 2
-//   HEALTH_PER_MIN   = 6
+//   SEARCH_PER_MIN       = 96
+//   MY_ASSETS_PER_MIN    = 48
+//   LIST_REPAIRS_PER_MIN = 32
+//   SUBMIT_PER_MIN       = 13
+//   APPROVE_PER_MIN      = 13
+//   COMPLETE_PER_MIN     = 13
+//   REGISTER_PER_MIN     = 6
+//   HEALTH_PER_MIN       = 19
+//                  Total: 240 req/min ≈ 4 QPS
 //
 // Default TRAFFIC_DURATION: 30m.
 
@@ -76,20 +82,20 @@ function addScenario(scenarios, name, envName, defaultRate, execName) {
 }
 
 const scenarios = {};
-addScenario(scenarios, "search", "SEARCH_PER_MIN", 30, "search");
-addScenario(scenarios, "my_assets", "MY_ASSETS_PER_MIN", 15, "myAssets");
+addScenario(scenarios, "search", "SEARCH_PER_MIN", 96, "search");
+addScenario(scenarios, "my_assets", "MY_ASSETS_PER_MIN", 48, "myAssets");
 addScenario(
   scenarios,
   "list_repairs",
   "LIST_REPAIRS_PER_MIN",
-  10,
+  32,
   "listRepairs",
 );
-addScenario(scenarios, "submit", "SUBMIT_PER_MIN", 4, "submit");
-addScenario(scenarios, "approve", "APPROVE_PER_MIN", 4, "approve");
-addScenario(scenarios, "complete", "COMPLETE_PER_MIN", 4, "complete");
-addScenario(scenarios, "register", "REGISTER_PER_MIN", 2, "register");
-addScenario(scenarios, "health", "HEALTH_PER_MIN", 6, "health");
+addScenario(scenarios, "submit", "SUBMIT_PER_MIN", 13, "submit");
+addScenario(scenarios, "approve", "APPROVE_PER_MIN", 13, "approve");
+addScenario(scenarios, "complete", "COMPLETE_PER_MIN", 13, "complete");
+addScenario(scenarios, "register", "REGISTER_PER_MIN", 6, "register");
+addScenario(scenarios, "health", "HEALTH_PER_MIN", 19, "health");
 
 if (Object.keys(scenarios).length === 0) {
   // If the operator zeroed every rate, register a 1/min health probe so
