@@ -7,6 +7,7 @@ export class RegisterPage {
   readonly page: Page;
   readonly nameInput: Locator;
   readonly departmentInput: Locator;
+  readonly locationInput: Locator;
   readonly emailInput: Locator;
   readonly passwordInput: Locator;
   readonly submitButton: Locator;
@@ -16,6 +17,7 @@ export class RegisterPage {
     this.page = page;
     this.nameInput = page.getByLabel("Name");
     this.departmentInput = page.getByLabel("Department");
+    this.locationInput = page.getByLabel("Location");
     this.emailInput = page.getByLabel("Email");
     this.passwordInput = page.getByLabel("Password");
     this.submitButton = page.getByRole("button", { name: "Register" });
@@ -29,11 +31,13 @@ export class RegisterPage {
   async register(values: {
     name: string;
     department: string;
+    location: string;
     email: string;
     password: string;
   }): Promise<void> {
     await this.nameInput.fill(values.name);
     await this.departmentInput.fill(values.department);
+    await this.locationInput.fill(values.location);
     await this.emailInput.fill(values.email);
     await this.passwordInput.fill(values.password);
     await this.submitButton.click();

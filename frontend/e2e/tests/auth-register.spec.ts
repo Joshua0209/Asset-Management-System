@@ -13,6 +13,7 @@ test.describe("Holder registration", () => {
     await registerPage.register({
       name: "E2E Holder",
       department: "QA Automation",
+      location: "E2E Lab",
       email: uniqueEmail,
       password: "Password123",
     });

@@ -25,6 +25,9 @@ test.describe("Manager assigns and unassigns an asset", () => {
     // Assert — status flips to In Use; the Unassign button now replaces
     // Assign in the action panel (FSM-driven).
     await expect(page.getByText("In Use").first()).toBeVisible();
+    await expect(
+      page.getByRole("row", { name: "Department 製造一部 Location 新竹 Fab12 行政樓" }),
+    ).toBeVisible();
     await expect(assetDetailPage.unassignButton).toBeVisible();
     await expect(assetDetailPage.assignButton).toBeHidden();
 
@@ -38,6 +41,7 @@ test.describe("Manager assigns and unassigns an asset", () => {
 
     // Assert 2 — back to In Stock; Assign button is back, Unassign gone.
     await expect(page.getByText("In Stock").first()).toBeVisible();
+    await expect(page.getByRole("row", { name: "Department IT Location Unknown" })).toBeVisible();
     await expect(assetDetailPage.assignButton).toBeVisible();
     await expect(assetDetailPage.unassignButton).toBeHidden();
   });
