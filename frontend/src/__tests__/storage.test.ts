@@ -14,7 +14,14 @@ function makeSession(overrides: Partial<AuthSession> = {}): AuthSession {
   return {
     token: "tkn",
     expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-    user: { id: "u-1", email: "a@b.c", name: "A", role: "holder" },
+    user: {
+      id: "u-1",
+      email: "a@b.c",
+      name: "A",
+      role: "holder",
+      department: "Engineering",
+      location: "Hsinchu Fab12",
+    },
     ...overrides,
   };
 }

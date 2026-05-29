@@ -6,7 +6,7 @@
 
 import { ApiError, request } from "../base-client";
 import { AUTH_PATHS } from "./keys";
-import type { AuthSession, AuthUser, LoginPayload, RegisterPayload, UserRole } from "./types";
+import type { AuthSession, AuthUser, LoginPayload, RegisterPayload } from "./types";
 
 const USE_MOCK_AUTH = import.meta.env.VITE_USE_MOCK_AUTH === "true";
 

@@ -58,6 +58,7 @@ describe("api/auth/queries (mock mode)", () => {
       password: "abcd1234",
       name: "New User",
       department: "IT",
+      location: "Taipei HQ",
     };
     const user = await mod.register(payload);
     expect(user.email).toBe("new@example.com");
@@ -71,6 +72,7 @@ describe("api/auth/queries (mock mode)", () => {
         password: "abcd1234",
         name: "Dup",
         department: "IT",
+        location: "Taipei HQ",
       }),
     ).rejects.toMatchObject({ name: "ApiError", status: 409, code: "conflict" });
   });
@@ -112,7 +114,14 @@ describe("api/auth/queries (real-API mode)", () => {
       data: {
         token: "tok-1",
         expires_at: "2026-12-31T00:00:00Z",
-        user: { id: "u1", email: "alice@example.com", name: "Alice", role: "holder" },
+        user: {
+          id: "u1",
+          email: "alice@example.com",
+          name: "Alice",
+          role: "holder",
+          department: "Engineering",
+          location: "Hsinchu Fab12",
+        },
       },
     });
 
@@ -136,6 +145,8 @@ describe("api/auth/queries (real-API mode)", () => {
         email: "new@example.com",
         name: "New User",
         role: "holder",
+        department: "IT",
+        location: "Taipei HQ",
       },
     });
 
@@ -144,6 +155,7 @@ describe("api/auth/queries (real-API mode)", () => {
       password: "abcd1234",
       name: "New User",
       department: "IT",
+      location: "Taipei HQ",
     };
     const user = await mod.register(payload);
 
@@ -164,6 +176,8 @@ describe("api/auth/queries (real-API mode)", () => {
         email: "alice@example.com",
         name: "Alice",
         role: "holder",
+        department: "Engineering",
+        location: "Hsinchu Fab12",
       },
     });
 
@@ -202,6 +216,7 @@ describe("api/auth/queries (real-API mode)", () => {
         password: "abcd1234",
         name: "Dup",
         department: "IT",
+        location: "Taipei HQ",
       }),
     ).rejects.toBe(apiError);
   });

@@ -24,7 +24,14 @@ function axiosErrorWith(
 const validSession = (): AuthSession => ({
   token: "t-1",
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
-  user: { id: "u", email: "a@b.c", name: "A", role: "holder" },
+  user: {
+    id: "u",
+    email: "a@b.c",
+    name: "A",
+    role: "holder",
+    department: "Engineering",
+    location: "Hsinchu Fab12",
+  },
 });
 
 describe("ApiError", () => {

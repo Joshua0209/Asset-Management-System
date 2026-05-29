@@ -5,15 +5,22 @@ interface SessionUser {
   email: string;
   name: string;
   role: "manager" | "holder";
+  department?: string;
+  location?: string;
 }
 
 function seedSession(user: SessionUser) {
+  const sessionUser = {
+    department: user.role === "manager" ? "Operations" : "Engineering",
+    location: user.role === "manager" ? "Taipei HQ" : "Hsinchu Fab12",
+    ...user,
+  };
   globalThis.localStorage.setItem(
     "ams-auth",
     JSON.stringify({
       token: `token-${user.id}`,
       expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      user,
+      user: sessionUser,
     }),
   );
 }
@@ -135,12 +142,11 @@ describe("mocks/mockBackend", () => {
     const assigned = backend.assignAsset(created.id, {
       responsible_person_id: holderId,
       assignment_date: "2026-04-03",
-      location: "Fab12",
       version: created.version,
     });
     expect(assigned.status).toBe("in_use");
     expect(assigned.responsible_person_id).toBe(holderId);
-    expect(assigned.location).toBe("Fab12");
+    expect(assigned.location).toBe(holder?.location);
     // Issue #97: the mock must mirror the real backend, which always
     // returns the holder's department on responsible_person so AssetDetail
     // can render the "Holder Department" row in demo mode.
@@ -149,12 +155,11 @@ describe("mocks/mockBackend", () => {
     const unassigned = backend.unassignAsset(created.id, {
       reason: "transfer",
       unassignment_date: "2026-04-04",
-      location: "Storage A",
       version: assigned.version,
     });
     expect(unassigned.status).toBe("in_stock");
     expect(unassigned.responsible_person_id).toBeNull();
-    expect(unassigned.location).toBe("Storage A");
+    expect(unassigned.location).toBe("Taipei HQ");
     expect(unassigned.assignment_date).toBe("2026-04-03");
     expect(unassigned.unassignment_date).toBe("2026-04-04");
 
@@ -178,7 +183,6 @@ describe("mocks/mockBackend", () => {
       backend.assignAsset(stockAsset.id, {
         responsible_person_id: "mock-manager",
         assignment_date: "2026-04-03",
-        location: "HQ",
         version: stockAsset.version,
       }),
     ).toThrow();
@@ -187,7 +191,6 @@ describe("mocks/mockBackend", () => {
       backend.unassignAsset(stockAsset.id, {
         reason: "invalid",
         unassignment_date: "2026-04-03",
-        location: "HQ",
         version: stockAsset.version,
       }),
     ).toThrow();

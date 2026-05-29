@@ -1,13 +1,14 @@
 """add user location
 
 Revision ID: 20260530_0005
-Revises: 20260511_0004
+Revises: 20260506_0004
 Create Date: 2026-05-30 00:00:00.000000
 """
 
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "20260530_0005"

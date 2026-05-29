@@ -14,6 +14,8 @@ function seedSession(role: UserRole): void {
       email: role === "manager" ? "manager@example.com" : "holder@example.com",
       name: role === "manager" ? "Manager One" : "Holder One",
       role,
+      department: role === "manager" ? "IT" : "Engineering",
+      location: role === "manager" ? "Taipei HQ" : "Hsinchu Fab12",
     },
   };
   globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));

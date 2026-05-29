@@ -142,12 +142,10 @@ const AssetDetail: React.FC = () => {
         ? await unassignAsset({
             reason: values.reason ?? '',
             unassignment_date: values.unassignment_date ?? '',
-            location: values.location ?? '',
           })
         : await assignAsset({
             responsible_person_id: values.responsible_person_id ?? '',
             assignment_date: values.assignment_date ?? '',
-            location: values.location ?? '',
           });
     if (ok) setIsAssignModalOpen(false);
   };

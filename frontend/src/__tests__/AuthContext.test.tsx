@@ -21,7 +21,14 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 const seededSession = (): AuthSession => ({
   token: "tkn",
   expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-  user: { id: "u-1", email: "a@b.c", name: "A", role: "manager" },
+  user: {
+    id: "u-1",
+    email: "a@b.c",
+    name: "A",
+    role: "manager",
+    department: "IT",
+    location: "Taipei HQ",
+  },
 });
 
 describe("AuthContext", () => {
