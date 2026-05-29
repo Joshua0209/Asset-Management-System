@@ -2,6 +2,52 @@
 
 This document records the manually provisioned AWS infrastructure baseline for the AMS production environment in `ap-east-2`. While ECS task definitions and deployment flows are automated via GitHub Actions, the underlying network and service primitives are operator-managed.
 
+## Architecture Diagram
+
+```mermaid
+graph TD
+   %% External Traffic
+   User((User Browser)) -- "HTTPS (443)" --> R53[Route 53: ams-group30.online]
+   R53 -- "Alias Record" --> ALB[Application Load Balancer: ams-alb]
+   subgraph "AWS Cloud (ap-east-2)"
+       subgraph "VPC: 10.0.0.0/16"
+           subgraph "Public Subnets"
+               ALB
+               ACM[AWS Certificate Manager] -.-> ALB
+           end
+           subgraph "Private Subnets"
+               subgraph "ECS Fargate Cluster: ams-prod"
+                   FE[ECS Service: ams-frontend]
+                   BE[ECS Service: ams-backend]
+               end
+               RDS[(RDS: ams-database <br/>MySQL)]
+           end
+       end
+       subgraph "Management & Storage"
+           S3[S3 Bucket: <br/>ams-repair-images-prod]
+           SM[Secrets Manager: <br/>DB & App Secrets]
+           CW[CloudWatch Logs]
+       end
+   end
+   %% Traffic Routing Rules
+   ALB -- "/ (Default)" --> FE
+   ALB -- "/api/v1/*" --> BE
+   %% Internal Connections
+   BE -- "SQL Connection" --> RDS
+   BE -- "IAM: PutObject" --> S3
+   BE -- "Read Secrets" --> SM
+   %% Logs & Telemetry
+   BE -- "Push OTLP/Profiles" --> GC((Grafana Cloud))
+   FE -- "Frontend Logs" --> CW
+   BE -- "Backend Logs" --> CW
+   GC -- "Pull metrics/logs" -.-> CW
+   %% Style
+   style User fill:#f9f,stroke:#333,stroke-width:2px
+   style GC fill:#ff9,stroke:#333,stroke-width:2px
+   style RDS fill:#79f,stroke:#333,stroke-width:2px
+   style S3 fill:#7f7,stroke:#333,stroke-width:2px
+```
+
 ## VPC Topology (`project-vpc`)
 
 | Attribute | Value |
@@ -18,6 +64,26 @@ This document records the manually provisioned AWS infrastructure baseline for t
 | `project-subnet-public2-ap-east-2b` | `__SUBNET_PUBLIC_2__` | `10.0.16.0/20` | Public (ALB) | `ap-east-2b` |
 | `project-subnet-private1-ap-east-2a` | `__SUBNET_PRIVATE_1__` | `10.0.128.0/20`| Private (App/DB) | `ap-east-2a` |
 | `project-subnet-private2-ap-east-2b` | `__SUBNET_PRIVATE_2__` | `10.0.144.0/20`| Private (App/DB) | `ap-east-2b` |
+
+## Routing & Internet Egress
+
+The AMS production environment uses a standard hub-and-spoke routing model to provide internet access to tasks running in private subnets (which do not have public IP addresses).
+
+| Component | Configuration |
+|-----------|---------------|
+| **Internet Gateway** | Attached to `project-vpc` to provide entry/exit for the public subnets. |
+| **NAT Gateway** | A single NAT Gateway resides in `project-subnet-public1-ap-east-2a`. |
+| **Public Route Table** | Routes `0.0.0.0/0` to the Internet Gateway. |
+| **Private Route Table** | Routes `0.0.0.0/0` to the NAT Gateway. |
+
+### Egress Path
+
+ECS tasks (Backend, Frontend) and RDS instances reside in the private subnets. Their outbound traffic (e.g., pulls from ECR, secret fetches from Secrets Manager, telemetry pushes to Grafana Cloud) follows this path:
+1.  **Private Subnet** -> **Private Route Table**
+2.  **Private Route Table** -> **NAT Gateway** (Public Subnet)
+3.  **NAT Gateway** -> **Internet Gateway** -> **Public Internet**
+
+*Note: While VPC Endpoints (Interface or Gateway) could be used to keep AWS-internal traffic off the NAT Gateway, the current baseline relies on the NAT Gateway for all outbound connectivity to simplify the network topology.*
 
 ---
 
