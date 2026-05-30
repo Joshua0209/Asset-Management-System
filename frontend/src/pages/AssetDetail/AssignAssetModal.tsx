@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo } from 'react';
-import { Form, Input, Modal, Select, Space, Typography } from 'antd';
+import { Form, Input, Modal, Select } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import type { AssetRecord } from '@/api/assets';
 import type { UserRecord } from '@/api/users';
-import { useAuth } from '@/auth/AuthContext';
 
 export interface AssignFormValues {
   responsible_person_id?: string;
@@ -39,13 +38,9 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
   onSubmit,
 }) => {
   const { t } = useTranslation();
-  const { user } = useAuth();
   const [form] = Form.useForm<AssignFormValues>();
   const isUnassign = asset.status === 'in_use';
   const todayIsoDate = useMemo(() => getTodayIsoDate(), []);
-  const selectedHolderId = Form.useWatch('responsible_person_id', form);
-  const selectedHolder = holders.find((holder) => holder.id === selectedHolderId);
-  const syncTarget = isUnassign ? user : selectedHolder;
 
   useEffect(() => {
     if (!open) {
@@ -144,17 +139,6 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
             </Form.Item>
           </>
         )}
-
-        <Space orientation="vertical" size={4}>
-          <Typography.Text type="secondary">
-            {t('assetList.form.syncDepartment')}
-          </Typography.Text>
-          <Typography.Text>{syncTarget?.department ?? t('assetList.detail.notAvailable')}</Typography.Text>
-          <Typography.Text type="secondary">
-            {t('assetList.form.syncLocation')}
-          </Typography.Text>
-          <Typography.Text>{syncTarget?.location ?? t('assetList.detail.notAvailable')}</Typography.Text>
-        </Space>
       </Form>
     </Modal>
   );

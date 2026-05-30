@@ -179,8 +179,6 @@
       "purchaseDate": "採購日期",
       "purchaseAmount": "採購金額",
       "location": "地點",
-      "syncDepartment": "操作後部門",
-      "syncLocation": "操作後地點",
       "department": "歸屬部門",
       "activationDate": "啟用日期",
       "warrantyExpiry": "保固到期日",

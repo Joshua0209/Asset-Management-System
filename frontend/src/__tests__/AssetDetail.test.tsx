@@ -86,7 +86,7 @@ function mockAssetReloadSequence(
 }
 
 // Drives the manager assign flow for an in-stock asset. Issue #97 / Q21:
-// location is now synced from the selected holder, not edited in the modal.
+// department/location sync remains backend-owned and is not shown as modal UI.
 async function assignInStockAsset(): Promise<void> {
   const user = userEvent.setup({ delay: null });
   setAuthUser(managerUser);
@@ -106,7 +106,7 @@ async function assignInStockAsset(): Promise<void> {
   const assignModal = getOpenModalContent();
   await user.click(within(assignModal).getByRole("combobox", { name: "Holder" }));
   await user.click(screen.getByText("Bob Lee (bob@example.com)"));
-  expect(within(assignModal).getByText("Hsinchu Fab12")).toBeInTheDocument();
+  expect(within(assignModal).queryByText("Hsinchu Fab12")).not.toBeInTheDocument();
   const assignDateInput = getModalField(assignModal, "#assignment_date");
   await user.clear(assignDateInput);
   await user.type(assignDateInput, "2026-05-08");
@@ -340,7 +340,7 @@ describe("AssetDetail", () => {
     const unassignDateInput = getModalField(unassignModal, "#unassignment_date");
     await user.clear(unassignDateInput);
     await user.type(unassignDateInput, "2026-05-10");
-    expect(within(unassignModal).getByText("Taipei HQ")).toBeInTheDocument();
+    expect(within(unassignModal).queryByText("Taipei HQ")).not.toBeInTheDocument();
     expect(unassignModal.querySelector("#location")).not.toBeInTheDocument();
     await user.click(within(unassignModal).getByRole("button", { name: "Confirm" }));
 

@@ -179,8 +179,6 @@
       "purchaseDate": "Purchase Date",
       "purchaseAmount": "Purchase Amount",
       "location": "Location",
-      "syncDepartment": "Department after action",
-      "syncLocation": "Location after action",
       "department": "Department",
       "activationDate": "Activation Date",
       "warrantyExpiry": "Warranty Expiry",
