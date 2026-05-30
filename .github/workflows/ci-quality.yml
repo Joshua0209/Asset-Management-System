@@ -757,7 +757,8 @@ jobs:
       BOOTSTRAP_MANAGER_EMAIL: admin@example.com
       BOOTSTRAP_MANAGER_PASSWORD: ChangeMe123
       BOOTSTRAP_MANAGER_NAME: Bootstrap Manager
-      BOOTSTRAP_MANAGER_DEPARTMENT: IT
+      BOOTSTRAP_MANAGER_DEPARTMENT: 資產管理部
+      BOOTSTRAP_MANAGER_LOCATION: 台北南港總部 8F
       # /tmp is wiped between jobs; the repair-image directory lives there
       # because Playwright's repair-submit spec uploads a 1x1 PNG fixture
       # and the backend needs a writeable upload root.
@@ -968,4 +969,3 @@ jobs:
             exit 1
           fi
           echo "All upstream quality jobs passed (or were skipped by their own gates)."
-
