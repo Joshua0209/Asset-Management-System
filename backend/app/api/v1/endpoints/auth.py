@@ -103,6 +103,7 @@ def register(
         name=payload.name,
         role=UserRole.HOLDER,
         department=payload.department,
+        location=payload.location,
     )
     try:
         db.add(user)
@@ -225,6 +226,7 @@ def admin_create_user(
         name=payload.name,
         role=payload.role,
         department=payload.department,
+        location=payload.location,
     )
     try:
         db.add(user)

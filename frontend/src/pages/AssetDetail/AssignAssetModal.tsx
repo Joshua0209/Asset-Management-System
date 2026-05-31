@@ -53,7 +53,9 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
         unassignment_date: todayIsoDate,
       });
     } else {
-      form.setFieldValue('assignment_date', todayIsoDate);
+      form.setFieldsValue({
+        assignment_date: todayIsoDate,
+      });
       if (asset.responsible_person_id) {
         form.setFieldValue('responsible_person_id', asset.responsible_person_id);
       }
@@ -65,6 +67,8 @@ const AssignAssetModal: React.FC<AssignAssetModalProps> = ({
     try {
       values = await form.validateFields();
     } catch {
+      // validateFields rejects when a field rule fails; antd already renders
+      // the inline errors, so there is nothing more to surface here.
       return;
     }
     await onSubmit(values);

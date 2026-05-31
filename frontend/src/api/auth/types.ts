@@ -8,6 +8,8 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  department: string;
+  location: string;
   role: UserRole;
 }
 
@@ -28,4 +30,5 @@ export interface RegisterPayload {
   password: string;
   name: string;
   department: string;
+  location: string;
 }

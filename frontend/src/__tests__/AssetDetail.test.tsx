@@ -85,6 +85,37 @@ function mockAssetReloadSequence(
   mockGetAsset.mockResolvedValueOnce(buildAsset(initialAsset)).mockResolvedValueOnce(buildAsset(refreshedAsset));
 }
 
+// Drives the manager assign flow for an in-stock asset. Issue #97 / Q21:
+// department/location sync remains backend-owned and is not shown as modal UI.
+async function assignInStockAsset(): Promise<void> {
+  const user = userEvent.setup({ delay: null });
+  setAuthUser(managerUser);
+  mockAssetReloadSequence(
+    { status: "in_stock", responsible_person: null, responsible_person_id: null },
+    { status: "in_use", responsible_person_id: "holder-2" },
+  );
+
+  renderAssetDetail();
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Assign" })).toBeInTheDocument();
+  });
+
+  await user.click(screen.getByRole("button", { name: "Assign" }));
+
+  const assignModal = getOpenModalContent();
+  await user.click(within(assignModal).getByRole("combobox", { name: "Holder" }));
+  await user.click(screen.getByText("Bob Lee (bob@example.com)"));
+  expect(within(assignModal).queryByText("Hsinchu Fab12")).not.toBeInTheDocument();
+  const assignDateInput = getModalField(assignModal, "#assignment_date");
+  await user.clear(assignDateInput);
+  await user.type(assignDateInput, "2026-05-08");
+
+  expect(assignModal.querySelector("#location")).not.toBeInTheDocument();
+
+  await user.click(within(assignModal).getByRole("button", { name: "Confirm" }));
+}
+
 const mockAsset: AssetRecord = {
   id: "AST-2026-00001-id",
   asset_code: "AST-2026-00001",
@@ -106,6 +137,9 @@ const mockAsset: AssetRecord = {
   responsible_person: {
     id: "holder-1",
     name: "Alice Chen",
+    email: "alice@example.com",
+    department: "Engineering",
+    location: "Hsinchu Fab12",
   },
   disposal_reason: null,
   version: 1,
@@ -130,7 +164,14 @@ describe("AssetDetail", () => {
     mockDisposeAsset.mockResolvedValue({});
     mockListUsers.mockResolvedValue({
       data: [
-        { id: "holder-2", name: "Bob Lee", email: "bob@example.com", role: "holder" },
+        {
+          id: "holder-2",
+          name: "Bob Lee",
+          email: "bob@example.com",
+          role: "holder",
+          department: "Engineering",
+          location: "Hsinchu Fab12",
+        },
       ],
       meta: {
         total: 1,
@@ -170,6 +211,33 @@ describe("AssetDetail", () => {
     expect(screen.getByText("Dell Latitude 7440")).toBeInTheDocument();
     expect(screen.getByText("Intel Core i7, 16GB RAM, 512GB SSD")).toBeInTheDocument();
     expect(screen.getByText("Dell")).toBeInTheDocument();
+  });
+
+  it("shows asset department and holder department as separate rows", async () => {
+    // Issue #97 / 10-design-decisions.md Q21: asset.department (owning)
+    // and responsible_person.department (organisational) are distinct
+    // concepts. The detail page must surface both so the asset manager
+    // can see when an asset is cross-allocated.
+    mockGetAsset.mockResolvedValueOnce(mockAsset);
+
+    renderAssetDetail();
+
+    await waitFor(() => {
+      expect(screen.getByText("Asset Detail - AST-2026-00001")).toBeInTheDocument();
+    });
+
+    // Asset's owning department (from asset.department). The label
+    // appears twice — once in the Descriptions list and once in the
+    // hidden edit-asset form — so use getAllByText. "Department" is
+    // the exact text of the label cell; React Testing Library's
+    // default exact match means it will not collide with the
+    // "Holder Department" cell.
+    expect(screen.getAllByText("Department").length).toBeGreaterThan(0);
+    expect(screen.getByText("IT")).toBeInTheDocument();
+
+    // Holder's organisational department (from responsible_person.department).
+    expect(screen.getByText("Holder Department")).toBeInTheDocument();
+    expect(screen.getAllByText("Engineering").length).toBeGreaterThan(0);
   });
 
   it("renders 404 when asset is not found", async () => {
@@ -241,28 +309,7 @@ describe("AssetDetail", () => {
   });
 
   it("assigns an in-stock asset from detail page", async () => {
-    const user = userEvent.setup({ delay: null });
-    setAuthUser(managerUser);
-    mockAssetReloadSequence(
-      { status: "in_stock", responsible_person: null, responsible_person_id: null },
-      { status: "in_use", responsible_person_id: "holder-2" },
-    );
-
-    renderAssetDetail();
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Assign" })).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("button", { name: "Assign" }));
-
-    const assignModal = getOpenModalContent();
-    await user.click(within(assignModal).getByRole("combobox", { name: "Holder" }));
-    await user.click(screen.getByText("Bob Lee (bob@example.com)"));
-    const assignDateInput = getModalField(assignModal, "#assignment_date");
-    await user.clear(assignDateInput);
-    await user.type(assignDateInput, "2026-05-08");
-    await user.click(within(assignModal).getByRole("button", { name: "Confirm" }));
+    await assignInStockAsset();
 
     await waitFor(() => {
       expect(mockAssignAsset).toHaveBeenCalledWith("AST-2026-00001-id", {
@@ -293,6 +340,8 @@ describe("AssetDetail", () => {
     const unassignDateInput = getModalField(unassignModal, "#unassignment_date");
     await user.clear(unassignDateInput);
     await user.type(unassignDateInput, "2026-05-10");
+    expect(within(unassignModal).queryByText("Taipei HQ")).not.toBeInTheDocument();
+    expect(unassignModal.querySelector("#location")).not.toBeInTheDocument();
     await user.click(within(unassignModal).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {

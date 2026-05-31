@@ -110,7 +110,12 @@ class TestListAssets:
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
         manager = make_user(role=UserRole.MANAGER)
-        holder = make_user(role=UserRole.HOLDER, name="Alice")
+        holder = make_user(
+            role=UserRole.HOLDER,
+            name="Alice",
+            department="Engineering",
+            location="Hsinchu Fab12",
+        )
         _make_asset(db_session, responsible_person_id=holder.id)
 
         response = client.get("/api/v1/assets?sort=asset_code", headers=auth_headers(manager))
@@ -122,7 +127,41 @@ class TestListAssets:
             "id": holder.id,
             "name": "Alice",
             "email": holder.email,
+            "department": holder.department,
+            "location": holder.location,
         }
+
+    def test_responsible_person_exposes_holder_department(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        # Issue #97 / Q21: the AssetDetail UI renders the holder's
+        # organisational department alongside the asset's owning
+        # department. The API must surface holder.department through
+        # the nested responsible_person object so the frontend can
+        # distinguish the two without a second round-trip.
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(
+            role=UserRole.HOLDER,
+            name="Bob",
+            department="研發中心",
+        )
+        _make_asset(
+            db_session,
+            asset_code="AST-2026-00009",
+            responsible_person_id=holder.id,
+            department="資訊維運部",
+        )
+
+        response = client.get("/api/v1/assets?sort=asset_code", headers=auth_headers(manager))
+
+        assert response.status_code == 200
+        item = response.json()["data"][0]
+        assert item["department"] == "資訊維運部"
+        assert item["responsible_person"]["department"] == "研發中心"
 
     def test_excludes_soft_deleted_assets(
         self,
@@ -310,13 +349,17 @@ class TestRegisterAsset:
         assert data["status"] == "in_stock"
         assert data["responsible_person_id"] is None
 
-    def test_registers_asset_without_optional_location_department(
+    def test_registers_asset_defaults_missing_location_department_to_manager(
         self,
         client: TestClient,
         make_user: Callable[..., User],
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
+        manager = make_user(
+            role=UserRole.MANAGER,
+            department="資訊維運部",
+            location="Taipei Storage",
+        )
         payload = {
             "name": "Business Laptop",
             "model": "Dell Latitude 7440",
@@ -330,8 +373,8 @@ class TestRegisterAsset:
 
         assert response.status_code == 201
         data = response.json()["data"]
-        assert data["location"] == ""
-        assert data["department"] == ""
+        assert data["location"] == "Taipei Storage"
+        assert data["department"] == "資訊維運部"
 
     def test_retries_when_generated_asset_code_conflicts(
         self,
@@ -694,18 +737,14 @@ class TestAssetUpdateSchema:
 
     def test_future_purchase_date_raises(self) -> None:
         with pytest.raises(ValidationError, match="purchase_date must not be in the future"):
-            AssetUpdate.model_validate(
-                {"purchase_date": "9999-01-01", "version": 1}
-            )
+            AssetUpdate.model_validate({"purchase_date": "9999-01-01", "version": 1})
 
     def test_warranty_expiry_equal_to_purchase_date_raises(self) -> None:
         # Validator says "must be after", so equal also fails. Both dates must
         # be in the past — otherwise the future-purchase-date guard would fire
         # first and this test would pass for the wrong reason once the system
         # clock crosses the chosen date.
-        with pytest.raises(
-            ValidationError, match="warranty_expiry must be after purchase_date"
-        ):
+        with pytest.raises(ValidationError, match="warranty_expiry must be after purchase_date"):
             AssetUpdate.model_validate(
                 {
                     "purchase_date": "2025-06-01",
@@ -717,9 +756,7 @@ class TestAssetUpdateSchema:
     def test_warranty_expiry_before_purchase_date_raises(self) -> None:
         # Both dates must be in the past, otherwise the future-purchase-date
         # guard fires first and the test would pass for the wrong reason.
-        with pytest.raises(
-            ValidationError, match="warranty_expiry must be after purchase_date"
-        ):
+        with pytest.raises(ValidationError, match="warranty_expiry must be after purchase_date"):
             AssetUpdate.model_validate(
                 {
                     "purchase_date": "2025-06-01",
@@ -759,7 +796,126 @@ class TestAssignAsset:
         assert data["status"] == "in_use"
         assert data["responsible_person_id"] == holder.id
         assert data["responsible_person"]["id"] == holder.id
+        assert data["department"] == holder.department
+        assert data["location"] == holder.location
         assert data["version"] == current_version + 1
+
+    def test_assign_syncs_department_and_location_from_holder(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(
+            role=UserRole.HOLDER,
+            department="研發中心",
+            location="Hsinchu Fab12",
+        )
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_STOCK,
+            department="資訊維運部",
+            location="Taipei HQ",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"]["department"] == "研發中心"
+        assert response.json()["data"]["location"] == "Hsinchu Fab12"
+
+    def test_assign_rejects_client_supplied_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "location": "Hsinchu Fab12",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_assign_rejects_client_supplied_department(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(db_session, status=AssetStatus.IN_STOCK)
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "department": "研發中心",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_assign_syncs_holder_department(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(
+            role=UserRole.HOLDER,
+            department="研發中心",
+            location="Hsinchu Fab12",
+        )
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_STOCK,
+            department="資訊維運部",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/assign",
+            json={
+                "responsible_person_id": holder.id,
+                "assignment_date": _ASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["department"] == "研發中心"
+        assert data["location"] == "Hsinchu Fab12"
+        assert data["responsible_person"]["department"] == "研發中心"
 
     def test_holder_cannot_assign(
         self,
@@ -818,7 +974,11 @@ class TestAssignAsset:
         auth_headers: Callable[[User], dict[str, str]],
         current_status: AssetStatus,
     ) -> None:
-        manager = make_user(role=UserRole.MANAGER)
+        manager = make_user(
+            role=UserRole.MANAGER,
+            department="資訊維運部",
+            location="Taipei Storage",
+        )
         target = make_user(role=UserRole.HOLDER)
         asset = _make_asset(db_session, status=current_status)
 
@@ -1046,7 +1206,136 @@ class TestUnassignAsset:
         assert data["status"] == "in_stock"
         assert data["responsible_person_id"] is None
         assert data["responsible_person"] is None
+        assert data["department"] == manager.department
+        assert data["location"] == manager.location
         assert data["version"] == current_version + 1
+
+    def test_unassign_syncs_department_and_location_from_manager(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(
+            role=UserRole.MANAGER,
+            department="資訊維運部",
+            location="Taipei Storage",
+        )
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+            department="研發中心",
+            location="Hsinchu Fab12",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"]["department"] == "資訊維運部"
+        assert response.json()["data"]["location"] == "Taipei Storage"
+
+    def test_unassign_rejects_client_supplied_location(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "location": "Taipei Storage",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_unassign_rejects_client_supplied_department(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(role=UserRole.MANAGER)
+        holder = make_user(role=UserRole.HOLDER)
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "department": "資訊維運部",
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 422
+
+    def test_unassign_syncs_manager_department(
+        self,
+        client: TestClient,
+        db_session: Session,
+        make_user: Callable[..., User],
+        auth_headers: Callable[[User], dict[str, str]],
+    ) -> None:
+        manager = make_user(
+            role=UserRole.MANAGER,
+            department="資訊維運部",
+            location="Taipei Storage",
+        )
+        holder = make_user(role=UserRole.HOLDER, department="研發中心")
+        asset = _make_asset(
+            db_session,
+            status=AssetStatus.IN_USE,
+            responsible_person_id=holder.id,
+            department="資訊維運部",
+        )
+
+        response = client.post(
+            f"/api/v1/assets/{asset.id}/unassign",
+            json={
+                "reason": "Returned to storage",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": asset.version,
+            },
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["department"] == "資訊維運部"
+        assert data["location"] == "Taipei Storage"
+        assert data["responsible_person"] is None
 
     def test_holder_cannot_unassign(
         self,
@@ -1112,7 +1401,11 @@ class TestUnassignAsset:
         manager = make_user(role=UserRole.MANAGER)
         response = client.post(
             "/api/v1/assets/00000000-0000-0000-0000-000000000000/unassign",
-            json={"reason": "transfer", "unassignment_date": _UNASSIGNMENT_DATE_ISO, "version": 1},
+            json={
+                "reason": "transfer",
+                "unassignment_date": _UNASSIGNMENT_DATE_ISO,
+                "version": 1,
+            },
             headers=auth_headers(manager),
         )
         assert response.status_code == 404
@@ -2149,9 +2442,7 @@ class TestGetAssetDbError:
         with patch.object(
             db_session, "scalar", side_effect=scalar_skip_auth(SQLAlchemyError("DB down"))
         ):
-            response = client.get(
-                f"/api/v1/assets/{asset.id}", headers=auth_headers(manager)
-            )
+            response = client.get(f"/api/v1/assets/{asset.id}", headers=auth_headers(manager))
 
         assert response.status_code == 503
 
@@ -2244,9 +2535,7 @@ class TestRegisterAssetIntegrityErrors:
                 Exception("CHECK constraint failed on purchase_amount"),
             ),
         ):
-            response = client.post(
-                "/api/v1/assets", json=payload, headers=auth_headers(manager)
-            )
+            response = client.post("/api/v1/assets", json=payload, headers=auth_headers(manager))
 
         assert response.status_code == 422
         body = response.json()["error"]

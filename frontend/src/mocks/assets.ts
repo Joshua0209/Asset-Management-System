@@ -25,6 +25,8 @@ export interface AssetRecord {
   responsible_person: {
     id: string;
     name: string;
+    department: string;
+    location: string;
   } | null;
   disposal_reason: string | null;
   version: number;
@@ -39,12 +41,29 @@ type RawAssetRecord = Omit<AssetRecord, 'responsible_person'> & {
 export interface DemoHolder {
   id: string;
   label: string;
+  department: string;
+  location: string;
 }
 
 export const DUMMY_HOLDERS: DemoHolder[] = [
-  { id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1001', label: 'Alice Chen' },
-  { id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1002', label: 'Brian Lin' },
-  { id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1003', label: 'Cindy Wu' },
+  {
+    id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1001',
+    label: 'Alice Chen',
+    department: 'Engineering',
+    location: 'Hsinchu Fab12',
+  },
+  {
+    id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1002',
+    label: 'Brian Lin',
+    department: 'Operations',
+    location: 'Taipei HQ',
+  },
+  {
+    id: '3b9c5f56-f421-4ae8-9f2f-3b7c4b2d1003',
+    label: 'Cindy Wu',
+    department: 'Finance',
+    location: 'Taichung Office',
+  },
 ];
 
 const RAW_DUMMY_ASSETS: RawAssetRecord[] = [
@@ -428,16 +447,19 @@ const RAW_DUMMY_ASSETS: RawAssetRecord[] = [
   },
 ];
 
-const HOLDER_NAME_BY_ID = new Map(DUMMY_HOLDERS.map((holder) => [holder.id, holder.label]));
+const HOLDER_BY_ID = new Map(DUMMY_HOLDERS.map((holder) => [holder.id, holder]));
 
-export const DUMMY_ASSETS: AssetRecord[] = RAW_DUMMY_ASSETS.map(
-  ({ responsible_person_id, ...asset }) => ({
+export const DUMMY_ASSETS: AssetRecord[] = RAW_DUMMY_ASSETS.map(({ responsible_person_id, ...asset }) => {
+  const holder = responsible_person_id ? HOLDER_BY_ID.get(responsible_person_id) : undefined;
+  return {
     ...asset,
     responsible_person: responsible_person_id
       ? {
           id: responsible_person_id,
-          name: HOLDER_NAME_BY_ID.get(responsible_person_id) ?? 'Unknown Holder',
+          name: holder?.label ?? 'Unknown Holder',
+          department: holder?.department ?? 'Unknown',
+          location: holder?.location ?? 'Unknown',
         }
       : null,
-  }),
-);
+  };
+});

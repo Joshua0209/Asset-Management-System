@@ -177,6 +177,7 @@ class TestApiContract:
                 "password": "Password123",
                 "name": "Contract Tester",
                 "department": "QA",
+                "location": "Taipei HQ",
             },
         )
         assert response.status_code == 201

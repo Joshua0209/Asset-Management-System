@@ -51,7 +51,12 @@ export function useAssetActions({ assetId, version, reload, api, t }: UseAssetAc
   const assignAsset = useCallback(
     (values: AssignValues) =>
       run(
-        () => assetsApi.assignAsset(assetId, { ...values, version }),
+        () =>
+          assetsApi.assignAsset(assetId, {
+            responsible_person_id: values.responsible_person_id,
+            assignment_date: values.assignment_date,
+            version,
+          }),
         'assetList.manager.assignSuccess',
       ),
     [assetId, version, run],
@@ -60,7 +65,12 @@ export function useAssetActions({ assetId, version, reload, api, t }: UseAssetAc
   const unassignAsset = useCallback(
     (values: UnassignValues) =>
       run(
-        () => assetsApi.unassignAsset(assetId, { ...values, version }),
+        () =>
+          assetsApi.unassignAsset(assetId, {
+            reason: values.reason,
+            unassignment_date: values.unassignment_date,
+            version,
+          }),
         'assetList.manager.unassignSuccess',
       ),
     [assetId, version, run],

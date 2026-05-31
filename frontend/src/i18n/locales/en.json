@@ -51,6 +51,7 @@
       "title": "Create account",
       "name": "Name",
       "department": "Department",
+      "location": "Location",
       "email": "Email",
       "password": "Password",
       "passwordPolicy": "At least 8 characters, including a letter and a digit",
@@ -129,6 +130,7 @@
     "detail": {
       "title": "Asset Detail - {{assetCode}}",
       "holder": "Holder",
+      "holderDepartment": "Holder Department",
       "model": "Model",
       "specs": "Specs",
       "supplier": "Supplier",

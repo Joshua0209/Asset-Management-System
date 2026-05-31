@@ -140,6 +140,7 @@ def make_user(db_session: Session) -> MakeUser:
         email: str | None = None,
         name: str | None = None,
         department: str = "IT",
+        location: str = "Taipei HQ",
         password: str = "Password123",
         deleted: bool = False,
     ) -> User:
@@ -151,6 +152,7 @@ def make_user(db_session: Session) -> MakeUser:
             name=name or f"User {idx}",
             role=role,
             department=department,
+            location=location,
         )
         if deleted:
             from datetime import UTC, datetime

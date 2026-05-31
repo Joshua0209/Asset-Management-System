@@ -5,7 +5,7 @@
 # UI/UX Wireframe Flow: AssetCore AMS (資產管理系統)
 
 ## 全域資料狀態 (Global State / API Entities)
-- **UserSession**: `{ name: string, role: 'Manager' | 'Holder', department: string }`
+- **UserSession**: `{ name: string, role: 'Manager' | 'Holder', department: string, location: string }`
 - **Assets**: 陣列，包含物件 `{ id: string, name: string, category: string, status: 'InUse' | 'Repair' | 'Review' | 'Disposed', holder: string, price: number, version: number }`
 - **RepairRequests**: 陣列，包含物件 `{ reqId: string, assetId: string, applicant: string, priority: 'High' | 'Mid' | 'Low', step: number }`
 

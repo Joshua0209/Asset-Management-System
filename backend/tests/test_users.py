@@ -30,12 +30,19 @@ class TestListUsers:
         auth_headers: Callable[[User], dict[str, str]],
     ) -> None:
         manager = make_user(role=UserRole.MANAGER, email="mgr@example.com")
-        make_user(role=UserRole.HOLDER, email="alice@example.com", name="Alice")
+        make_user(
+            role=UserRole.HOLDER,
+            email="alice@example.com",
+            name="Alice",
+            location="Hsinchu Fab12",
+        )
 
         response = client.get("/api/v1/users", headers=auth_headers(manager))
         assert response.status_code == 200
         emails = {u["email"] for u in response.json()["data"]}
         assert "alice@example.com" in emails
+        alice = next(u for u in response.json()["data"] if u["email"] == "alice@example.com")
+        assert alice["location"] == "Hsinchu Fab12"
         assert response.json()["meta"] == {
             "total": 2,
             "page": 1,

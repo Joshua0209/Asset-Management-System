@@ -19,6 +19,7 @@ def _payload(**overrides: object) -> dict[str, object]:
         "password": "Password123",
         "name": "New User",
         "department": "Engineering",
+        "location": "Taipei HQ",
     }
     base.update(overrides)
     return base
@@ -31,6 +32,8 @@ class TestRegisterHappyPath:
         body = response.json()["data"]
         assert body["email"] == "newuser@example.com"
         assert body["name"] == "New User"
+        assert body["department"] == "Engineering"
+        assert body["location"] == "Taipei HQ"
         assert body["role"] == "holder"
         assert "id" in body and body["id"]
 
@@ -43,6 +46,7 @@ class TestRegisterHappyPath:
         assert user is not None
         assert user.password_hash != "Password123"
         assert user.password_hash.startswith(("$2a$", "$2b$", "$2y$"))
+        assert user.location == "Taipei HQ"
 
     def test_response_never_contains_password_hash(self, client: TestClient) -> None:
         response = client.post("/api/v1/auth/register", json=_payload())
@@ -92,6 +96,12 @@ class TestRegisterValidation:
     def test_missing_name_returns_422(self, client: TestClient) -> None:
         bad = _payload()
         del bad["name"]
+        response = client.post("/api/v1/auth/register", json=bad)
+        assert response.status_code == 422
+
+    def test_missing_location_returns_422(self, client: TestClient) -> None:
+        bad = _payload()
+        del bad["location"]
         response = client.post("/api/v1/auth/register", json=bad)
         assert response.status_code == 422
 

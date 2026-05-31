@@ -61,6 +61,7 @@ function ensureState(): void {
       name: "Admin Manager",
       role: "manager",
       department: "Operations",
+      location: "Taipei HQ",
       created_at: createdAt,
     },
     {
@@ -69,6 +70,7 @@ function ensureState(): void {
       name: "Demo Holder",
       role: "holder",
       department: "Engineering",
+      location: "Hsinchu Fab12",
       created_at: createdAt,
     },
     ...DUMMY_HOLDERS.map((holder) => ({
@@ -77,6 +79,7 @@ function ensureState(): void {
       name: holder.label,
       role: "holder" as const,
       department: "Engineering",
+      location: holder.location,
       created_at: createdAt,
     })),
   ];
@@ -478,8 +481,15 @@ export function assignAsset(assetId: string, payload: AssetAssignPayload): Asset
 
   asset.status = "in_use";
   asset.responsible_person_id = holder.id;
-  asset.responsible_person = { id: holder.id, name: holder.name };
+  asset.responsible_person = {
+    id: holder.id,
+    name: holder.name,
+    department: holder.department,
+    location: holder.location,
+  };
   asset.assignment_date = payload.assignment_date;
+  asset.department = holder.department;
+  asset.location = holder.location;
   asset.unassignment_date = null;
   touchAsset(asset);
   return asset;
@@ -507,6 +517,9 @@ export function unassignAsset(assetId: string, payload: AssetUnassignPayload): A
   asset.status = "in_stock";
   asset.responsible_person_id = null;
   asset.responsible_person = null;
+  const manager = state.users.find((user) => user.role === "manager");
+  asset.department = manager?.department ?? "Operations";
+  asset.location = manager?.location ?? "Taipei HQ";
   asset.unassignment_date = payload.unassignment_date;
   touchAsset(asset);
   return asset;

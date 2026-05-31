@@ -104,9 +104,7 @@ class TestModelMetadataInvariant:
         # carry no optimistic-lock version.
         col_names = {c.name for c in AssetActionHistory.__table__.columns}
         for forbidden in ("updated_at", "deleted_at", "version"):
-            assert forbidden not in col_names, (
-                f"asset_action_histories must not have {forbidden}"
-            )
+            assert forbidden not in col_names, f"asset_action_histories must not have {forbidden}"
 
     def test_round_trip_through_session(self, db_session: Session) -> None:
         # If create_all built the table correctly, a basic insert+select works.
@@ -179,9 +177,7 @@ class TestAuditLogService:
         assert latest.action is AssetAction.DISPOSE
         assert latest.event_metadata == {"disposal_reason": "End of life"}
 
-    def test_record_asset_action_requires_open_transaction(
-        self, db_session: Session
-    ) -> None:
+    def test_record_asset_action_requires_open_transaction(self, db_session: Session) -> None:
         # Atomicity guard: without an open txn the row would auto-commit alone,
         # defeating the "no transition without log" invariant.
         asset = _make_asset(db_session)
@@ -205,9 +201,7 @@ class TestAuditLogService:
                 to_status=AssetStatus.DISPOSED,
             )
 
-    def test_record_asset_action_rejects_non_json_metadata(
-        self, db_session: Session
-    ) -> None:
+    def test_record_asset_action_rejects_non_json_metadata(self, db_session: Session) -> None:
         # Surfaces non-encodable values as TypeError at the call site
         # rather than as a generic flush-time error later.
         asset = _make_asset(db_session)
@@ -443,10 +437,7 @@ class TestTransitionsRecordHistory:
         assert ev.to_status == AssetStatus.IN_USE.value
         assert ev.actor_id == manager.id
         assert ev.event_metadata is not None
-        assert (
-            ev.event_metadata["rejection_reason"]
-            == "Out of warranty and not cost-effective."
-        )
+        assert ev.event_metadata["rejection_reason"] == "Out of warranty and not cost-effective."
         assert ev.event_metadata["repair_request_id"] == rr.id
 
     def test_complete_repair_records_history(
@@ -1214,9 +1205,7 @@ class TestMetadataDiscriminatedUnion:
     def test_dispose_payload_validates(self) -> None:
         from app.schemas.asset import AssetActionHistoryRead, DisposeMetadata
 
-        history = self._build_history(
-            AssetAction.DISPOSE, {"disposal_reason": "Damaged"}
-        )
+        history = self._build_history(AssetAction.DISPOSE, {"disposal_reason": "Damaged"})
         schema = AssetActionHistoryRead.model_validate(history)
         assert isinstance(schema.metadata, DisposeMetadata)
         assert schema.metadata.disposal_reason == "Damaged"
@@ -1241,9 +1230,7 @@ class TestMetadataDiscriminatedUnion:
         )
 
         rr_id = "44444444-4444-4444-4444-444444444444"
-        history = self._build_history(
-            AssetAction.APPROVE_REPAIR, {"repair_request_id": rr_id}
-        )
+        history = self._build_history(AssetAction.APPROVE_REPAIR, {"repair_request_id": rr_id})
         schema = AssetActionHistoryRead.model_validate(history)
         assert isinstance(schema.metadata, ApproveRepairMetadata)
         assert schema.metadata.repair_request_id == rr_id
@@ -1371,11 +1358,7 @@ class TestMetadataOpenAPISchema:
             metadata_prop
             if "oneOf" in metadata_prop
             else next(
-                (
-                    branch
-                    for branch in metadata_prop.get("anyOf", [])
-                    if "oneOf" in branch
-                ),
+                (branch for branch in metadata_prop.get("anyOf", []) if "oneOf" in branch),
                 None,
             )
         )

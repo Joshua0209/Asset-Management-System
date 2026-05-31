@@ -21,6 +21,7 @@ class RegisterRequest(APIModel):
     password: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=100)
     department: str = Field(min_length=1, max_length=100)
+    location: str = Field(min_length=1, max_length=120)
 
     @field_validator("password")
     @classmethod
@@ -39,6 +40,7 @@ class AdminCreateUserRequest(APIModel):
     password: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=100)
     department: str = Field(min_length=1, max_length=100)
+    location: str = Field(min_length=1, max_length=120)
     role: UserRole
 
     @field_validator("password")
@@ -60,6 +62,8 @@ class LoginUser(APIModel):
     id: str
     email: EmailStr
     name: str
+    department: str
+    location: str
     role: UserRole
 
 

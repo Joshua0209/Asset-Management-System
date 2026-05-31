@@ -39,6 +39,8 @@ function sessionFor(userId: string, role: "holder" | "manager") {
       email: `${userId}@example.com`,
       name: userId,
       role,
+      department: role === "manager" ? "IT" : "Engineering",
+      location: role === "manager" ? "Taipei HQ" : "Hsinchu Fab12",
     },
   };
 }

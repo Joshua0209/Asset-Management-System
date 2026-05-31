@@ -52,9 +52,7 @@ def _register_and_assign_via_api(
     The full register-to-dispose walk is covered inline in
     ``test_register_assign_unassign_dispose_full_lifecycle``.
     """
-    register_response = client.post(
-        "/api/v1/assets", json=_REGISTER_PAYLOAD, headers=manager_auth
-    )
+    register_response = client.post("/api/v1/assets", json=_REGISTER_PAYLOAD, headers=manager_auth)
     assert register_response.status_code == 201, register_response.text
     registered = register_response.json()["data"]
     assign_response = client.post(
@@ -245,9 +243,7 @@ class TestAssetLifecycleJourney:
 
         # Manager tries to unassign while the repair is active — must fail.
         # We fetch the current asset version since /repair-requests bumped it.
-        current_asset_response = client.get(
-            f"/api/v1/assets/{asset_id}", headers=manager_auth
-        )
+        current_asset_response = client.get(f"/api/v1/assets/{asset_id}", headers=manager_auth)
         assert current_asset_response.status_code == 200, current_asset_response.text
         current_asset = current_asset_response.json()["data"]
         blocked_unassign = client.post(
@@ -266,9 +262,7 @@ class TestAssetLifecycleJourney:
         # executed the unassign but returned 409 by mistake (e.g. status
         # set after the commit, then accidentally overwritten by the
         # error path) would orphan the holder silently.
-        unchanged_response = client.get(
-            f"/api/v1/assets/{asset_id}", headers=manager_auth
-        )
+        unchanged_response = client.get(f"/api/v1/assets/{asset_id}", headers=manager_auth)
         assert unchanged_response.status_code == 200, unchanged_response.text
         unchanged_asset = unchanged_response.json()["data"]
         assert unchanged_asset["status"] == current_asset["status"]
@@ -291,9 +285,7 @@ class TestAssetLifecycleJourney:
         assert complete_resp.status_code == 200
 
         # Now unassign succeeds — read the latest asset version first.
-        latest_response = client.get(
-            f"/api/v1/assets/{asset_id}", headers=manager_auth
-        )
+        latest_response = client.get(f"/api/v1/assets/{asset_id}", headers=manager_auth)
         assert latest_response.status_code == 200, latest_response.text
         latest_asset = latest_response.json()["data"]
         assert latest_asset["status"] == "in_use"
@@ -366,9 +358,7 @@ class TestAssetLifecycleJourney:
         # The asset must now be unassignable. The rejected request is
         # still in the DB (audit trail) but its terminal status means it
         # no longer counts as a "blocking" record.
-        current_asset_resp = client.get(
-            f"/api/v1/assets/{asset_id}", headers=manager_auth
-        )
+        current_asset_resp = client.get(f"/api/v1/assets/{asset_id}", headers=manager_auth)
         assert current_asset_resp.status_code == 200, current_asset_resp.text
         current_asset = current_asset_resp.json()["data"]
         assert current_asset["status"] == "in_use"
@@ -419,9 +409,7 @@ class TestAssetLifecycleJourney:
 
         # An asset in pending_repair cannot be disposed — also fails the
         # in_stock prerequisite for dispose, so the FSM guard returns 409.
-        current_asset_resp = client.get(
-            f"/api/v1/assets/{asset_id}", headers=manager_auth
-        )
+        current_asset_resp = client.get(f"/api/v1/assets/{asset_id}", headers=manager_auth)
         assert current_asset_resp.status_code == 200, current_asset_resp.text
         current_asset = current_asset_resp.json()["data"]
         blocked_dispose = client.post(
@@ -437,9 +425,7 @@ class TestAssetLifecycleJourney:
 
         # Verify the failed 409 did NOT mutate the asset. Dispose is
         # terminal; a silent execution behind a 409 would be catastrophic.
-        unchanged_resp = client.get(
-            f"/api/v1/assets/{asset_id}", headers=manager_auth
-        )
+        unchanged_resp = client.get(f"/api/v1/assets/{asset_id}", headers=manager_auth)
         assert unchanged_resp.status_code == 200, unchanged_resp.text
         unchanged_asset = unchanged_resp.json()["data"]
         assert unchanged_asset["status"] == current_asset["status"]

@@ -48,6 +48,8 @@ const managerUser = {
   email: "manager@example.com",
   name: "Manager",
   role: "manager" as const,
+  department: "IT",
+  location: "Taipei HQ",
 };
 
 const holderUser = {
@@ -55,6 +57,8 @@ const holderUser = {
   email: "holder@example.com",
   name: "Holder",
   role: "holder" as const,
+  department: "Engineering",
+  location: "Hsinchu Fab12",
 };
 
 function authAs(user: typeof managerUser | typeof holderUser) {
@@ -137,6 +141,8 @@ function buildResponse(
         responsible_person: {
           id: "holder-1",
           name: "Alice Chen",
+          department: "Engineering",
+          location: "Hsinchu Fab12",
         },
         disposal_reason: null,
         version: 1,
@@ -168,6 +174,7 @@ describe("AssetList", () => {
           email: "alice@example.com",
           role: "holder",
           department: "IT",
+          location: "Taipei HQ",
           created_at: "2026-01-01T00:00:00Z",
         },
       ],

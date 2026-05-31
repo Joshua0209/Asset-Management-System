@@ -32,3 +32,14 @@ stateDiagram-v2
 | T8 | `Under_Repair` | **Repair Completed** *(Manager)* | `In_Use` | Repair details filled (date, fault, plan, cost, vendor). Repair request marked `completed` atomically. `responsible_person_id` unchanged. |
 
 **Forbidden transitions** (rejected at service layer): `Pending_Repair → In_Stock`, `Under_Repair → In_Stock`, `In_Stock → Pending_Repair`, `Disposed → *` (any), self-transitions.
+
+### Department / location side effects (issue #97)
+
+`assets.department` and `assets.location` represent the asset's current allocation context:
+
+1. **T1 (Register Asset).** Missing `department` / `location` values default to the current manager's department/location because unassigned stock is managed by the asset-management side.
+2. **T2 (Assign to Holder).** The asset's department/location sync to the assigned holder's department/location.
+3. **T5 (Unassign / Reclaim).** The asset's department/location sync back to the reclaiming manager's department/location.
+4. **`PATCH /assets/{id}` (Edit Asset).** Managers may explicitly correct department/location outside lifecycle transitions.
+
+Other transitions (repair lifecycle, disposal) do not change department/location. See `07-database-design.md` "Department / location semantics" and `10-design-decisions.md` Q21.
