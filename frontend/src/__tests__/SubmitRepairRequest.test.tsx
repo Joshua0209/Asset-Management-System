@@ -6,7 +6,7 @@ import SubmitRepairRequest from '@/pages/holder/SubmitRepairRequest';
 import { ConfigProvider, message } from 'antd';
 import { ApiError, assetsApi, repairRequestsApi } from '@/api';
 import type { RepairRequestRecord } from '@/api/repair-requests';
-import { buildAssetResponse } from './test-helpers';
+import { buildAssetResponse, mockApi } from './test-helpers';
 
 // Mock i18next — preserve real exports (e.g. initReactI18next, used by
 // src/i18n/index.ts when format.ts is loaded transitively) and only stub
@@ -93,12 +93,17 @@ function fileInput(): HTMLInputElement {
 }
 
 describe('SubmitRepairRequest', () => {
+  // `message` is still used for inline upload-validation errors (wrong file
+  // type, file too big). The submit success/error path now uses notification
+  // and asserts on `mockApi` from the global setup mock instead.
   let messageErrorSpy: MockInstance<typeof message.error>;
   let messageSuccessSpy: MockInstance<typeof message.success>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    mockApi.success.mockReset();
+    mockApi.error.mockReset();
     messageErrorSpy = vi.spyOn(message, 'error').mockImplementation(() => null as never);
     messageSuccessSpy = vi.spyOn(message, 'success').mockImplementation(() => null as never);
   });
@@ -188,7 +193,7 @@ describe('SubmitRepairRequest', () => {
     fireEvent.click(screen.getByText('common.repairRequest.submit'));
 
     await waitFor(() => {
-      expect(messageErrorSpy).toHaveBeenCalledWith('common.repairRequest.errorMessage');
+      expect(mockApi.error).toHaveBeenCalledWith({ title: 'common.repairRequest.errorMessage' });
     });
     // Pin the exact ``console.error('Submission error:', error)`` call shape.
     // A regression that drops the prefix, swaps the order, or rewraps the
@@ -217,10 +222,14 @@ describe('SubmitRepairRequest', () => {
 
     await waitFor(() => {
       // getApiErrorMessage maps code='conflict' to t('errors.conflict'),
-      // which the i18n stub returns verbatim as the key.
-      expect(messageErrorSpy).toHaveBeenCalledWith('errors.conflict');
+      // which the i18n stub returns verbatim as the key. The new notification
+      // shape uses the i18n submit-error key as the title and the
+      // ApiError-derived text as the description, mirroring the manager pages.
+      expect(mockApi.error).toHaveBeenCalledWith({
+        title: 'common.repairRequest.errorMessage',
+        description: 'errors.conflict',
+      });
     });
-    expect(messageErrorSpy).not.toHaveBeenCalledWith('common.repairRequest.errorMessage');
   });
 
   it('beforeUpload rejects non-image files with the format error', async () => {

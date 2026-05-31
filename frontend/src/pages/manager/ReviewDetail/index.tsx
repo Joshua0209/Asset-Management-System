@@ -47,40 +47,54 @@ const ReviewDetail: React.FC = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
 
-  const loadRequest = useCallback(async () => {
-    if (!id) {
-      setRequest(null);
-      setError(t('errors.notFound'));
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await repairRequestsApi.getRepairRequestById(id);
-      setRequest(result);
-    } catch (e) {
-      setRequest(null);
-      if (e instanceof ApiError) {
-        setError(getApiErrorMessage(e, t));
-      } else {
-        setError(t('errors.serverError'));
+  const loadRequest = useCallback(
+    // `showLoading=false` is used for post-action reloads. Setting loading=true
+    // would unmount the action panel + notification `contextHolder` during the
+    // refetch and the post-action `api.success(...)` would silently no-op
+    // (antd's notification holder ref churns to null). Matches the
+    // `reloadSilently` pattern in `AssetDetail/index.tsx`.
+    async (showLoading = true) => {
+      if (!id) {
+        setRequest(null);
+        setError(t('errors.notFound'));
+        setLoading(false);
+        return;
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [id, t]);
+
+      if (showLoading) {
+        setLoading(true);
+      }
+      setError(null);
+
+      try {
+        const result = await repairRequestsApi.getRepairRequestById(id);
+        setRequest(result);
+      } catch (e) {
+        setRequest(null);
+        if (e instanceof ApiError) {
+          setError(getApiErrorMessage(e, t));
+        } else {
+          setError(t('errors.serverError'));
+        }
+      } finally {
+        if (showLoading) {
+          setLoading(false);
+        }
+      }
+    },
+    [id, t],
+  );
 
   useEffect(() => {
     loadRequest();
   }, [loadRequest]);
 
+  const reloadSilently = useCallback(() => loadRequest(false), [loadRequest]);
+
   const { isSubmitting, approve, reject, saveDetails, complete } = useReviewActions({
     requestId: request?.id ?? '',
     version: request?.version ?? 0,
-    reload: loadRequest,
+    reload: reloadSilently,
     api,
     t,
   });

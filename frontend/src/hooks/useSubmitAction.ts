@@ -43,6 +43,14 @@ export function useSubmitAction({ reload, api, t, failureTitleKey }: UseSubmitAc
               description: getApiErrorMessage(e, t),
             });
           }
+        } else {
+          // Non-ApiError: network failure, AbortError, or a bug in the call
+          // chain. Surface a generic toast so the user knows the action did
+          // not succeed instead of silently leaving the modal open.
+          api.error({
+            title: t(failureTitleKey),
+            description: t('errors.serverError'),
+          });
         }
         return false;
       } finally {

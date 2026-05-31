@@ -115,7 +115,13 @@ globalThis.Request = class extends OriginalRequest {
   }
 };
 
-// Global Ant Design notification mock
+// Global Ant Design notification mock. We route BOTH the hook-based API
+// (`notification.useNotification()` — used on manager pages) and the static
+// API (`notification.success/error` — used on SubmitRepairRequest because
+// it navigates after submit and a component-scoped contextHolder would
+// unmount the toast) through the same `mockApi`. That way every action
+// across the suite asserts via `mockApi.success`/`mockApi.error` regardless
+// of which API the page chose.
 vi.mock("antd", async () => {
   const actual = await vi.importActual<typeof import("antd")>("antd");
   return {
@@ -123,6 +129,10 @@ vi.mock("antd", async () => {
     notification: {
       ...actual.notification,
       useNotification: () => [mockApi, null],
+      success: mockApi.success,
+      error: mockApi.error,
+      info: mockApi.info,
+      warning: mockApi.warning,
     },
   };
 });

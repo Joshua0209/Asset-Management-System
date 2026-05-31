@@ -33,7 +33,7 @@
       "uploadLimit": "Up to 5 images",
       "uploadFormat": "JPEG/PNG format only",
       "uploadSize": "Each file must be less than 5MB",
-      "successMessage": "Repair request submitted successfully",
+      "successMessage": "Repair request submitted",
       "errorMessage": "Failed to submit repair request",
       "submit": "Submit Request"
     }
