@@ -325,6 +325,46 @@ describe("mocks/mockBackend", () => {
     ).toThrow();
   });
 
+  it("assigns monotonically increasing REP-YYYY-NNNNN repair_ids on submit", async () => {
+    // Mirror the backend's `_next_repair_id`: codes are zero-padded to 5
+    // digits, keyed by the current calendar year, and strictly monotonic.
+    // The seed leaves the highest existing code at REP-YYYY-00003, so the
+    // first submit must produce REP-YYYY-00004 and the second REP-YYYY-00005.
+    const backend = await loadBackend();
+    const year = new Date().getFullYear();
+    const prefix = `REP-${year}-`;
+
+    // Pick two in_use assets owned by their respective seeded holders, so
+    // each submit clears the holder + status gate inside the mock.
+    const inUseRows = backend.listAssets({ status: "in_use", page: 1, perPage: 5 }).data;
+    expect(inUseRows.length).toBeGreaterThanOrEqual(2);
+    const [firstAsset, secondAsset] = inUseRows;
+
+    const submitAs = (
+      holderId: string,
+      assetId: string,
+    ): { repair_id: string } => {
+      seedSession({
+        id: holderId,
+        email: `${holderId}@example.com`,
+        name: holderId,
+        role: "holder",
+      });
+      const formData = new FormData();
+      formData.append("asset_id", assetId);
+      formData.append("fault_description", "E2E test fault description");
+      return backend.submitRepairRequest(formData);
+    };
+
+    const first = submitAs(firstAsset.responsible_person_id!, firstAsset.id);
+    const second = submitAs(secondAsset.responsible_person_id!, secondAsset.id);
+
+    expect(first.repair_id).toBe(`${prefix}00004`);
+    expect(second.repair_id).toBe(`${prefix}00005`);
+    // Belt-and-braces: the format itself is part of the contract.
+    expect(first.repair_id).toMatch(/^REP-\d{4}-\d{5}$/);
+  });
+
   it("guards repair request detail access for unrelated holders", async () => {
     const backend = await loadBackend();
 
