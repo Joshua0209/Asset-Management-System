@@ -6,46 +6,72 @@ This document records the manually provisioned AWS infrastructure baseline for t
 
 ```mermaid
 flowchart TD
-   User((User Browser)) -- "HTTPS (443)" --> R53["Route 53: ams-group30.online"]
-   R53 -- "Alias Record" --> ALB["Application Load Balancer: ams-alb"]
-   
-   subgraph AWS["AWS Cloud (ap-east-2)"]
-       subgraph VPC["VPC: 10.0.0.0/16"]
-           subgraph Public["Public Subnets"]
-               ALB
-               ACM["AWS Certificate Manager"] -.-> ALB
-           end
-           subgraph Private["Private Subnets"]
-               subgraph ECS["ECS Fargate Cluster: ams-prod"]
-                   FE["ECS Service: ams-frontend"]
-                   BE["ECS Service: ams-backend"]
-               end
-               RDS[("RDS: ams-database MySQL")]
-           end
-       end
-       subgraph Mgmt["Management & Storage"]
-           S3["S3 Bucket: ams-repair-images-prod"]
-           SM["Secrets Manager: DB & App Secrets"]
-           CW["CloudWatch Logs"]
-       end
-   end
-   
-   ALB -- "/ (Default)" --> FE
-   ALB -- "/api/v1/*" --> BE
-   
-   BE -- "SQL Connection" --> RDS
-   BE -- "IAM: PutObject" --> S3
-   BE -- "Read Secrets" --> SM
-   
-   BE -- "Push OTLP/Profiles" --> GC((Grafana Cloud))
-   FE -- "Frontend Logs" --> CW
-   BE -- "Backend Logs" --> CW
-   GC -. "Pull metrics/logs" .-> CW
-   
-   style User fill:#f9f,stroke:#333,stroke-width:2px
-   style GC fill:#ff9,stroke:#333,stroke-width:2px
-   style RDS fill:#79f,stroke:#333,stroke-width:2px
-   style S3 fill:#7f7,stroke:#333,stroke-width:2px
+    User((User Browser)) -- "HTTPS 443" --> R53["Route 53: ams-group30.online"]
+    R53 -- "Alias record" --> ALB["Application Load Balancer"]
+
+    subgraph AWS["AWS Cloud - ap-east-2 (Taipei)"]
+        ACM["AWS Certificate Manager"] -.-> ALB
+
+        subgraph VPC["VPC - 10.0.0.0/16"]
+            subgraph Public["Public Subnets - 2a / 2b"]
+                ALB
+                NAT["NAT Gateway"]
+            end
+
+            subgraph Private["Private Subnets - 2a / 2b"]
+                subgraph ECS["ECS Fargate cluster"]
+                    BE["ECS backend"]
+                    FE["ECS frontend"]
+                end
+                RDS[("RDS MySQL")]
+            end
+
+            IGW["Internet Gateway"]
+        end
+
+        subgraph Regional["AWS Regional Services and Storage"]
+            ECR["ECR docker images"]
+            S3["S3 images"]
+            SM["Secrets Manager"]
+            CW["CloudWatch Logs"]
+        end
+    end
+
+    ALB -- "/api/v1/*" --> BE
+    ALB -- "/ Default" --> FE
+
+    BE -- "SQL Connection" --> RDS
+    
+    %% Egress Paths
+    BE & FE -- "Egress" --> NAT
+    NAT -- "Egress" --> IGW
+    
+    %% Regional Service Connections
+    IGW -- "image pull" ----> ECR
+    BE -- "S3 Gateway Endpoint" --> S3
+    IGW -- "GetSecretValue" ----> SM
+    IGW -- "awslogs" ----> CW
+
+    %% External
+    GC((Grafana Cloud))
+    IGW -- "OTLP push / Profiles" ----> GC
+    GC -- "pull metrics/logs" --> CW
+
+    %% Style
+    style User fill:#f5f5f5,stroke:#666,stroke-width:2px
+    style R53 fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+    style ACM fill:#f8cecc,stroke:#b85450,stroke-width:2px
+    style ALB fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style BE fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style FE fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style NAT fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px
+    style IGW fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+    style RDS fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+    style ECR fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style S3 fill:#d5e8d4,stroke:#82b366,stroke-width:2px
+    style SM fill:#f8cecc,stroke:#b85450,stroke-width:2px
+    style CW fill:#f8cecc,stroke:#b85450,stroke-width:2px
+    style GC fill:#fff,stroke:#333,stroke-width:2px
 ```
 
 ## VPC Topology (`project-vpc`)
@@ -74,16 +100,18 @@ The AMS production environment uses a standard hub-and-spoke routing model to pr
 | **Internet Gateway** | Attached to `project-vpc` to provide entry/exit for the public subnets. |
 | **NAT Gateway** | A single NAT Gateway resides in `project-subnet-public1-ap-east-2a`. |
 | **Public Route Table** | Routes `0.0.0.0/0` to the Internet Gateway. |
-| **Private Route Table** | Routes `0.0.0.0/0` to the NAT Gateway. |
+| **Private Route Table** | Routes `0.0.0.0/0` to the NAT Gateway; routes S3 traffic to the VPC Endpoint. |
+| **VPC Endpoint (S3)**  | A Gateway Endpoint (`project-vpce-s3`) attached to private subnets. |
 
 ### Egress Path
 
-ECS tasks (Backend, Frontend) and RDS instances reside in the private subnets. Their outbound traffic (e.g., pulls from ECR, secret fetches from Secrets Manager, telemetry pushes to Grafana Cloud) follows this path:
-1.  **Private Subnet** -> **Private Route Table**
-2.  **Private Route Table** -> **NAT Gateway** (Public Subnet)
-3.  **NAT Gateway** -> **Internet Gateway** -> **Public Internet**
+ECS tasks (Backend, Frontend) and RDS instances reside in the private subnets. Their outbound traffic follows these paths:
 
-*Note: While VPC Endpoints (Interface or Gateway) could be used to keep AWS-internal traffic off the NAT Gateway, the current baseline relies on the NAT Gateway for all outbound connectivity to simplify the network topology.*
+1.  **S3 Traffic**: **Private Subnet** -> **VPC Gateway Endpoint** -> **S3 Service** (AWS internal network).
+2.  **Other AWS Services**: **Private Subnet** -> **NAT Gateway** (Public Subnet) -> **IGW** -> **Service Endpoints** (ECR, Secrets Manager, CloudWatch).
+3.  **External Internet**: **Private Subnet** -> **NAT Gateway** -> **IGW** -> **Public Internet** (e.g., Grafana Cloud).
+
+*Note: The S3 Gateway Endpoint is used to optimize cost and performance for image storage traffic. Other AWS regional services currently rely on the NAT Gateway for simplicity, but could be migrated to Interface Endpoints in future hardening iterations.*
 
 ---
 
