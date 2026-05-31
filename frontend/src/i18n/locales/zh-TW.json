@@ -130,7 +130,7 @@
     "detail": {
       "title": "資產詳情 - {{assetCode}}",
       "holder": "持有者",
-      "holderDepartment": "使用部門",
+      "holderDepartment": "持有者部門",
       "model": "型號",
       "specs": "規格",
       "supplier": "供應商",

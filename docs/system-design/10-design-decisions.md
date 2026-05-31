@@ -82,13 +82,14 @@ Context: FR-13 labels these fields as 「使用部門」 and 「存放地點」.
 
 → **Yes.** `assets.department` and `assets.location` represent the asset's current allocation context:
 
-- `assets.department` is the department currently responsible for or using the asset.
+- `assets.department` is the asset's current owning/responsible department.
 - `assets.location` is the asset's current physical location.
-- `users.department` and `users.location` are the user's department and regular workplace/site.
+- `users.department` and `users.location` are the user's department and regular workplace/site; for assigned assets, the holder department is exposed as `responsible_person.department`.
 - T1 (register asset): if the manager omits `department` or `location`, the asset defaults to the current manager's department/location because unassigned stock is managed by the asset-management side.
 - T2 (assign): the asset's `department` and `location` are synced to the assigned holder's `department` and `location`.
 - T5 (unassign/reclaim): the asset's `department` and `location` are synced back to the current manager's `department` and `location`.
 - `PATCH /assets/{id}` may still correct `department` or `location` when a manager needs to fix asset records outside a lifecycle transition.
+- UI and API docs describe `assets.department` as the asset owning/responsible department to avoid confusing it with the holder department (`responsible_person.department`).
 
 ---
 

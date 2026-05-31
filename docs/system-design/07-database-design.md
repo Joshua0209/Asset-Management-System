@@ -66,11 +66,12 @@
   - Repair request: `pending_review`, `under_repair`, `completed`, `rejected`
 - **`asset_code`:** Business-facing unique identifier (e.g., `AST-2026-00001`). Separate from internal `id` (auto-increment or UUID).
 - **Department / location semantics (issue #97):**
-  - `assets.department` = the asset's current responsible/using department.
+  - `assets.department` = the asset's current owning/responsible department.
   - `assets.location` = the asset's current physical location.
-  - `users.department` = the user's organizational department.
+  - `users.department` = the user's organizational department. For assigned assets, this appears as the holder department through `responsible_person.department`.
   - `users.location` = the user's regular workplace/site.
-  - T1 defaults missing asset `department` / `location` to the current manager's user fields; T2 syncs them to the assigned holder; T5 syncs them back to the reclaiming manager. `PATCH /assets/{id}` remains available for manager corrections.
+  - T1 defaults missing asset `department` / `location` to the current manager's user fields; T2 syncs them to the assigned holder; T5 syncs them back to the reclaiming manager.
+  - `PATCH /assets/{id}` may correct asset `department` / `location` after assignment, so `assets.department` is not guaranteed to equal the holder department (`responsible_person.department`).
 - **Numeric types:**
   - `purchase_amount`: `NUMERIC(15, 2)` — exact decimal, avoids floating-point rounding for financial values.
   - `repair_cost`: `NUMERIC(15, 2)` — same rationale.

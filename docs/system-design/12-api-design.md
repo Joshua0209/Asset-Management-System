@@ -409,7 +409,7 @@ GET /api/v1/assets
 | `q` | string | Full-text search across asset_code, name, model |
 | `status` | string | Filter by status: `in_stock`, `in_use`, `pending_repair`, `under_repair`, `disposed` |
 | `category` | string | Filter by category |
-| `department` | string | Filter by the asset's current responsible/using department (`assets.department`). |
+| `department` | string | Filter by the asset's current owning/responsible department (`assets.department`), not the holder department (`responsible_person.department`). |
 | `location` | string | Filter by the asset's current physical location (`assets.location`). |
 | `responsible_person_id` | uuid | Filter by assigned holder |
 | `sort` | string | Sort field. Prefix `-` for descending. Default: `-created_at`. Allowed: `created_at`, `name`, `asset_code`, `purchase_date`, `status` |
@@ -543,6 +543,8 @@ POST /api/v1/assets
 | `warranty_expiry` | string (date) | no | ISO 8601 date, must be after `purchase_date` |
 
 > **Schema note:** the string-length caps mirror the underlying `assets` table column widths (`VARCHAR(120)` for `name` / `model` / `supplier` / `location`; `VARCHAR(100)` for `department`). Bumping any of these requires an Alembic migration on the matching column.
+>
+> Managers may later update `department` and `location` through `PATCH /assets/{id}` to correct the asset's owning department or physical location. For assigned assets, these values may intentionally differ from the holder department/location exposed through `responsible_person`.
 
 **Response:** `201 Created` with `Location: /api/v1/assets/:id`
 
@@ -664,6 +666,9 @@ POST /api/v1/assets/:id/assign
 - `department` and `location` synced from the assigned holder
 - `unassignment_date` cleared to `null`
 - Audit log entry written 
+
+> This sync is the default lifecycle transition behavior. Later manager edits through `PATCH /assets/{id}` may override the asset's `department` / `location`, so an assigned asset is not guaranteed to keep matching the holder department/location.
+
 **Errors:** `409 invalid_transition` (wrong state), `409 conflict` (version mismatch), `422` (invalid holder, missing/future `assignment_date`)
 
 ---
