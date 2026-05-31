@@ -48,6 +48,15 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function repairIdPrefix(): string {
+  const year = new Date().getFullYear();
+  return `REP-${year}-`;
+}
+
+function formatRepairId(sequence: number): string {
+  return `${repairIdPrefix()}${String(sequence).padStart(5, "0")}`;
+}
+
 function ensureState(): void {
   if (state.initialized) {
     return;
@@ -118,7 +127,7 @@ function ensureState(): void {
   state.repairRequests = [
     {
       id: "repair-mock-0001",
-      repair_id: "REP-2026-00001",
+      repair_id: formatRepairId(1),
       asset_id: pendingAsset?.id ?? "",
       requester_id: requesterId,
       reviewer_id: null,
@@ -159,7 +168,7 @@ function ensureState(): void {
     },
     {
       id: "repair-mock-0002",
-      repair_id: "REP-2026-00002",
+      repair_id: formatRepairId(2),
       asset_id: underRepairAsset?.id ?? "",
       requester_id: secondRequesterId,
       reviewer_id: "mock-manager",
@@ -198,7 +207,7 @@ function ensureState(): void {
     },
     {
       id: "repair-mock-0003",
-      repair_id: "REP-2026-00003",
+      repair_id: formatRepairId(3),
       asset_id: inUseAsset?.id ?? "",
       requester_id: requesterId,
       reviewer_id: "mock-manager",
@@ -309,8 +318,7 @@ function nextAssetCode(): string {
 }
 
 function nextRepairId(): string {
-  const year = new Date().getFullYear();
-  const prefix = `REP-${year}-`;
+  const prefix = repairIdPrefix();
   const sequence =
     state.repairRequests
       .map((request) => {
