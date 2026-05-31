@@ -27,11 +27,14 @@ test.describe("Manager approves a pending repair request", () => {
       plannedDate: "2026-06-10",
     });
 
-    // Assert — the FSM transition is durable evidence of success. The status
-    // row now reads "Under Repair" and the action panel exposes "Complete"
-    // (which only renders for under_repair requests). Toasts auto-dismiss
-    // after ~4.5s and are unreliable to assert against; the page state is
-    // the source of truth.
+    // Assert — pin both the user-visible toast AND the durable FSM
+    // transition. The toast catches a class of regressions the FSM check
+    // misses: if `useSubmitAction` silently drops `api.success()` (as the
+    // contextHolder-churn bug did before `reloadSilently` was introduced in
+    // ReviewDetail), the row still flips state correctly but the user
+    // gets no feedback. Toast assertion goes first so its auto-wait
+    // catches the notification window before the next state mutation.
+    await expect(page.getByText("Repair request approved")).toBeVisible();
     await expect(page.getByText("Current Status")).toBeVisible();
     await expect(page.getByText("Under Repair").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Complete", exact: true })).toBeVisible();

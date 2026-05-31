@@ -22,8 +22,9 @@ test.describe("Manager assigns and unassigns an asset", () => {
       assignmentDate: "2026-05-25",
     });
 
-    // Assert — status flips to In Use; the Unassign button now replaces
-    // Assign in the action panel (FSM-driven).
+    // Assert — toast first (catches a silently-dropped api.success), then
+    // FSM: status flips to In Use and the Unassign button replaces Assign.
+    await expect(page.getByText("Asset assigned successfully")).toBeVisible();
     await expect(page.getByText("In Use").first()).toBeVisible();
     await expect(
       page.getByRole("row", { name: "Department 製造一部 Location 新竹 Fab12 行政樓" }),
@@ -39,7 +40,9 @@ test.describe("Manager assigns and unassigns an asset", () => {
       unassignmentDate: "2026-05-25",
     });
 
-    // Assert 2 — back to In Stock; Assign button is back, Unassign gone.
+    // Assert 2 — toast first, then back to In Stock; Assign button is back,
+    // Unassign gone.
+    await expect(page.getByText("Asset unassigned successfully")).toBeVisible();
     await expect(page.getByText("In Stock").first()).toBeVisible();
     await expect(
       page.getByRole("row", { name: "Department 資產管理部 Location 台北南港總部 8F" }),

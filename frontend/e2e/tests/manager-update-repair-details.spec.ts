@@ -23,8 +23,14 @@ test.describe("Manager updates repair details mid-flight", () => {
     await reviewDetailPage.openUpdateDetailsModal();
     await reviewDetailPage.submitUpdateDetailsForm({ repairPlan: newPlan });
 
-    // Assert — the modal closes (Update Details button reappears on the
-    // detail page) and the new plan text is rendered in the result section.
+    // Assert — toast first. This action is the one that originally exposed
+    // the contextHolder-churn bug (reload() unmounted the holder during the
+    // real-backend fetch, so api.success no-op'd). Asserting the toast text
+    // catches a re-introduction of that regression.
+    await expect(page.getByText("Repair details updated")).toBeVisible();
+
+    // The modal closes (Update Details button reappears on the detail page)
+    // and the new plan text is rendered in the result section.
     await expect(reviewDetailPage.updateDetailsButton).toBeVisible();
     const repairResultCard = page
       .locator(".ant-card")

@@ -22,6 +22,10 @@ test.describe("Manager disposes an asset", () => {
     await assetDetailPage.submitDisposeForm({
       disposalReason: "E2E: end-of-life device, recycled via vendor.",
     });
+    // Assert the toast BEFORE reload — page.reload() blows away the
+    // notification portal in document.body, so we'd miss a silently-dropped
+    // api.success regression if we checked after the reload.
+    await expect(page.getByText("Asset disposed successfully")).toBeVisible();
     await page.reload();
 
     // Assert — status reaches the terminal Disposed state. The FSM-gated

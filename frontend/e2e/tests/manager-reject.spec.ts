@@ -22,8 +22,10 @@ test.describe("Manager rejects a pending repair request", () => {
       rejectionReason: "E2E: out of warranty, rejecting per cost policy.",
     });
 
-    // Assert — status flips to Rejected; the approve/reject action panel
-    // collapses (no actions on a terminal-rejected request).
+    // Assert — toast first (guards against silently-dropped api.success),
+    // then FSM: status flips to Rejected and the action panel collapses
+    // (no actions on a terminal-rejected request).
+    await expect(page.getByText("Repair request rejected")).toBeVisible();
     await expect(page.getByText("Current Status")).toBeVisible();
     await expect(page.getByText("Rejected").first()).toBeVisible();
     await expect(
