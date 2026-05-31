@@ -74,6 +74,91 @@ flowchart TD
     style GC fill:#fff,stroke:#333,stroke-width:2px
 ```
 
+## Target Architecture (Future Hardening)
+
+This diagram illustrates the high-availability target state for the AMS production environment, incorporating Multi-AZ compute, Auto Scaling, and RDS Multi-AZ standby deployments to eliminate single points of failure at the AZ level.
+
+*Note: Application Auto Scaling is currently not supported in the `ap-east-2` (Taipei) region; scaling is a manual operation until regional parity is achieved.*
+
+```mermaid
+flowchart TD
+    User((User Browser)) -- "HTTPS 443" --> R53["Route 53: <br/>ams-group30.online"]
+    R53 -- "Alias record" --> ALB["Application Load Balancer"]
+
+    subgraph AWS["AWS Cloud - ap-east-2 (Taipei)"]
+        ACM["AWS Certificate Manager"] -.-> ALB
+
+        subgraph VPC["VPC - 10.0.0.0/16"]
+            subgraph Public["Public Subnets - 2a / 2b"]
+                ALB
+                NAT["NAT Gateway"]
+            end
+
+            subgraph Private["Private Subnets - 2a / 2b"]
+                subgraph ECS["ECS Fargate cluster"]
+                    AS["Application Auto Scaling"] -. "Scales instances" .-> BE & FE
+                    BE["ECS backend<br/>(Multi-AZ)"]
+                    FE["ECS frontend<br/>(Multi-AZ)"]
+                end
+                
+                subgraph DB["RDS Multi-AZ Deployment"]
+                    RDSPri[("Primary MySQL<br/>(Active - AZ 2a)")]
+                    RDSStb[("Standby MySQL<br/>(Passive - AZ 2b)")]
+                    RDSPri -. "Synchronous Replication" .-> RDSStb
+                end
+            end
+
+            IGW["Internet Gateway"]
+        end
+
+        subgraph Regional["AWS Regional Services and Storage"]
+            ECR["ECR docker images"]
+            S3["S3 images"]
+            SM["Secrets Manager"]
+            CW["CloudWatch Logs"]
+        end
+    end
+
+    ALB -- "/api/v1/*" --> BE
+    ALB -- "/ Default" --> FE
+
+    BE -- "SQL Connection" --> RDSPri
+    
+    %% Egress Paths
+    BE & FE -- "Egress" --> NAT
+    NAT -- "Egress" --> IGW
+    
+    %% Regional Service Connections
+    IGW -- "image pull" ----> ECR
+    BE -- "S3 Gateway Endpoint" --> S3
+    IGW -- "GetSecretValue" ----> SM
+    IGW -- "awslogs" ----> CW
+
+    %% External
+    GC((Grafana Cloud))
+    IGW -- "OTLP push / Profiles" ----> GC
+    GC -. "pull metrics/logs" .-> CW
+
+    %% Style
+    style User fill:#f5f5f5,stroke:#666,stroke-width:2px
+    style R53 fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+    style ACM fill:#f8cecc,stroke:#b85450,stroke-width:2px
+    style ALB fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style BE fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style FE fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style AS fill:#fff2cc,stroke:#d6b656,stroke-width:2px,stroke-dasharray: 5 5
+    style NAT fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px
+    style IGW fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+    style RDSPri fill:#e1d5e7,stroke:#9673a6,stroke-width:2px
+    style RDSStb fill:#e1d5e7,stroke:#9673a6,stroke-width:2px,stroke-dasharray: 5 5
+    style DB fill:#f3f3f3,stroke:#666,stroke-width:1px,stroke-dasharray: 3 3
+    style ECR fill:#ffe6cc,stroke:#d79b00,stroke-width:2px
+    style S3 fill:#d5e8d4,stroke:#82b366,stroke-width:2px
+    style SM fill:#f8cecc,stroke:#b85450,stroke-width:2px
+    style CW fill:#f8cecc,stroke:#b85450,stroke-width:2px
+    style GC fill:#fff,stroke:#333,stroke-width:2px
+```
+
 ## VPC Topology (`project-vpc`)
 
 | Attribute | Value |
@@ -197,4 +282,5 @@ The current baseline represents the initial production deployment. The following
 2. **Security Group Egress**: All task SGs currently permit `0.0.0.0/0` egress. Egress should be restricted to necessary service endpoints (ECR, Secrets Manager, S3, Grafana Cloud).
 3. **ECR Hygiene**: Repositories are currently `MUTABLE` and `scanOnPush: false`. Production best practice is `IMMUTABLE` with scan-on-push enabled.
 4. **RDS Multi-AZ**: Currently a Single-AZ deployment. Multi-AZ is required for production HA/SLA (planned for Phase 2).
+5. **Regional Scaling Support**: `ap-east-2` currently lacks support for Application Auto Scaling. Scale-out is a manual operation until the service becomes available in-region.
 
