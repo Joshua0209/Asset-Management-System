@@ -32,8 +32,7 @@
         {"name": "OTEL_ENDPOINT", "value": "__GC_OTLP_ENDPOINT__"},
         {"name": "OTEL_SEMCONV_STABILITY_OPT_IN", "value": "http"},
         {"name": "PYROSCOPE_ENABLED", "value": "true"},
-        {"name": "PYROSCOPE_SERVER", "value": "__GC_PYROSCOPE_ENDPOINT__"},
-        {"name": "RATE_LIMIT_ENABLED", "value": "false"}
+        {"name": "PYROSCOPE_SERVER", "value": "__GC_PYROSCOPE_ENDPOINT__"}
       ],
       "secrets": [
         {"name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:__REGION__:__ACCOUNT_ID__:secret:__DATABASE_URL_SECRET_NAME__:DATABASE_URL:AWSCURRENT:"},
