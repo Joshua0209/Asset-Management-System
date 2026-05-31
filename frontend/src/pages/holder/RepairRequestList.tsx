@@ -72,10 +72,10 @@ const RepairRequestList: React.FC = () => {
   const columns: TableColumnsType<RepairRequestRecord> = [
     {
       title: t('repairRequestList.columns.id'),
-      dataIndex: 'id',
-      key: 'id',
-      render: (id: string) => renderRequestIdCell(id),
-      width: 120,
+      dataIndex: 'repair_id',
+      key: 'repair_id',
+      render: (repairId: string) => renderRequestIdCell(repairId),
+      width: 160,
     },
     {
       title: t('repairRequestList.columns.asset'),

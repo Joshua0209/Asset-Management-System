@@ -23,6 +23,10 @@ export interface RepairImage {
 
 export interface RepairRequestRecord {
   id: string;
+  // Human-readable display code (`REP-YYYY-NNNNN`). Shown in lists/detail
+  // pages anywhere the column label is "Request ID / 申請編號". Routes and
+  // mutation calls still use the UUID `id`.
+  repair_id: string;
   asset_id: string;
   requester_id: string;
   reviewer_id: string | null;

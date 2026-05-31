@@ -151,6 +151,7 @@ async function submitApproveWithError(error: unknown): Promise<void> {
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
   return {
     id: 'rr-1',
+    repair_id: 'REP-2026-00001',
     asset_id: 'asset-1',
     requester_id: 'holder-1',
     reviewer_id: null,

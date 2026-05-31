@@ -118,6 +118,7 @@ function ensureState(): void {
   state.repairRequests = [
     {
       id: "repair-mock-0001",
+      repair_id: "REP-2026-00001",
       asset_id: pendingAsset?.id ?? "",
       requester_id: requesterId,
       reviewer_id: null,
@@ -158,6 +159,7 @@ function ensureState(): void {
     },
     {
       id: "repair-mock-0002",
+      repair_id: "REP-2026-00002",
       asset_id: underRepairAsset?.id ?? "",
       requester_id: secondRequesterId,
       reviewer_id: "mock-manager",
@@ -196,6 +198,7 @@ function ensureState(): void {
     },
     {
       id: "repair-mock-0003",
+      repair_id: "REP-2026-00003",
       asset_id: inUseAsset?.id ?? "",
       requester_id: requesterId,
       reviewer_id: "mock-manager",
@@ -298,6 +301,23 @@ function nextAssetCode(): string {
           return 0;
         }
         const suffix = asset.asset_code.slice(prefix.length);
+        const parsed = Number.parseInt(suffix, 10);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      })
+      .reduce((max, value) => Math.max(max, value), 0) + 1;
+  return `${prefix}${String(sequence).padStart(5, "0")}`;
+}
+
+function nextRepairId(): string {
+  const year = new Date().getFullYear();
+  const prefix = `REP-${year}-`;
+  const sequence =
+    state.repairRequests
+      .map((request) => {
+        if (!request.repair_id.startsWith(prefix)) {
+          return 0;
+        }
+        const suffix = request.repair_id.slice(prefix.length);
         const parsed = Number.parseInt(suffix, 10);
         return Number.isNaN(parsed) ? 0 : parsed;
       })
@@ -636,6 +656,7 @@ export function submitRepairRequest(payload: FormData): RepairRequestRecord {
   }
 
   const id = `repair-mock-${Math.random().toString(36).substr(2, 9)}`;
+  const repairId = nextRepairId();
   const now = nowIso();
 
   // Simulate image processing
@@ -654,6 +675,7 @@ export function submitRepairRequest(payload: FormData): RepairRequestRecord {
 
   const newRequest: RepairRequestRecord = {
     id,
+    repair_id: repairId,
     asset_id: assetId,
     requester_id: user.id,
     reviewer_id: null,

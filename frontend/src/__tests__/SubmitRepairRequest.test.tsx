@@ -28,6 +28,7 @@ const ASSETS_RESPONSE = buildAssetResponse('AST-2026-00003', 'Latitude 7440', 1)
 const ASSET = ASSETS_RESPONSE.data[0];
 const SUBMIT_RESPONSE: RepairRequestRecord = {
   id: 'rr-1',
+  repair_id: 'REP-2026-00001',
   asset_id: ASSET.id,
   requester_id: 'holder-1',
   reviewer_id: null,
