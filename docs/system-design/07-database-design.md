@@ -15,21 +15,23 @@
 │ name         │     │ asset_code       │     │ reviewer_id (FK) │──►users
 │ role         │     │ name             │     │ status           │
 │ department   │     │ model            │     │ fault_description│
-│ created_at   │     │ specs            │     │ repair_date      │
-│ updated_at   │     │ category         │     │ fault_content    │
-│ deleted_at   │     │ supplier         │     │ repair_plan      │
-│ version      │     │ purchase_date    │     │ repair_cost      │
-└──────────────┘     │ purchase_amount  │     │ repair_vendor    │
-                     │ location         │     │ rejection_reason │
+│ location     │     │ specs            │     │ repair_date      │
+│ created_at   │     │ category         │     │ fault_content    │
+│ updated_at   │     │ supplier         │     │ repair_plan      │
+│ deleted_at   │     │ purchase_date    │     │ repair_cost      │
+│ version      │     │ purchase_amount  │     │ repair_vendor    │
+└──────────────┘     │ location         │     │ rejection_reason │
                      │ department       │     │ completed_at     │
                      │ activation_date  │     │ created_at       │
                      │ warranty_expiry  │     │ updated_at       │
-                     │ status           │     │ deleted_at       │
-                     │ disposal_reason  │     │ version          │
-                     │ created_at       │     └──────────────────┘
-                     │ updated_at       │              │
-                     │ deleted_at       │              │ 1:N
-                     │ version          │              ▼
+                     │ assignment_date  │     │ deleted_at       │
+                     │ unassignment_date│     │ version          │
+                     │ status           │     │ repair_id        │
+                     │ disposal_reason  │     └──────────────────┘
+                     │ created_at       │              │
+                     │ updated_at       │              │ 1:N
+                     │ deleted_at       │              ▼
+                     │ version          │
                      └──────────────────┘     ┌──────────────────┐
                                               │ repair_images    │
                                               ├──────────────────┤
