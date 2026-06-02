@@ -1,13 +1,13 @@
 # Asset Management System
 
-A bilingual (zh-TW / en) web application for tracking an organization's hardware assets and managing their repair lifecycle (資產管理系統). Built as the course project for a cloud-computing / software-engineering class — but shaped like a production system: containerized services, an IaC-described AWS deployment, full CI/CD gates, and an observability stack.
+A bilingual (zh-TW / en) web application for tracking an organization's hardware assets and managing their repair lifecycle. Built as the course project for a cloud-computing / software-engineering class — but shaped like a production system: containerized services, an IaC-described AWS deployment, full CI/CD gates, and an observability stack.
 
 ## Overview
 
 The system serves two roles, each with its own workflow:
 
-- **資產持有者 — Asset Holder.** Views the assets assigned to them and submits repair requests with photo evidence, then tracks each request through review.
-- **資產管理人員 — Asset Manager.** Procures and registers assets, assigns them to holders, and reviews → approves/rejects → completes the repair requests holders file.
+- **Asset Holder**: Views the assets assigned to them and submits repair requests with photo evidence, then tracks each request through review.
+- **Asset Manager**: Registers assets, assigns them to holders, and reviews → approves/rejects → completes the repair requests holders file.
 
 Core capabilities:
 
@@ -17,12 +17,6 @@ Core capabilities:
 - **Image uploads** — repair photos stored on local disk in dev, S3 in production, behind one storage abstraction.
 - **i18n + theming** — every user-visible string has zh-TW and en entries; dark/light mode toggle.
 
-### Architecture at a glance
-
-```text
-React + Vite + TS + Ant Design v6   ──REST──▶   FastAPI + SQLAlchemy + Alembic   ──▶   MySQL 8
-        (frontend/)                                      (backend/)
-```
 
 Deployed on **AWS ECS Fargate** — production images are built from each service's `Dockerfile.prod`, pushed to **ECR** via OIDC (no long-lived keys), and rolled out behind an **ALB** that health-checks `/ready`. Repair images live in **S3**, data in **RDS MySQL**. Telemetry is exported via **OpenTelemetry** to **Grafana Cloud**; sustained-load scenarios live under [load/](load/) as **k6** scripts.
 
