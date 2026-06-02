@@ -357,7 +357,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 - AWS account access with permission to create IAM roles and Secrets Manager secrets.
 - Grafana Cloud stack `ams` exists.
 - Required reading:
-  - `infra/ecs/backend-task-def.json`
+  - `infra/aws/tasks/backend-task-def.json`
   - `docs/system-design/08-deployment-operations.md` (any existing observability section, written for PR #75; supersede with this phase's content).
   - GC docs: "Connect AWS CloudWatch metrics" and "Connect AWS CloudWatch Logs."
 
@@ -372,7 +372,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
    }
    ```
 
-2. Update `infra/ecs/backend-task-def.json`:
+2. Update `infra/aws/tasks/backend-task-def.json`:
    - `environment` additions:
      ```json
      {"name": "OTEL_ENABLED", "value": "true"},
@@ -434,7 +434,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
    - Step 5: wait ~5 min for the first metrics and logs to populate in the stack.
    - Step 6: key rotation procedure. Generate a new API key in GC UI, update the Secrets Manager secret, force an ECS task redeploy (`aws ecs update-service --force-new-deployment`). Revoke the old key after the new task is healthy.
 
-6. Update `infra/ecs/README.md`: document the `ams-grafana-cloud` secret, its expected JSON keys, and a one-line pointer to `infra/grafana-cloud/README.md` for the IAM role setup.
+6. Update `infra/aws/tasks/README.md`: document the `ams-grafana-cloud` secret, its expected JSON keys, and a one-line pointer to `infra/grafana-cloud/README.md` for the IAM role setup.
 
 7. Update existing `config/grafana/dashboards/*.json` (6 files: `00-start-here`, `01-operations-overview`, `02-service-drilldown`, `03-repair-journey`, `04-logs-traces-profiles`, `05-mysql`):
    - Add an `$environment` template variable to every dashboard with options `local` and `production`. Wire each panel's query to filter on `environment="$environment"`.
@@ -455,8 +455,8 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 
 ### Files touched
 
-- `infra/ecs/backend-task-def.json`
-- `infra/ecs/README.md`
+- `infra/aws/tasks/backend-task-def.json`
+- `infra/aws/tasks/README.md`
 - `infra/grafana-cloud/iam-role-trust-policy.json` (new)
 - `infra/grafana-cloud/iam-role-permissions.json` (new)
 - `infra/grafana-cloud/README.md` (new)
@@ -471,7 +471,7 @@ Pre-deploy (local):
 ```bash
 python -m json.tool infra/grafana-cloud/iam-role-trust-policy.json > /dev/null
 python -m json.tool infra/grafana-cloud/iam-role-permissions.json > /dev/null
-python -m json.tool infra/ecs/backend-task-def.json > /dev/null
+python -m json.tool infra/aws/tasks/backend-task-def.json > /dev/null
 python scripts/sync_grafana_cloud_dashboards.py --dry-run   # parse, no POST
 ```
 

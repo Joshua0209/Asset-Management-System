@@ -1,0 +1,52 @@
+{
+    "TargetGroups": [
+        {
+            "TargetGroupArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:targetgroup/ams-backend-tg/__TG_BACKEND_ID__",
+            "TargetGroupName": "ams-backend-tg",
+            "Protocol": "HTTP",
+            "Port": 8000,
+            "VpcId": "__VPC_ID__",
+            "HealthCheckProtocol": "HTTP",
+            "HealthCheckPort": "traffic-port",
+            "HealthCheckEnabled": true,
+            "HealthCheckIntervalSeconds": 30,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthyThresholdCount": 3,
+            "UnhealthyThresholdCount": 3,
+            "HealthCheckPath": "/ready",
+            "Matcher": {
+                "HttpCode": "200"
+            },
+            "LoadBalancerArns": [
+                "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:loadbalancer/app/ams-alb/__ALB_RESOURCE_ID__"
+            ],
+            "TargetType": "ip",
+            "ProtocolVersion": "HTTP1",
+            "IpAddressType": "ipv4"
+        },
+        {
+            "TargetGroupArn": "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:targetgroup/ams-frontend-tg/__TG_FRONTEND_ID__",
+            "TargetGroupName": "ams-frontend-tg",
+            "Protocol": "HTTP",
+            "Port": 80,
+            "VpcId": "__VPC_ID__",
+            "HealthCheckProtocol": "HTTP",
+            "HealthCheckPort": "traffic-port",
+            "HealthCheckEnabled": true,
+            "HealthCheckIntervalSeconds": 30,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthyThresholdCount": 3,
+            "UnhealthyThresholdCount": 3,
+            "HealthCheckPath": "/",
+            "Matcher": {
+                "HttpCode": "200"
+            },
+            "LoadBalancerArns": [
+                "arn:aws:elasticloadbalancing:ap-east-2:__ACCOUNT_ID__:loadbalancer/app/ams-alb/__ALB_RESOURCE_ID__"
+            ],
+            "TargetType": "ip",
+            "ProtocolVersion": "HTTP1",
+            "IpAddressType": "ipv4"
+        }
+    ]
+}

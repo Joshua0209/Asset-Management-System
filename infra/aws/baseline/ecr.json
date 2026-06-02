@@ -1,0 +1,32 @@
+{
+    "repositories": [
+        {
+            "repositoryArn": "arn:aws:ecr:ap-east-2:__ACCOUNT_ID__:repository/ams-backend",
+            "registryId": "__ACCOUNT_ID__",
+            "repositoryName": "ams-backend",
+            "repositoryUri": "__ACCOUNT_ID__.dkr.ecr.ap-east-2.amazonaws.com/ams-backend",
+            "createdAt": "2026-05-19T16:03:18.948000+08:00",
+            "imageTagMutability": "MUTABLE",
+            "imageScanningConfiguration": {
+                "scanOnPush": false
+            },
+            "encryptionConfiguration": {
+                "encryptionType": "AES256"
+            }
+        },
+        {
+            "repositoryArn": "arn:aws:ecr:ap-east-2:__ACCOUNT_ID__:repository/ams-frontend",
+            "registryId": "__ACCOUNT_ID__",
+            "repositoryName": "ams-frontend",
+            "repositoryUri": "__ACCOUNT_ID__.dkr.ecr.ap-east-2.amazonaws.com/ams-frontend",
+            "createdAt": "2026-05-19T16:03:31.316000+08:00",
+            "imageTagMutability": "MUTABLE",
+            "imageScanningConfiguration": {
+                "scanOnPush": false
+            },
+            "encryptionConfiguration": {
+                "encryptionType": "AES256"
+            }
+        }
+    ]
+}

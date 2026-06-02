@@ -81,7 +81,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         # Federated identity - no AWS_ACCESS_KEY_ID secret. The role's trust
         # policy restricts assumption to this repo + branch (see
-        # infra/ecs/README.md). Tokens are short-lived (1 hour default).
+        # infra/aws/tasks/README.md). Tokens are short-lived (1 hour default).
         uses: aws-actions/configure-aws-credentials@acca2b1b2070338fb9fd1ca27ecee81d687e58e5 # v6.1.2
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
@@ -247,7 +247,7 @@ jobs:
       - name: Fill placeholders in backend task definition
         uses: ./.github/actions/render-task-def
         with:
-          task-def-path: infra/ecs/backend-task-def.json
+          task-def-path: infra/aws/tasks/backend-task-def.json
           required-vars: |
             ACCOUNT_ID
             REGION
@@ -273,7 +273,7 @@ jobs:
         id: render
         uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
         with:
-          task-definition: infra/ecs/backend-task-def.json
+          task-definition: infra/aws/tasks/backend-task-def.json
           container-name: backend
           image: ${{ needs.build-and-push.outputs.backend-image }}
 
@@ -297,7 +297,7 @@ jobs:
           # might not match ECS_CLUSTER. Matches the `required-vars` posture
           # used by the render-task-def action above.
           if [ -z "${ECS_MIGRATION_SUBNETS}" ] || [ -z "${ECS_MIGRATION_SECURITY_GROUPS}" ]; then
-            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/ecs/README.md."
+            echo "::error::ECS_MIGRATION_SUBNETS and ECS_MIGRATION_SECURITY_GROUPS must be set as Repository Variables (JSON arrays). See infra/aws/tasks/README.md."
             exit 1
           fi
           # Shape check: a CSV ("subnet-abc,subnet-def") would silently produce
@@ -432,7 +432,7 @@ jobs:
       - name: Fill placeholders in backend task definition
         uses: ./.github/actions/render-task-def
         with:
-          task-def-path: infra/ecs/backend-task-def.json
+          task-def-path: infra/aws/tasks/backend-task-def.json
           required-vars: |
             ACCOUNT_ID
             REGION
@@ -467,7 +467,7 @@ jobs:
         id: render
         uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
         with:
-          task-definition: infra/ecs/backend-task-def.json
+          task-definition: infra/aws/tasks/backend-task-def.json
           container-name: backend
           image: ${{ needs.build-and-push.outputs.backend-image }}
 
@@ -525,7 +525,7 @@ jobs:
       - name: Fill placeholders in frontend task definition
         uses: ./.github/actions/render-task-def
         with:
-          task-def-path: infra/ecs/frontend-task-def.json
+          task-def-path: infra/aws/tasks/frontend-task-def.json
           required-vars: |
             ACCOUNT_ID
             REGION
@@ -537,7 +537,7 @@ jobs:
         id: render
         uses: aws-actions/amazon-ecs-render-task-definition@d76864cb7cfd35d95ee4e9dceac89be22175b493 # v1.8.5
         with:
-          task-definition: infra/ecs/frontend-task-def.json
+          task-definition: infra/aws/tasks/frontend-task-def.json
           container-name: frontend
           image: ${{ needs.build-and-push.outputs.frontend-image }}
 
@@ -591,7 +591,7 @@ jobs:
         # Script is stdlib only - no pip install. Reads GRAFANA_CLOUD_API_KEY
         # from env; --stack-url is passed via env indirection to keep the
         # `${{ ... }}` expression out of the shell command (no injection
-        # surface even though both inputs are operator-controlled secrets).
+        # surface even though both CentOS/Debian runners allow it).
         env:
           GRAFANA_CLOUD_API_KEY: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           GC_STACK_URL: ${{ secrets.GC_STACK_URL }}

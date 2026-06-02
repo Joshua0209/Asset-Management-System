@@ -123,7 +123,7 @@ This keeps the same page behavior across environments while allowing development
 Uploaded repair images go through a small `ImageStorage` Protocol in `app/services/image_storage.py` with two implementations:
 
 - **Local disk** (default in dev / docker compose). Files land under `REPAIR_UPLOAD_DIR` (default `uploads/repair-requests/`, git-ignored) with on-disk layout `<repair-request-id>/<image-id>.<ext>`.
-- **S3** (production). Selected by `REPAIR_IMAGE_BACKEND=s3` + `REPAIR_S3_BUCKET=<name>` (optional `REPAIR_S3_PREFIX`). Enabled by default in `infra/ecs/backend-task-def.json`. Boto3 is lazy-imported, so dev environments do not need it.
+- **S3** (production). Selected by `REPAIR_IMAGE_BACKEND=s3` + `REPAIR_S3_BUCKET=<name>` (optional `REPAIR_S3_PREFIX`). Enabled by default in `infra/aws/tasks/backend-task-def.json`. Boto3 is lazy-imported, so dev environments do not need it.
 
 `repair_images.image_url` stores a backend storage key (the same `<rr-id>/<image-id>.<ext>` shape for both backends), **not** a public URL or filesystem path. The public URL `/api/v1/images/<id>` is computed at the schema layer (`RepairImageRead.url`), so cutting over from local to S3 needs no DB rewrite.
 
@@ -202,7 +202,7 @@ Hooks in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 
 ## CI pipeline
 
-`.github/workflows/ci.yml` runs quality, security, and deploy gates. A `changes` job (dorny/paths-filter) emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
+`.github/workflows/ci.yml` runs quality and security gates on PRs. `.github/workflows/cd.yml` runs the same quality gates plus deploy jobs on pushes to `main`. A `changes` job (dorny/paths-filter) inside the quality workflow emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
 
 On pull requests and pushes to `main`, it runs:
 

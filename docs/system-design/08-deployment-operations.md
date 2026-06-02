@@ -23,7 +23,7 @@ See `CLAUDE.md` §"Health endpoints (Week 5+)" for the code-level distinction be
 **Database migration strategy:**
 - Use backward-compatible migrations only (add columns, never remove or rename in the same release)
 - Two-phase migration for breaking changes: (1) add new column, deploy app that writes to both, (2) migrate data, deploy app that uses only new column, (3) drop old column
-- **Automation (Phase 2+):** the `migrate-database` job in `.github/workflows/ci.yml` runs `alembic upgrade head` as a one-off Fargate task against the rendered backend task definition before `deploy-backend` starts the rolling update. The deploy is blocked on the migration job's exit code, so step (1) "add new column" lands automatically pre-deploy and the new task set never boots against an unmigrated schema. The job is forward-only: a rollback to a prior schema still needs a hand-written revert migration. Manual seeding (operator-triggered, destructive) lives in a separate workflow, `.github/workflows/seed.yml`, fired only via `workflow_dispatch` after typing the `SEED` confirmation. It reuses the task definition the backend ECS service is already running (no rebuild or redeploy), so a reseed no longer drags the full quality + build + deploy chain along with it.
+- **Automation (Phase 2+):** the `migrate-database` job in `.github/workflows/cd.yml` runs `alembic upgrade head` as a one-off Fargate task against the rendered backend task definition before `deploy-backend` starts the rolling update. The deploy is blocked on the migration job's exit code, so step (1) "add new column" lands automatically pre-deploy and the new task set never boots against an unmigrated schema. The job is forward-only: a rollback to a prior schema still needs a hand-written revert migration. Manual seeding (operator-triggered, destructive) lives in a separate workflow, `.github/workflows/seed.yml`, fired only via `workflow_dispatch` after typing the `SEED` confirmation. It reuses the task definition the backend ECS service is already running (no rebuild or redeploy), so a reseed no longer drags the full quality + build + deploy chain along with it.
 
 ---
 
@@ -99,7 +99,7 @@ The limiter (`backend/app/core/rate_limit.py`) is in-process via slowapi. Per `0
 
 **ECS task command:** keep `--workers 1` until rate limits are backed by Redis. Auto-scaling at the *task* level (not the worker level) is the supported scaling axis.
 
-The Grafana Cloud observability work reinforces this from a second angle: the OTel SDK's `MeterProvider`, `TracerProvider`, and `LoggerProvider` are process-wide singletons installed once at startup, and `pyroscope-io`'s sampling thread is started in the main process. With `--workers 1` per task, those singletons line up one-to-one with the task and Pyroscope's thread survives without a `gunicorn --preload` / `post_fork` dance. If `WEB_CONCURRENCY` is ever bumped above 1, both the OTel exporters and `pyroscope-io` need an explicit post-fork re-init (see `infra/ecs/README.md` on the `WEB_CONCURRENCY=1` invariant). Do not silently raise the worker count without that wiring.
+The Grafana Cloud observability work reinforces this from a second angle: the OTel SDK's `MeterProvider`, `TracerProvider`, and `LoggerProvider` are process-wide singletons installed once at startup, and `pyroscope-io`'s sampling thread is started in the main process. With `--workers 1` per task, those singletons line up one-to-one with the task and Pyroscope's thread survives without a `gunicorn --preload` / `post_fork` dance. If `WEB_CONCURRENCY` is ever bumped above 1, both the OTel exporters and `pyroscope-io` need an explicit post-fork re-init (see `infra/aws/tasks/README.md` on the `WEB_CONCURRENCY=1` invariant). Do not silently raise the worker count without that wiring.
 
 ### Behind the ALB: client-IP resolution (CRITICAL)
 
@@ -178,7 +178,7 @@ Interpretation:
 
 Production telemetry runs entirely through Grafana Cloud's hosted free-tier stack named `ams`. Two complementary paths:
 
-1. **Backend push (OTLP).** The ECS backend task pushes traces, metrics, logs, and CPU profiles direct to Grafana Cloud's hosted OTLP gateway via the OTel SDK. Configured by the `OTEL_*`, `PYROSCOPE_*`, and `ENVIRONMENT` env vars in `infra/ecs/backend-task-def.json` plus the `OTEL_EXPORTER_OTLP_HEADERS`, `PYROSCOPE_AUTH_TOKEN`, and `PYROSCOPE_BASIC_AUTH_USERNAME` secrets sourced from the `ams-grafana-cloud` Secrets Manager secret.
+1. **Backend push (OTLP).** The ECS backend task pushes traces, metrics, logs, and CPU profiles direct to Grafana Cloud's hosted OTLP gateway via the OTel SDK. Configured by the `OTEL_*`, `PYROSCOPE_*`, and `ENVIRONMENT` env vars in `infra/aws/tasks/backend-task-def.json` plus the `OTEL_EXPORTER_OTLP_HEADERS`, `PYROSCOPE_AUTH_TOKEN`, and `PYROSCOPE_BASIC_AUTH_USERNAME` secrets sourced from the `ams-grafana-cloud` Secrets Manager secret.
 2. **Cloud pull (CloudWatch).** Grafana Cloud's hosted CloudWatch integration assumes a read-only cross-account role (`ams-grafana-cloud-reader`) and pulls AWS-managed signals every 60s: ALB request count and target response time, RDS CPU/connections/disk queue, ECS Container Insights CPU/memory. Configured by the IAM role definition under `infra/grafana-cloud/`.
 
 The repo-side dashboard JSONs (`config/grafana/dashboards/*.json`) are the source of truth until Grafana Cloud import is verified in production; after that, Phase 6 of `docs/plans/observability-prod-migration-plan.md` deletes them and Grafana Cloud's stored dashboards become canonical.
@@ -199,7 +199,7 @@ This is the only AWS-side secret introduced by the observability migration. JSON
 }
 ```
 
-The ECS task's `secrets:` block resolves all three keys at task launch. Operator creates the secret out-of-band (this is not pipeline-managed); see `infra/ecs/README.md` § "`ams-grafana-cloud` secret shape" for details.
+The ECS task's `secrets:` block resolves all three keys at task launch. Operator creates the secret out-of-band (this is not pipeline-managed); see `infra/aws/tasks/README.md` § "`ams-grafana-cloud` secret shape" for details.
 
 ### Cross-account IAM role
 

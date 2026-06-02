@@ -1,7 +1,7 @@
 # ECS task definitions
 
 These JSON files are the source of truth for the production ECS task
-configuration. The deploy jobs in `.github/workflows/ci.yml` render them
+configuration. The deploy jobs in `.github/workflows/cd.yml` render them
 with the new image tag on each push to `main` (after the test, SCA, and
 SonarQube gates pass), then register the new revision and wait for the
 ECS service to reach steady state.
@@ -9,7 +9,7 @@ ECS service to reach steady state.
 ## Placeholders
 
 The committed files contain placeholders that are dynamically substituted during
-the deployment pipeline in `.github/workflows/ci.yml`. This keeps sensitive
+the deployment pipeline in `.github/workflows/cd.yml`. This keeps sensitive
 identifiers like account IDs out of source control and lets the same templates
 work across environments.
 
@@ -29,7 +29,7 @@ work across environments.
 ### Placeholder convention (read before adding new ones)
 
 Substitution lives in the composite action at
-[`.github/actions/render-task-def/action.yml`](../../.github/actions/render-task-def/action.yml),
+[`.github/actions/render-task-def/action.yml`](../../../.github/actions/render-task-def/action.yml),
 called by both `deploy-backend` and `deploy-frontend`. Adding a placeholder is a
 two-touch change: add `__NAME__` in the task-def JSON, then add `NAME` to that
 job's `required-vars:` list (and to its `env:` block, mapping to the matching
@@ -148,7 +148,7 @@ def resolve cleanly:
 
 The Grafana Cloud-side IAM role that the hosted CloudWatch integrations
 assume is a separate setup; see
-[`infra/grafana-cloud/README.md`](../grafana-cloud/README.md) for the
+[`infra/grafana-cloud/README.md`](../../grafana-cloud/README.md) for the
 cross-account role creation and the GC connector wiring.
 
 **Execution role must have `secretsmanager:GetSecretValue`.** The

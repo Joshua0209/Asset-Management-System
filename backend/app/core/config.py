@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     #    to a complete SQLAlchemy URL like
     #    ``mysql+pymysql://user:pass@host:3306/ams``. Production ECS pulls
     #    this from the ``DATABASE_URL_SECRET_NAME`` Secrets Manager entry
-    #    (see ``infra/ecs/backend-task-def.json``); local dev reads it from
+    #    (see ``infra/aws/tasks/backend-task-def.json``); local dev reads it from
     #    ``.env``. This is the canonical path.
     # 2. **Component parts** (legacy / local fallback): set ``DB_HOST``,
     #    ``DB_NAME``, ``DB_USER``, ``DB_PASSWORD``. Retained so existing
@@ -219,7 +219,7 @@ class Settings(BaseSettings):
         """Fail fast when DB configuration is incomplete.
 
         Production passes ``DATABASE_URL`` from Secrets Manager
-        (``DATABASE_URL_SECRET_NAME`` → ``infra/ecs/backend-task-def.json``).
+        (``DATABASE_URL_SECRET_NAME`` → ``infra/aws/tasks/backend-task-def.json``).
         Legacy local setups may still supply the full ``DB_HOST`` /
         ``DB_NAME`` / ``DB_USER`` / ``DB_PASSWORD`` set instead. We refuse
         to boot with partial config (e.g. ``DB_HOST`` missing because of a

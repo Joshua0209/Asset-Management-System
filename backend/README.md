@@ -81,9 +81,9 @@ These are easy to miss from code alone. Read before adding endpoints or touching
 
 OTLP-native. Three signals (traces, metrics, logs) push directly to Grafana Cloud over gRPC; continuous profiling is opt-in via `pyroscope-io` in the `[prod]` extra. All of it is off by default: with `OTEL_ENABLED=false` (the dev default), the backend boots with zero outbound telemetry.
 
-To wire local dev to Grafana Cloud, fill in the `OTEL_*` and `PYROSCOPE_*` variables in `.env` (see [`backend/.env.example`](.env.example)) and flip `OTEL_ENABLED=true`. In production these come from the `ams-grafana-cloud` Secrets Manager entry referenced by `infra/ecs/backend-task-def.json`. See [docs/plans/observability-prod-migration-plan.md](../docs/plans/observability-prod-migration-plan.md) for the full topology.
+To wire local dev to Grafana Cloud, fill in the `OTEL_*` and `PYROSCOPE_*` variables in `.env` (see [`backend/.env.example`](.env.example)) and flip `OTEL_ENABLED=true`. In production these come from the `ams-grafana-cloud` Secrets Manager entry referenced by `infra/aws/tasks/backend-task-def.json`. See [docs/plans/observability-prod-migration-plan.md](../docs/plans/observability-prod-migration-plan.md) for the full topology.
 
-`WEB_CONCURRENCY=1` is an invariant in production: OTel providers and the Pyroscope sampling thread are process-wide singletons installed once at startup. Bumping the worker count above 1 needs an explicit post-fork re-init for both. See [infra/ecs/README.md](../infra/ecs/README.md).
+`WEB_CONCURRENCY=1` is an invariant in production: OTel providers and the Pyroscope sampling thread are process-wide singletons installed once at startup. Bumping the worker count above 1 needs an explicit post-fork re-init for both. See [infra/aws/tasks/README.md](../infra/aws/tasks/README.md).
 
 ## Production image
 
