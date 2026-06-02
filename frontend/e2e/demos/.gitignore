@@ -1,5 +1,0 @@
-# Demo recordings are hosted as assets on the `demo-media` GitHub release, not
-# in git history (they bloat the repo). Only the poster screenshots (*.png) are
-# committed. Local recordings stay here, ignored.
-*.mp4
-*.webm

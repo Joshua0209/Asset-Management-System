@@ -68,7 +68,6 @@ Two narrative end-to-end walkthroughs, recorded with Playwright (the `demo` proj
 
 ▶ [Play the Asset Holder demo](https://github.com/Joshua0209/Asset-Management-System/releases/download/demo-media/holder-journey.mp4)
 
-> Recordings are hosted as MP4 assets on the [`demo-media` release](https://github.com/Joshua0209/Asset-Management-System/releases/tag/demo-media), so they play inline on GitHub without bloating git history (only the poster screenshots are committed). To refresh them: re-seed the demo data, run `npm run test:e2e:demo` (see [Frontend e2e tests](#frontend-e2e-tests)), transcode the WebM output to MP4, then `gh release upload demo-media <file>.mp4 --clobber`.
 
 ## Repository layout
 
