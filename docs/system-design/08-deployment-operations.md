@@ -181,7 +181,7 @@ Production telemetry runs entirely through Grafana Cloud's hosted free-tier stac
 1. **Backend push (OTLP).** The ECS backend task pushes traces, metrics, logs, and CPU profiles direct to Grafana Cloud's hosted OTLP gateway via the OTel SDK. Configured by the `OTEL_*`, `PYROSCOPE_*`, and `ENVIRONMENT` env vars in `infra/aws/tasks/backend-task-def.json` plus the `OTEL_EXPORTER_OTLP_HEADERS`, `PYROSCOPE_AUTH_TOKEN`, and `PYROSCOPE_BASIC_AUTH_USERNAME` secrets sourced from the `ams-grafana-cloud` Secrets Manager secret.
 2. **Cloud pull (CloudWatch).** Grafana Cloud's hosted CloudWatch integration assumes a read-only cross-account role (`ams-grafana-cloud-reader`) and pulls AWS-managed signals every 60s: ALB request count and target response time, RDS CPU/connections/disk queue, ECS Container Insights CPU/memory. Configured by the IAM role definition under `infra/grafana-cloud/`.
 
-The repo-side dashboard JSONs (`config/grafana/dashboards/*.json`) are the source of truth until Grafana Cloud import is verified in production; after that, Phase 6 of `docs/plans/observability-prod-migration-plan.md` deletes them and Grafana Cloud's stored dashboards become canonical.
+The repo-side dashboard JSONs (`config/grafana/dashboards/*.json`) remain the source of truth, synced to Grafana Cloud by the `sync-dashboards` CI job (`scripts/sync_grafana_cloud_dashboards.py`) on every dashboard change.
 
 ### Stack URL and login
 

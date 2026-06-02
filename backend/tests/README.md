@@ -8,7 +8,7 @@ page; the categories below should give you the vocabulary.
 - **What it runs against:** FastAPI `TestClient` + SQLite `:memory:` (via
   `StaticPool`). DB is dropped and recreated around every test by the
   `autouse` fixture `db_tables` in [conftest.py](conftest.py).
-- **What it covers today:** 453 tests, ~92% line coverage, ~100 s wall-time.
+- **What it covers today:** 850 tests, ~96% line coverage. `pytest -n auto` (pytest-xdist) runs the full suite in ~30 s.
 
 ## The 6 categories every integration test falls into
 
