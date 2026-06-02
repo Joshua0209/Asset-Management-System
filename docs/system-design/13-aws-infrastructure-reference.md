@@ -78,7 +78,7 @@ flowchart TD
 
 This diagram illustrates the high-availability target state for the AMS production environment, incorporating Multi-AZ compute, Auto Scaling, and RDS Multi-AZ standby deployments to eliminate single points of failure at the AZ level.
 
-*Note: Application Auto Scaling is currently not supported in the `ap-east-2` (Taipei) region; scaling is a manual operation until regional parity is achieved.*
+*Note: ECS Service Auto Scaling is not configured in the current baseline; backend/frontend scale-out is currently handled manually by changing ECS desired count. Future hardening can add Application Auto Scaling policies based on CPU, memory, or ALB request count.*
 
 ```mermaid
 flowchart TD
@@ -282,5 +282,5 @@ The current baseline represents the initial production deployment. The following
 2. **Security Group Egress**: All task SGs currently permit `0.0.0.0/0` egress. Egress should be restricted to necessary service endpoints (ECR, Secrets Manager, S3, Grafana Cloud).
 3. **ECR Hygiene**: Repositories are currently `MUTABLE` and `scanOnPush: false`. Production best practice is `IMMUTABLE` with scan-on-push enabled.
 4. **RDS Multi-AZ**: Currently a Single-AZ deployment. Multi-AZ is required for production HA/SLA (planned for Phase 2).
-5. **Regional Scaling Support**: `ap-east-2` currently lacks support for Application Auto Scaling. Scale-out is a manual operation until the service becomes available in-region.
+5. **ECS Auto Scaling**: Application Auto Scaling is not yet configured for ECS services. Scaling is currently a manual operation (adjusting desired count) until scale-out/in policies are established.
 
