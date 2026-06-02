@@ -14,6 +14,22 @@ All planned milestones are complete and the stack is deployed to AWS (ECS Fargat
 - **Load and stress testing**: k6 scenario scripts under [`load/`](load/), with HTML summary reports and two investigation write-ups in [`load/results/`](load/results/). Headline finding: per-task throughput (~8 QPS in the login-heavy mix) is a CPU/GIL ceiling on a 0.5-vCPU single-worker service, not a code defect. Throughput scales by ECS task count and already clears the Phase 2 peak (~4.2 QPS) with margin. Optimistic locking held under the stress ramp (100% checks, ~1.5% HTTP 409 conflicts).
 - **System design**: the numbered document set under [`docs/system-design/`](docs/system-design/README.md) (requirements through the AWS production baseline).
 
+The deployed topology (region `ap-east-2`):
+
+![AWS deployment architecture: Route 53 and ACM in front of an Application Load Balancer, ECS Fargate backend and frontend in private subnets, RDS MySQL Multi-AZ, with CloudWatch Logs, Secrets Manager, ECR, S3, and Grafana Cloud](docs/slides/assets/aws.png)
+
+## Screenshots
+
+The frontend is bilingual (zh-TW / en) with a dark/light theme toggle, built on Ant Design v6 following the TSMC visual direction in [`docs/designs/DESIGN.md`](docs/designs/DESIGN.md).
+
+| Asset Holder: my assets | Asset Manager: dashboard |
+| --- | --- |
+| ![Asset Holder viewing their assigned assets](docs/slides/assets/fe-holder-asset.png) | ![Asset Manager dashboard with inventory counts, category distribution, and recent repair requests](docs/slides/assets/fe-manager-dashboard.png) |
+
+Live service health in Grafana Cloud (request rate, error ratio, p95 latency, traffic by status code, ALB latency, and error logs):
+
+![Grafana Cloud service overview dashboard showing request rate, error ratio, p95 latency, requests in-flight, traffic by status code, backend latency percentiles, ALB request volume and response time, and error logs](docs/slides/assets/grafana-01.png)
+
 ## Repository layout
 
 ```text
