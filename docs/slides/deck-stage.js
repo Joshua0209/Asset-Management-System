@@ -1100,7 +1100,7 @@
 
       if (broadcast) {
         // (1) Legacy: host-window postMessage for speaker-notes renderers.
-        try { window.postMessage({ slideIndexChanged: curr, deckTotal: this._slides.length, deckSkipped: this._skippedIndices() }, '*'); } catch (e) {}
+        try { window.postMessage({ slideIndexChanged: curr, deckTotal: this._slides.length, deckSkipped: this._skippedIndices() }, window.location.origin); } catch (e) {}
 
         // (2) In-page CustomEvent on the <deck-stage> element itself.
         //     Bubbles and composes out of shadow DOM so slide code can listen:
@@ -1715,7 +1715,7 @@
       this._emitDeckChange({ action: on ? 'skip' : 'unskip', from: i, slide });
       // Re-broadcast so the presenter popup's prev/next thumbnails re-pick
       // the nearest non-skipped slide without waiting for a nav event.
-      try { window.postMessage({ slideIndexChanged: this._index, deckTotal: this._slides.length, deckSkipped: this._skippedIndices() }, '*'); } catch (e) {}
+      try { window.postMessage({ slideIndexChanged: this._index, deckTotal: this._slides.length, deckSkipped: this._skippedIndices() }, window.location.origin); } catch (e) {}
     }
 
     _skippedIndices() {
