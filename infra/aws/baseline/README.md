@@ -21,13 +21,17 @@ All sensitive and account-specific identifiers have been replaced with placehold
 
 - `__ACCOUNT_ID__`: 12-digit AWS Account Number.
 - `__VPC_ID__`: The primary production VPC.
-- `__SG_*_ID__`: Security Group identifiers.
+- `__SG_*_ID__`: Security Group identifiers (including `DEFAULT`, `ALB`, `BACKEND`, `FRONTEND`, `RDS`, `REDIS`).
 - `__SUBNET_*__`: Subnet identifiers.
 - `__ALB_DNS_NAME__`: The public-facing ALB endpoint.
 - `__ALB_RESOURCE_ID__`: The unique resource ID of the ALB.
 - `__LISTENER_ID__`: Unique identifier for ALB listeners.
+- `__CERTIFICATE_ID__`: Unique identifier for the ACM certificate.
+- `__TG_BACKEND_ID__`: Unique identifier for the backend Target Group.
+- `__TG_FRONTEND_ID__`: Unique identifier for the frontend Target Group.
 - `__RDS_ENDPOINT__`: The private database endpoint.
 - `__RDS_MASTER_USERNAME__`: RDS administrator username.
+- `__RDS_KMS_KEY_ID__`: KMS key identifier for RDS storage encryption.
 - `__ROLE_ID__`: Unique identifier for IAM roles.
 - `__TIMESTAMP__`: Generic timestamp placeholder.
 - `__REPAIR_S3_BUCKET__`: The S3 bucket for repair image storage.
