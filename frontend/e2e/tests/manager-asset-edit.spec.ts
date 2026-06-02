@@ -22,8 +22,10 @@ test.describe("Manager edits an existing asset", () => {
     await assetDetailPage.openEditModal();
     await assetDetailPage.submitEditName(newName);
 
-    // Assert — modal closes (Edit button reappears) and the new name is
-    // rendered in the descriptions panel on the detail page.
+    // Assert — toast first (catches a silently-dropped api.success), then
+    // the modal closes (Edit button reappears) and the new name is rendered
+    // in the descriptions panel on the detail page.
+    await expect(page.getByText("Asset updated successfully")).toBeVisible();
     await expect(assetDetailPage.editButton).toBeVisible();
     await expect(page.getByText(newName)).toBeVisible();
   });

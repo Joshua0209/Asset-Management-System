@@ -46,6 +46,7 @@ function buildResponse(
     data: [
       {
         id: "rr-1",
+        repair_id: "REP-2026-00001",
         asset_id: "asset-1",
         requester_id: "holder-1",
         reviewer_id: null,
@@ -102,6 +103,10 @@ describe("Reviews", () => {
     expect(screen.getByRole("heading", { name: "Repair Requests" })).toBeInTheDocument();
     expect(screen.getByText("AST-1")).toBeInTheDocument();
     expect(screen.getByText("Pending Review")).toBeInTheDocument();
+    // Request ID column must render the human-readable repair_id, never a
+    // truncated UUID slice. Catches a regression that ships rr-1... again.
+    expect(screen.getByText("REP-2026-00001")).toBeInTheDocument();
+    expect(screen.queryByText(/^rr-1\.\.\./)).not.toBeInTheDocument();
   });
 
   it("navigates to full-page review details", async () => {

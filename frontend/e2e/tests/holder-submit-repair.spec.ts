@@ -20,8 +20,11 @@ test.describe("Holder submits a repair request", () => {
     await submitRepairPage.submit();
 
     // Assert — the success toast surfaces and the app navigates to the
-    // holder's repair-request list at /repairs.
-    await expect(page.getByText("Repair request submitted successfully")).toBeVisible();
+    // holder's repair-request list at /repairs. Toast text must stay in sync
+    // with `common.repairRequest.successMessage` in
+    // frontend/src/i18n/locales/en.json (the playwright config pins locale
+    // to en-US).
+    await expect(page.getByText("Repair request submitted", { exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/repairs$/);
   });
 });

@@ -8,7 +8,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from app.models.asset import AssetStatus
 from app.models.asset_action_history import AssetAction
-from app.schemas.common import APIModel, PaginationMeta, UUIDString
+from app.schemas.common import APIModel, PaginationMeta, UtcDatetime, UUIDString
 
 
 def _today_utc() -> date:
@@ -158,8 +158,8 @@ class AssetRead(APIModel):
     responsible_person: AssetPersonRead | None
     disposal_reason: str | None
     version: int
-    created_at: datetime | None
-    updated_at: datetime | None
+    created_at: UtcDatetime | None
+    updated_at: UtcDatetime | None
 
 
 class ActorRef(APIModel):
@@ -267,7 +267,7 @@ class AssetActionHistoryRead(APIModel):
         validation_alias="event_metadata",
         serialization_alias="metadata",
     )
-    created_at: datetime
+    created_at: UtcDatetime
 
     @model_validator(mode="before")
     @classmethod
@@ -318,7 +318,7 @@ class HistoryMeta(PaginationMeta):
     frontend can render a "deleted asset" banner without a second call.
     """
 
-    asset_deleted_at: datetime | None
+    asset_deleted_at: UtcDatetime | None
 
 
 class AssetHistoryListResponse(APIModel):

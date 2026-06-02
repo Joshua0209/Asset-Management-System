@@ -25,11 +25,11 @@ test.describe("Manager completes an in-repair request", () => {
       repairVendor: "聯強國際維修中心",
     });
 
-    // Assert — the page now reports the terminal state. The action panel
-    // collapses to a "-" placeholder for completed/rejected requests, so the
-    // Complete button must NOT be visible anymore. The status label is the
-    // primary assertion; the absent button is a secondary guard. Toasts
-    // auto-dismiss after ~4.5s and are unreliable to assert against.
+    // Assert — toast first (guards against silently-dropped api.success;
+    // see manager-update-repair-details.spec.ts for the bug history), then
+    // the terminal state. The Complete button is hidden because the action
+    // panel collapses to a "-" placeholder for completed/rejected requests.
+    await expect(page.getByText("Repair request completed")).toBeVisible();
     await expect(page.getByText("Current Status")).toBeVisible();
     await expect(page.getByText("Completed").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Complete", exact: true })).toBeHidden();

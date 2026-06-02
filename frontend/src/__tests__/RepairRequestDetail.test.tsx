@@ -27,6 +27,7 @@ const mockApiClientGet = vi.mocked(apiModule.apiClient.get);
 
 const mockRequest = {
   id: "req-1",
+  repair_id: "REP-2026-00001",
   asset_id: "asset-1",
   requester_id: "user-1",
   reviewer_id: "mgr-1",

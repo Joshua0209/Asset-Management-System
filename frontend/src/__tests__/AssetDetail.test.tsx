@@ -306,6 +306,9 @@ describe("AssetDetail", () => {
         }),
       );
     });
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({ title: "Asset updated successfully" });
+    });
   });
 
   it("assigns an in-stock asset from detail page", async () => {
@@ -317,6 +320,9 @@ describe("AssetDetail", () => {
         assignment_date: "2026-05-08",
         version: 1,
       });
+    });
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({ title: "Asset assigned successfully" });
     });
   });
 
@@ -351,6 +357,9 @@ describe("AssetDetail", () => {
         version: 1,
       });
     });
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({ title: "Asset unassigned successfully" });
+    });
   });
 
   it("disposes an in-stock asset from detail page", async () => {
@@ -378,6 +387,9 @@ describe("AssetDetail", () => {
         disposal_reason: "Lifecycle end",
         version: 1,
       });
+    });
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({ title: "Asset disposed successfully" });
     });
   });
 

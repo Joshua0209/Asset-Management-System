@@ -4,6 +4,8 @@ import { vi } from "vitest";
 
 import AssetList from "@/pages/manager/AssetList";
 import i18n from "@/i18n";
+import { ApiError } from "@/api";
+import { mockApi } from "./test-helpers";
 
 const mockNavigate = vi.fn();
 
@@ -98,8 +100,19 @@ async function fillRequiredCreateFields(
 
   await user.type(within(modal).getByLabelText("Name"), overrides.name);
   await user.type(within(modal).getByLabelText("Model"), overrides.model);
+  // antd Select: clicking the label opens the dropdown. The option list is
+  // portaled to .ant-select-dropdown; wait for it to be visible before
+  // picking "computer". `getAllByRole("option")` without the wait can match
+  // a stale, hidden option from a previous test or fail outright if the
+  // dropdown hasn't mounted yet.
+  // Open the antd Category Select and click its "computer" option. The
+  // option list is portaled to body. Multiple ".ant-select-item-option"
+  // rows live in the DOM at once (one per category); target the visible
+  // dropdown's first match.
   await user.click(within(modal).getByLabelText("Category"));
-  await user.click(screen.getAllByRole("option", { name: "computer" })[0]);
+  await user.click(
+    await screen.findByText("computer", { selector: ".ant-select-item-option-content" }),
+  );
   await user.type(within(modal).getByLabelText("Supplier"), "Acme");
   await user.type(within(modal).getByLabelText("Purchase Date"), "2026-01-10");
   await user.type(within(modal).getByLabelText("Purchase Amount"), overrides.purchaseAmount);
@@ -166,6 +179,8 @@ describe("AssetList", () => {
     mockCreateAsset.mockReset();
     mockListUsers.mockReset();
     mockNavigate.mockReset();
+    mockApi.success.mockReset();
+    mockApi.error.mockReset();
     mockListUsers.mockResolvedValue({
       data: [
         {
@@ -303,5 +318,87 @@ describe("AssetList", () => {
       expect(screen.getByText("Warranty expiry must be after activation date")).toBeInTheDocument();
     });
     expect(mockCreateAsset).not.toHaveBeenCalled();
+  });
+
+  // handleSaveAsset has three distinct exit branches after the create
+  // refactor — locking each in catches the original "form validation
+  // error silently fires the action-failed toast" bug and the new
+  // "non-ApiError now surfaces a generic toast" behaviour.
+
+  it("fires the success toast after a successful create", async () => {
+    const user = await renderAsManagerWith(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
+    mockCreateAsset.mockResolvedValueOnce(
+      buildResponse("AST-2026-00002", "New Laptop", 1).data[0],
+    );
+    // The post-create reload fires another listAssets — return a permissive
+    // mock so the success branch (which calls reload BEFORE api.success)
+    // doesn't trip on an undefined response.
+    mockListAssets.mockResolvedValue(buildResponse("AST-2026-00002", "New Laptop", 2));
+
+    await openCreateForm(user);
+    await fillRequiredCreateFields(user, {
+      name: "New Laptop",
+      model: "X-200",
+      purchaseAmount: "1500.00",
+    });
+
+    await waitFor(() => {
+      expect(mockCreateAsset).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({
+        title: "Asset registered successfully",
+      });
+    });
+    expect(mockApi.error).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an ApiError as a description on the action-failed toast", async () => {
+    const user = await renderAsManagerWith(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
+    mockCreateAsset.mockRejectedValueOnce(
+      new ApiError(409, "conflict", "duplicate asset_code"),
+    );
+
+    await openCreateForm(user);
+    await fillRequiredCreateFields(user, {
+      name: "Dup Laptop",
+      model: "X-200",
+      purchaseAmount: "1500.00",
+    });
+
+    await waitFor(() => {
+      expect(mockApi.error).toHaveBeenCalled();
+    });
+    // The error toast routes ApiError through getApiErrorMessage; pin both
+    // the title and the fact that the description is non-empty (the exact
+    // i18n string for 'errors.conflict' is owned by apiErrors.ts, not us).
+    const calls = mockApi.error.mock.calls;
+    const lastErrorCall = calls[calls.length - 1]?.[0];
+    expect(lastErrorCall?.title).toBe("Action failed");
+    expect(typeof lastErrorCall?.description).toBe("string");
+    expect(lastErrorCall?.description).not.toBe("Something went wrong. Please try again later.");
+    expect(mockApi.success).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a generic toast description when create rejects with a non-ApiError", async () => {
+    const user = await renderAsManagerWith(buildResponse("AST-2026-00001", "Business Laptop 13", 1));
+    mockCreateAsset.mockRejectedValueOnce(new Error("network down"));
+
+    await openCreateForm(user);
+    await fillRequiredCreateFields(user, {
+      name: "Network Fail Laptop",
+      model: "X-200",
+      purchaseAmount: "1500.00",
+    });
+
+    await waitFor(() => {
+      expect(mockApi.error).toHaveBeenCalledWith({
+        title: "Action failed",
+        // errors.serverError — the generic fallback we added so plain
+        // Errors (network failure / JS bug) no longer fail silently.
+        description: "Something went wrong. Please try again later.",
+      });
+    });
+    expect(mockApi.success).not.toHaveBeenCalled();
   });
 });

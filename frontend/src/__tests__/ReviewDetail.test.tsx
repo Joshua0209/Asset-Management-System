@@ -151,6 +151,7 @@ async function submitApproveWithError(error: unknown): Promise<void> {
 function buildRequest(status: RepairRequestRecord['status']): RepairRequestRecord {
   return {
     id: 'rr-1',
+    repair_id: 'REP-2026-00001',
     asset_id: 'asset-1',
     requester_id: 'holder-1',
     reviewer_id: null,
@@ -270,6 +271,12 @@ describe('ReviewDetail', () => {
         planned_date: '2026-05-01',
       });
     });
+    // The user must see a confirmation toast after pressing Approve in the
+    // modal. Without this assertion the action could silently succeed and
+    // leave the user wondering whether the click did anything.
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({ title: 'Repair request approved' });
+    });
   });
 
   it('allows approval without an estimated repair cost', async () => {
@@ -313,6 +320,9 @@ describe('ReviewDetail', () => {
         rejection_reason: 'Cannot reproduce',
       });
     });
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({ title: 'Repair request rejected' });
+    });
   });
 
   it('moves update-details and complete operations to review details page', async () => {
@@ -340,6 +350,11 @@ describe('ReviewDetail', () => {
         }),
       );
     });
+    // The "details updated" toast is the only signal that the save went
+    // through — locking it in here protects the user-visible confirmation.
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({ title: 'Repair details updated' });
+    });
 
     await submitComplete(user, completedRepairDetails);
 
@@ -351,6 +366,9 @@ describe('ReviewDetail', () => {
           repair_vendor: 'Vendor C',
         }),
       );
+    });
+    await waitFor(() => {
+      expect(mockApi.success).toHaveBeenCalledWith({ title: 'Repair request completed' });
     });
   });
 
@@ -469,11 +487,19 @@ describe('ReviewDetail', () => {
     });
   });
 
-  it('does nothing if error is not an ApiError in showActionError', async () => {
+  it('shows a generic fallback toast when the action fails with a non-ApiError', async () => {
+    // Network failures and JS bugs surface as plain Errors. Without a
+    // fallback toast the modal stays open and the user has no idea their
+    // click did anything. Lock in that useSubmitAction now surfaces them.
     await submitApproveWithError(new Error('Non-API error'));
 
     await waitFor(() => {
-      expect(mockApi.error).not.toHaveBeenCalled();
+      expect(mockApi.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Action failed',
+          description: 'Something went wrong. Please try again later.',
+        }),
+      );
     });
   });
 

@@ -26,12 +26,14 @@ const mockRequests = {
   data: [
     {
       id: "req-1",
+      repair_id: "REP-2026-00001",
       asset: { name: "MacBook Pro", asset_code: "AST-001" },
       status: "pending_review" as const,
       created_at: "2026-05-01T10:00:00Z",
     },
     {
       id: "req-2",
+      repair_id: "REP-2026-00002",
       asset: { name: "Dell Monitor", asset_code: "AST-002" },
       status: "completed" as const,
       created_at: "2026-05-02T11:00:00Z",
@@ -71,6 +73,12 @@ describe("RepairRequestList", () => {
     expect(screen.getByText("Dell Monitor")).toBeInTheDocument();
     expect(screen.getByText("AST-002")).toBeInTheDocument();
     expect(screen.getByText("Completed")).toBeInTheDocument();
+
+    // Request ID column shows the backend repair_id (REP-YYYY-NNNNN),
+    // not a truncated UUID like "req-1...". Guards the column-helper fix.
+    expect(screen.getByText("REP-2026-00001")).toBeInTheDocument();
+    expect(screen.getByText("REP-2026-00002")).toBeInTheDocument();
+    expect(screen.queryByText(/^req-\d\.\.\./)).not.toBeInTheDocument();
   });
 
   it("shows error alert when fetch fails", async () => {

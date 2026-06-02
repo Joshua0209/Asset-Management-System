@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Typography, Form, Input, Select, Upload, Button, message, Card } from 'antd';
+import { Typography, Form, Input, Select, Upload, Button, message, notification, Card } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +17,14 @@ const SubmitRepairRequest: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [form] = Form.useForm();
+  // We deliberately use the *static* `notification.success/error` API here
+  // (NOT `notification.useNotification()` like the manager pages). The submit
+  // handler navigates to `/repairs` immediately after success, which would
+  // unmount a component-scoped `contextHolder` and silently drop the toast.
+  // The static API renders into a global container that lives outside the
+  // React tree, so it survives the route change. We still use the static
+  // `message` API for inline upload-validation feedback — heavier card
+  // toast would be overkill there.
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [assets, setAssets] = useState<AssetRecord[]>([]);
@@ -63,14 +71,17 @@ const SubmitRepairRequest: React.FC = () => {
 
     try {
       await repairRequestsApi.submitRepairRequest(formData);
-      message.success(t('common.repairRequest.successMessage'));
+      notification.success({ title: t('common.repairRequest.successMessage') });
       navigate('/repairs');
     } catch (error) {
       if (error instanceof ApiError) {
-        message.error(getApiErrorMessage(error, t));
+        notification.error({
+          title: t('common.repairRequest.errorMessage'),
+          description: getApiErrorMessage(error, t),
+        });
       } else {
         console.error('Submission error:', error);
-        message.error(t('common.repairRequest.errorMessage'));
+        notification.error({ title: t('common.repairRequest.errorMessage') });
       }
     } finally {
       setSubmitting(false);

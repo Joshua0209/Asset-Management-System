@@ -7,12 +7,8 @@ import type { RepairRequestRecord, RepairRequestStatus } from '@/api/repair-requ
 import { formatDateTime } from '@/utils/format';
 import { REPAIR_REQUEST_STATUS_COLORS } from './constants';
 
-const ID_PREFIX_LENGTH = 8;
-
-export const renderRequestIdCell = (id: string): React.ReactNode => (
-  <span className="asset-code">
-    {id.slice(0, ID_PREFIX_LENGTH)}...
-  </span>
+export const renderRequestIdCell = (repairId: string): React.ReactNode => (
+  <span className="asset-code">{repairId}</span>
 );
 
 export const renderRequestAssetCell = (

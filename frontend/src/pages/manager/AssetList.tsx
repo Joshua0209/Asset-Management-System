@@ -74,23 +74,29 @@ const AssetList: React.FC = () => {
   };
 
   const handleSaveAsset = async () => {
+    // Form validation errors are already rendered inline on the field; they
+    // must not trigger the generic failure toast below. Keep the validateFields
+    // call in its own try so the API try/catch only ever sees network or
+    // server failures.
+    let values: AssetFormValues;
     try {
-      const values = await assetForm.validateFields();
-      const payload = normalizeAssetFormValues(values);
-      setIsSubmitting(true);
+      values = await assetForm.validateFields();
+    } catch {
+      return;
+    }
 
+    const payload = normalizeAssetFormValues(values);
+    setIsSubmitting(true);
+    try {
       await assetsApi.createAsset(payload);
-
       setIsAssetModalOpen(false);
       reload();
       api.success({ title: t('assetList.manager.createSuccess') });
     } catch (e) {
-      if (e instanceof ApiError) {
-        api.error({
-          title: t('assetList.manager.actionFailedTitle'),
-          description: formatApiError(e),
-        });
-      }
+      api.error({
+        title: t('assetList.manager.actionFailedTitle'),
+        description: e instanceof ApiError ? formatApiError(e) : t('errors.serverError'),
+      });
     } finally {
       setIsSubmitting(false);
     }

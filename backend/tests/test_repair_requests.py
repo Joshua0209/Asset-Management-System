@@ -147,9 +147,10 @@ class TestListRepairRequests:
     ) -> None:
         holder = make_user(role=UserRole.HOLDER, name="Holder")
         asset = _make_asset(db_session, holder)
+        seeded_repair_id = _unique_repair_id()
         rr = RepairRequest(
             asset_id=asset.id,
-            repair_id=_unique_repair_id(),
+            repair_id=seeded_repair_id,
             requester_id=holder.id,
             status=RepairRequestStatus.PENDING_REVIEW,
             fault_description="Screen flickers.",
@@ -163,6 +164,10 @@ class TestListRepairRequests:
         assert len(data) == 1
         assert "images" in data[0]
         assert data[0]["images"] == []
+        # Frontend list columns labelled "Request ID / 申請編號" render
+        # `repair_id`, not the UUID `id` — lock in that the list response
+        # carries the human-readable code.
+        assert data[0]["repair_id"] == seeded_repair_id
         assert data[0]["asset"] == {
             "id": asset.id,
             "asset_code": "AST-2026-00001",
