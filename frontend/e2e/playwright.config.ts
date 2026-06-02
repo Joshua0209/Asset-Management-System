@@ -29,14 +29,14 @@ export default defineConfig({
     // Lock locale + timezone so i18n-sensitive assertions are stable across machines.
     locale: "en-US",
     timezoneId: "Asia/Taipei",
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    trace: "on",
+    screenshot: "on",
+    video: { size: { width: 1920, height: 1080 }, mode: "on" },
     // `viewport: null` + `--start-maximized` makes the browser window open
     // full-screen in headed/demo runs. Headless ignores window args and falls
     // back to a default size, so this is safe for CI too.
-    viewport: null,
-    launchOptions: { slowMo: slowMoMs, args: ["--start-maximized"] },
+    viewport: { width: 1920, height: 1080 },
+    launchOptions: { slowMo: slowMoMs, args: ["--window-size=1920,1080"] },
   },
 
   projects: [

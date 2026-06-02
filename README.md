@@ -1,10 +1,38 @@
 # Asset Management System
 
-Course project for a cloud computing / software engineering class. The repository is a monorepo containing:
+A bilingual (zh-TW / en) web application for tracking an organization's hardware assets and managing their repair lifecycle (資產管理系統). Built as the course project for a cloud-computing / software-engineering class — but shaped like a production system: containerized services, an IaC-described AWS deployment, full CI/CD gates, and an observability stack.
+
+## Overview
+
+The system serves two roles, each with its own workflow:
+
+- **資產持有者 — Asset Holder.** Views the assets assigned to them and submits repair requests with photo evidence, then tracks each request through review.
+- **資產管理人員 — Asset Manager.** Procures and registers assets, assigns them to holders, and reviews → approves/rejects → completes the repair requests holders file.
+
+Core capabilities:
+
+- **Asset inventory** — register, search, and inspect assets; each asset's status is governed by a finite-state machine ([docs/system-design/11-asset-fsm.md](docs/system-design/11-asset-fsm.md)).
+- **Repair-request workflow** — `apply → review (approve / reject) → in-repair → complete`, with state transitions enforced server-side against the same FSM.
+- **Auth & RBAC** — JWT sessions, role-gated routes, anti-enumeration login, and a shared password policy.
+- **Image uploads** — repair photos stored on local disk in dev, S3 in production, behind one storage abstraction.
+- **i18n + theming** — every user-visible string has zh-TW and en entries; dark/light mode toggle.
+
+### Architecture at a glance
+
+```text
+React + Vite + TS + Ant Design v6   ──REST──▶   FastAPI + SQLAlchemy + Alembic   ──▶   MySQL 8
+        (frontend/)                                      (backend/)
+```
+
+Deployed on **AWS ECS Fargate** — production images are built from each service's `Dockerfile.prod`, pushed to **ECR** via OIDC (no long-lived keys), and rolled out behind an **ALB** that health-checks `/ready`. Repair images live in **S3**, data in **RDS MySQL**. Telemetry is exported via **OpenTelemetry** to **Grafana Cloud**; sustained-load scenarios live under [load/](load/) as **k6** scripts.
+
+The repository is a monorepo:
 
 - `backend/` — FastAPI app, SQLAlchemy models, Alembic migrations, demo seed script
 - `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
+- `infra/` — ECS task definitions, IAM/OIDC notes, Grafana Cloud setup
+- `load/` — k6 load-test scenarios
 
 ## Project status
 
@@ -29,6 +57,24 @@ The frontend is bilingual (zh-TW / en) with a dark/light theme toggle, built on 
 Live service health in Grafana Cloud (request rate, error ratio, p95 latency, traffic by status code, ALB latency, and error logs):
 
 ![Grafana Cloud service overview dashboard showing request rate, error ratio, p95 latency, requests in-flight, traffic by status code, backend latency percentiles, ALB request volume and response time, and error logs](docs/slides/assets/grafana-01.png)
+
+## Demo
+
+Two narrative end-to-end walkthroughs, recorded with Playwright (the `demo` project under `frontend/e2e/`). Each runs as one continuous browser session with a visible cursor that glides between targets, so the recordings read like a hand-driven tour rather than an automated test.
+
+**Asset Manager — asset & repair lifecycle.** Sign in, search and register a newly procured laptop, then approve a pending repair request and record its completion.
+
+<video src="https://github.com/Joshua0209/Asset-Management-System/releases/download/demo-media/manager-journey.mp4" poster="https://github.com/Joshua0209/Asset-Management-System/raw/main/frontend/e2e/demos/manager-journey.png" controls width="100%"></video>
+
+▶ [Play the Asset Manager demo](https://github.com/Joshua0209/Asset-Management-System/releases/download/demo-media/manager-journey.mp4)
+
+**Asset Holder — report a faulty asset.** Sign in, browse assigned assets, file a repair request with a photo, and watch it land in the queue as *Pending Review*.
+
+<video src="https://github.com/Joshua0209/Asset-Management-System/releases/download/demo-media/holder-journey.mp4" poster="https://github.com/Joshua0209/Asset-Management-System/raw/main/frontend/e2e/demos/holder-journey.png" controls width="100%"></video>
+
+▶ [Play the Asset Holder demo](https://github.com/Joshua0209/Asset-Management-System/releases/download/demo-media/holder-journey.mp4)
+
+> Recordings are hosted as MP4 assets on the [`demo-media` release](https://github.com/Joshua0209/Asset-Management-System/releases/tag/demo-media), so they play inline on GitHub without bloating git history (only the poster screenshots are committed). To refresh them: re-seed the demo data, run `npm run test:e2e:demo` (see [Frontend e2e tests](#frontend-e2e-tests)), transcode the WebM output to MP4, then `gh release upload demo-media <file>.mp4 --clobber`.
 
 ## Repository layout
 
