@@ -20,7 +20,7 @@ All planned milestones are complete and the stack is deployed to AWS (ECS Fargat
 .
 ├── backend                 # FastAPI app, SQLAlchemy models, Alembic migrations
 │   ├── alembic             # migration scripts
-│   ├── app                 # api / core / models / schemas / services
+│   ├── app                 # api / core / db / models / schemas / services
 │   ├── scripts             # seed_demo_data.py (destructive demo seed)
 │   └── tests               # pytest suite
 ├── frontend                # React + Vite + TypeScript + Ant Design
@@ -208,7 +208,7 @@ Hooks in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 
 ## CI pipeline
 
-`.github/workflows/ci.yml` runs quality and security gates on PRs. `.github/workflows/cd.yml` runs the same quality gates plus deploy jobs on pushes to `main`. A `changes` job (dorny/paths-filter) inside the quality workflow emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
+The quality and security gates live in a reusable workflow, [`.github/workflows/ci-quality.yml`](.github/workflows/ci-quality.yml). [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is a thin caller that runs it on pull requests; [`.github/workflows/cd.yml`](.github/workflows/cd.yml) runs the same reusable workflow plus the deploy jobs on pushes to `main`. A `changes` job (dorny/paths-filter) inside the quality workflow emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
 
 On pull requests and pushes to `main`, it runs:
 
@@ -216,15 +216,17 @@ On pull requests and pushes to `main`, it runs:
 |-----|---------|---------------|
 | `backend-lint` | ruff | backend |
 | `backend-typecheck` | mypy `--strict` | backend |
-| `backend-test` | pytest + coverage (uploads `backend-coverage`) | backend |
+| `backend-test` | pytest + coverage, 3-way matrix shard via pytest-split | backend |
+| `backend-coverage-merge` | Combine the 3 shard coverage artifacts into `backend-coverage` | backend |
 | `frontend-test` | vitest + coverage (uploads `frontend-coverage`) | frontend |
 | `frontend` | ESLint + tsc + vite build | frontend |
+| `e2e` | Playwright (chromium), 2-way matrix shard | frontend or backend |
 | `secrets` | gitleaks | no |
 | `sast` | Semgrep (OWASP top-10 ruleset) | no |
 | `pip-audit` | Python production dependency audit, HIGH+ | backend |
 | `npm-audit` | Node production dependency audit, HIGH+ | frontend |
 | `trivy` | Filesystem CVE scan, HIGH+CRITICAL (no `ignore-unfixed`) | backend or frontend |
-| `sonarqube` | SonarCloud quality gate; needs both `backend-test` and `frontend-test` to succeed | no |
+| `sonarqube` | SonarCloud quality gate; needs `backend-coverage-merge` + `frontend-test` to succeed | no |
 | `dashboards-validate` | Dry-run parse + UID/structure check on Grafana Cloud dashboard JSONs | dashboards |
 
 On pushes to `main` and manual dispatch, after those gates pass, it also runs:

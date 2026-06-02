@@ -63,6 +63,21 @@
 |--------|------|-------------|--------|-----|
 | GET | `/dashboard/manager` | Manager dashboard summary (KPIs, category distribution, repair workload, recent pending review) | Manager | — |
 
+### Operational probes
+
+These live at the **app root** (no `/api/v1` prefix):
+
+| Method | Path | Description | Access |
+|--------|------|-------------|--------|
+| GET | `/health` | Liveness — always 200 (`{"status":"ok"}`); rate-limit exempt | Public |
+| GET | `/ready` | Readiness — `SELECT 1`; 200 when the DB is reachable, 503 otherwise | Public |
+
+### Internal (not in the OpenAPI schema)
+
+| Method | Path | Description | Access |
+|--------|------|-------------|--------|
+| POST | `/observability/client-error` | Frontend init-failure beacon; accepts `text/plain`, always returns 204, `include_in_schema=False` | Origin-checked |
+
 ---
 
 ## Rate Limiting
@@ -169,16 +184,18 @@ All responses use a consistent envelope:
 | 409 | `conflict` | Optimistic locking version mismatch |
 | 409 | `duplicate_request` | Repair request already exists for this asset |
 | 409 | `invalid_transition` | FSM transition not allowed from current state |
+| 409 | `repair_id_conflict` | Could not allocate a unique `repair_id` after retries |
 | 413 | `payload_too_large` | Request body exceeds the allowed upload size |
 | 415 | `unsupported_media_type` | Content-Type is not one of the supported formats |
 | 422 | `validation_error` | Malformed JSON, missing required field, or semantically invalid input |
 | 429 | `rate_limit_exceeded` | Too many requests |
 | 500 | `internal_server_error` | Unexpected server condition (e.g., corrupted asset code sequence) |
 | 503 | `service_unavailable` | Transient backend failure (e.g., database error) |
+| 503 | `dashboard_unavailable` | Manager dashboard aggregation failed (DB error) |
 
 ### Optimistic Locking
 
-Any request that modifies `assets`, `repair_requests`, or `users` **must** include the current `version` in the request body. The server checks `WHERE id = :id AND version = :version`. If 0 rows affected, the server returns:
+Any request that modifies `assets` or `repair_requests` **must** include the current `version` in the request body. (The `users` table also carries a `version` column for future use, but no user-update endpoint is exposed yet.) The server checks `WHERE id = :id AND version = :version`. If 0 rows affected, the server returns:
 
 ```
 HTTP/1.1 409 Conflict

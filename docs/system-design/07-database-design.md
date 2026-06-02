@@ -63,7 +63,7 @@
 - **`version` column:** On `assets`, `repair_requests`, and `users`. Enables optimistic locking. Every UPDATE includes `WHERE version = ?` and increments version. If 0 rows affected, the client receives a conflict error (HTTP 409).
 - **`tenant_id`:** Added in Phase 3 for multi-tenancy. In Phase 1-2, this column can be omitted or set to a default value.
 - **`deleted_at` (soft delete):** Present on `assets`, `repair_requests`, and `users`. NULL means active; a timestamp means logically deleted. All queries must include `WHERE deleted_at IS NULL`. Hard deletes are never performed on business data.
-- **`status` enum values (aligned to FSM in `10-asset-fsm.md`):**
+- **`status` enum values (aligned to FSM in `11-asset-fsm.md`):**
   - Asset: `in_stock`, `in_use`, `pending_repair`, `under_repair`, `disposed`
   - Repair request: `pending_review`, `under_repair`, `completed`, `rejected`
 - **`asset_code`:** Business-facing unique identifier (e.g., `AST-2026-00001`). Separate from internal `id` (auto-increment or UUID).
@@ -91,7 +91,7 @@ Append-only audit log. One row per FSM transition, written atomically in the sam
 | `tenant_id` | `BIGINT` | Phase 3; nullable in Phase 1-2 |
 | `asset_id` | `BIGINT` | FK → `assets.id` |
 | `actor_id` | `BIGINT` | FK → `users.id` — who performed the action |
-| `action` | `VARCHAR(64)` | e.g. `assign`, `submit_repair`, `approve_repair`, `complete_repair`, `scrap` |
+| `action` | `VARCHAR(64)` | e.g. `assign`, `submit_repair`, `approve_repair`, `complete_repair`, `dispose` |
 | `from_status` | `VARCHAR(32)` | Asset status before transition |
 | `to_status` | `VARCHAR(32)` | Asset status after transition |
 | `metadata` | `JSONB` | Optional context (e.g. `{ "repair_request_id": 42, "reason": "..." }`) |
@@ -114,11 +114,14 @@ UPDATE assets SET deleted_at = NOW(), version = version + 1 WHERE id = ? AND ver
 UPDATE assets SET deleted_at = NULL, version = version + 1 WHERE id = ? AND version = ?;
 ```
 
-Partial unique index to ensure `asset_code` uniqueness only among active rows:
+`asset_code` carries a plain (table-wide) unique constraint, created with the table in migration `20260417_0001`:
 
 ```sql
-CREATE UNIQUE INDEX idx_assets_code_active ON assets(asset_code) WHERE deleted_at IS NULL;
+-- UniqueConstraint("asset_code") on the assets table
+ALTER TABLE assets ADD CONSTRAINT uq_assets_asset_code UNIQUE (asset_code);
 ```
+
+MySQL 8 has no partial indexes (see Index Strategy below), so uniqueness is enforced across **all** rows, including soft-deleted ones. Consequence: a soft-deleted asset keeps its `asset_code` reserved — the code is **not** reusable while the row exists. (Same behaviour as `users.email`: a soft-deleted user still occupies the address.)
 
 ---
 

@@ -63,6 +63,7 @@ jobs:
               - 'backend/**'
               - 'infra/aws/tasks/backend-task-def.json'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-quality.yml'
               - '.github/actions/**'
             # Narrower filter than `backend`: only fires when a new
             # migration is added under backend/alembic/versions/**. The
@@ -78,12 +79,14 @@ jobs:
               - 'frontend/**'
               - 'infra/aws/tasks/frontend-task-def.json'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-quality.yml'
               - '.github/actions/**'
             dashboards:
               - 'config/grafana/dashboards/**'
               - 'config/grafana/alerts/**'
               - 'scripts/sync_grafana_cloud_dashboards.py'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-quality.yml'
       - name: Aggregate outputs (workflow_dispatch forces everything)
         id: aggregate
         env:

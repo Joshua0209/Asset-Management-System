@@ -16,10 +16,10 @@ Shared logic lives under `lib/`:
 
 - `lib/auth.js` — per-VU JWT cache, seed-account credentials, eviction
   helpers for long runs that outlive the JWT TTL.
-- `lib/flows.js` — the six critical-flow exec functions + helpers
-  (search, my-assets, list-repairs, submit, approve, complete, register,
-  health). Every request carries low-cardinality `tags` so dashboards keep
-  their route templates stable.
+- `lib/flows.js` — the per-flow exec functions (login, search, my-assets,
+  list-repairs, submit, approve, complete, register, health); the weighted
+  scripts draw their six critical flows from this set. Every request carries
+  low-cardinality `tags` so dashboards keep their route templates stable.
 - `lib/fixtures.js` — tiny 1×1 JPEG used as the multipart payload for
   `submit_repair`.
 

@@ -36,10 +36,10 @@ Only **9** total 429s over 24h vs ~35k 200s, so on these runs the rate limiter w
 
 ## Root causes (ranked)
 
-1. **Half a core, one worker, GIL-bound, synchronous I/O.** `infra/ecs/backend-task-def.json`: `cpu: 512` (0.5 vCPU), `WEB_CONCURRENCY=1`. `backend/app/db/session.py`: synchronous `create_engine` + `Session` + `pymysql`. One Python process on 0.5 vCPU tops out in the low tens of QPS for DB-backed work — single digits once the login/write mix is included.
+1. **Half a core, one worker, GIL-bound, synchronous I/O.** `infra/aws/tasks/backend-task-def.json`: `cpu: 512` (0.5 vCPU), `WEB_CONCURRENCY=1`. `backend/app/db/session.py`: synchronous `create_engine` + `Session` + `pymysql`. One Python process on 0.5 vCPU tops out in the low tens of QPS for DB-backed work — single digits once the login/write mix is included.
 2. **bcrypt on the login path.** `backend/app/core/security.py` uses `bcrypt.gensalt()` at the default cost (12), ~100–300 ms of pure CPU per verify. The load mixes weight login at ~20% and re-login every iteration, and the anti-enumeration branch runs `checkpw` even for unknown users. On 0.5 vCPU this is ~2–5 ops/sec.
 3. **Rate limiter (situational, not the main wall here).** `backend/app/core/config.py`: `RATE_LIMIT_AUTHENTICATED=100/minute`, `RATE_LIMIT_ANONYMOUS=30/minute`, slowapi in-memory **per process**. The k6 flows authenticate as two shared seed accounts, so all manager traffic shares one bucket and all holder traffic another (~4 allowed req/s/process). `load/README.md` documents running stress with `RATE_LIMIT_ENABLED=false` to avoid measuring the limiter.
-4. **Low offered load in the default k6 profiles.** `k6-load.js` defaults to `K6_TOTAL_RPM=60` (≈1 req/s); `k6-consistent.js` defaults sum to ≈1.25 req/s. Only `k6-stress.js` (ramping VUs) actually pushes for the breakpoint. A low offered rate can itself explain a low observed QPS.
+4. **Low offered load in the default k6 profiles.** `k6-load.js` defaults to `K6_TOTAL_RPM=60` (≈1 req/s); `k6-consistent.js` defaults sum to 240 req/min (≈4 req/s). Only `k6-stress.js` (ramping VUs) actually pushes for the breakpoint. A low offered rate can itself explain a low observed QPS.
 
 ---
 

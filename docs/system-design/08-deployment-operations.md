@@ -13,8 +13,8 @@
 **Rolling update process (Phase 2-3):**
 1. New container image built and pushed to ECR
 2. Deployment creates new pods/tasks with new image
-3. ECS container/liveness probe passes: HTTP 200 on `/health` (process is up; always 200)
-4. ALB target-group/readiness probe passes: HTTP 200 on `/ready` (DB connectivity verified; returns 503 to drain the target during RDS Multi-AZ failover without killing the otherwise-fine container)
+3. ECS container health check passes: HTTP 200 on `/ready` (the task definition probes `/ready`, so a task that cannot reach the DB is replaced; `/health` is a liveness-only endpoint that always returns 200 and is not wired to any probe)
+4. ALB target-group health check passes: HTTP 200 on `/ready` (DB connectivity verified; returns 503 to drain the target during RDS Multi-AZ failover without killing the otherwise-fine container)
 5. Old pods/tasks drained (in-flight requests complete)
 6. Old pods/tasks terminated
 

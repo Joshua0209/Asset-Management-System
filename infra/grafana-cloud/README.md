@@ -285,6 +285,7 @@ To re-sync only alerts (skip dashboards) after editing a threshold:
 **Changing the recipients without a code PR:** update the
 `GC_ALERT_EMAIL_RECIPIENTS` GitHub Actions secret (Settings → Secrets and
 variables → Actions) and either wait for the next push to `main` that
-touches `config/grafana/**` or trigger the CI workflow manually
-(`gh workflow run ci.yml`). The contact point is upserted on every run
+touches `config/grafana/**` or trigger the deploy workflow manually
+(`gh workflow run cd.yml`; `ci.yml` is PR-only and has no `workflow_dispatch`,
+and the `sync-dashboards` job lives in `cd.yml`). The contact point is upserted on every run
 so the new address list lands within one workflow.

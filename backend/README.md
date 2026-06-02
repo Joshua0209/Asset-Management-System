@@ -10,11 +10,11 @@ For the human-facing quick start, env-var table, and CI overview, see the root [
 backend/
 ├── alembic/                # Migrations
 ├── app/
-│   ├── api/v1/endpoints/   # FastAPI routers (auth, users, assets, repair-requests, images, observability)
+│   ├── api/v1/endpoints/   # FastAPI routers (auth, users, assets, repair-requests, images, dashboard, observability)
 │   ├── core/               # config, security, rate_limit, observability
 │   ├── models/             # SQLAlchemy models
 │   ├── schemas/            # Pydantic schemas
-│   └── services/           # image_storage, repair_request_service, etc.
+│   └── services/           # image_storage, audit_log
 ├── scripts/seed_demo_data.py
 └── tests/
 ```
