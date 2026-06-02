@@ -91,14 +91,13 @@ Configure under `Settings -> Secrets and variables -> Actions`:
 | `GC_PYROSCOPE_ENDPOINT` | Grafana Cloud Pyroscope endpoint (region-scoped; copy from the GC stack's "Pyroscope" connection page). Same secret-vs-variable rationale as `GC_OTLP_ENDPOINT` |
 | `GC_STACK_URL`       | Grafana Cloud stack URL, e.g. `https://<your-stack-slug>.grafana.net`. Consumed by the `sync-dashboards` CD job to upsert `config/grafana/dashboards/*.json` via the dashboards-DB API. **Not** the same as `GC_OTLP_ENDPOINT` — the OTLP gateway is for telemetry ingest, the stack URL is for Grafana's HTTP control plane. Same secret-vs-variable rationale as the other GC endpoints |
 | `GRAFANA_CLOUD_API_KEY` | Grafana Cloud API key with **dashboards write** scope. Create at `https://grafana.com/orgs/<org>/api-keys` (separate token from the OTLP/Pyroscope credentials in the AWS `ams-grafana-cloud` secret — those ingest telemetry; this one mutates dashboards). Consumed by `sync-dashboards` only |
-| `NVD_API_KEY`        | Optional, raises OWASP Dependency-Check rate limit       |
 | `SONAR_TOKEN`        | Already configured for the existing SonarCloud job       |
 
 ### Repository variables
 
 | Variable              | Purpose                                          |
 |-----------------------|--------------------------------------------------|
-| `AWS_REGION`          | e.g. `ap-northeast-1`                            |
+| `AWS_REGION`          | e.g. `ap-east-2`                                 |
 | `REPAIR_S3_BUCKET`    | Name of the S3 bucket for repair images          |
 | `ECR_REPOSITORY_BACKEND`  | e.g. `ams-backend`                           |
 | `ECR_REPOSITORY_FRONTEND` | e.g. `ams-frontend`                          |

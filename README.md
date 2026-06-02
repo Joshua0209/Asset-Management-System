@@ -6,35 +6,57 @@ Course project for a cloud computing / software engineering class. The repositor
 - `frontend/` — React + Vite + TypeScript + Ant Design with i18n and theme toggle
 - `docs/` — requirements, roadmap, and full system-design document set
 
-## Open before the Jun 2 presentation
+## Project status
 
-- **k6 sustained-QPS run against the deployed ALB.** Six scenario scripts under `load/`, the per-VU JWT cache, and the per-request OTel-bridged access log are merged (PR [#85](https://github.com/Joshua0209/Asset-Management-System/pull/85)); the prod deploy is up. The sustained run with `K6_PROMETHEUS_RW_*` into Grafana Cloud Prom and the screenshots for the testing slide still need to happen.
-- **Presentation:** slides first draft, demo script, May 26 + May 29 rehearsals.
+All planned milestones are complete and the stack is deployed to AWS (ECS Fargate + RDS Multi-AZ, region `ap-east-2`) with traces, metrics, logs, and profiles flowing to Grafana Cloud. Key deliverables for the course submission:
+
+- **Presentation deck** (zh-TW, 18 slides): [`docs/slides/index.html`](docs/slides/index.html). Open it in a browser — arrow keys navigate, `S` toggles speaker notes, and it prints to PDF. It embeds the live k6 load-test charts.
+- **Load and stress testing**: k6 scenario scripts under [`load/`](load/), with HTML summary reports and two investigation write-ups in [`load/results/`](load/results/). Headline finding: per-task throughput (~8 QPS in the login-heavy mix) is a CPU/GIL ceiling on a 0.5-vCPU single-worker service, not a code defect. Throughput scales by ECS task count and already clears the Phase 2 peak (~4.2 QPS) with margin. Optimistic locking held under the stress ramp (100% checks, ~1.5% HTTP 409 conflicts).
+- **System design**: the numbered document set under [`docs/system-design/`](docs/system-design/README.md) (requirements through the AWS production baseline).
+
+The deployed topology (region `ap-east-2`):
+
+![AWS deployment architecture: Route 53 and ACM in front of an Application Load Balancer, ECS Fargate backend and frontend in private subnets, RDS MySQL Multi-AZ, with CloudWatch Logs, Secrets Manager, ECR, S3, and Grafana Cloud](docs/slides/assets/aws.png)
+
+## Screenshots
+
+The frontend is bilingual (zh-TW / en) with a dark/light theme toggle, built on Ant Design v6 following the TSMC visual direction in [`docs/designs/DESIGN.md`](docs/designs/DESIGN.md).
+
+| Asset Holder: my assets | Asset Manager: dashboard |
+| --- | --- |
+| ![Asset Holder viewing their assigned assets](docs/slides/assets/fe-holder-asset.png) | ![Asset Manager dashboard with inventory counts, category distribution, and recent repair requests](docs/slides/assets/fe-manager-dashboard.png) |
+
+Live service health in Grafana Cloud (request rate, error ratio, p95 latency, traffic by status code, ALB latency, and error logs):
+
+![Grafana Cloud service overview dashboard showing request rate, error ratio, p95 latency, requests in-flight, traffic by status code, backend latency percentiles, ALB request volume and response time, and error logs](docs/slides/assets/grafana-01.png)
 
 ## Repository layout
 
 ```text
 .
-├── backend
-│   ├── alembic
-│   ├── app
-│   └── scripts
-├── frontend
+├── backend                 # FastAPI app, SQLAlchemy models, Alembic migrations
+│   ├── alembic             # migration scripts
+│   ├── app                 # api / core / db / models / schemas / services
+│   ├── scripts             # seed_demo_data.py (destructive demo seed)
+│   └── tests               # pytest suite
+├── frontend                # React + Vite + TypeScript + Ant Design
+│   ├── e2e                 # Playwright specs (critical flows + demo project)
 │   ├── public
-│   └── src
-│       ├── components
-│       │   └── layout
-│       ├── i18n
-│       │   └── locales
-│       └── pages
+│   └── src                 # api, auth, components, design, hooks, i18n, mocks, pages, utils
 ├── infra
-│   ├── ecs               # ECS task definitions + IAM/OIDC notes
-│   └── grafana-cloud     # Dashboard JSONs + sync script
-├── load                  # k6 scripts (smoke, load, stress, spike, soak, consistent)
+│   ├── aws
+│   │   ├── baseline        # Sanitized point-in-time exports of the AWS prod baseline
+│   │   └── tasks           # ECS task definitions + IAM/OIDC notes
+│   └── grafana-cloud       # Cross-account IAM role + observability runbook
+├── config
+│   └── grafana             # Dashboard + alert-rule JSONs synced to Grafana Cloud
+├── load                    # k6 scripts (smoke, steady, spike, load, stress, consistent)
+│   └── results             # k6 HTML reports + throughput / 409 investigation write-ups
+├── scripts                 # Grafana Cloud dashboard sync + k6 observability helpers
 └── docs
-    ├── designs
-    ├── plans             # observability implementation + prod migration plans
-    └── system-design
+    ├── designs             # DESIGN.md + design-tokens.json
+    ├── slides              # Self-contained HTML presentation deck (index.html)
+    └── system-design       # numbered architecture / DB / API / FSM docs
 ```
 
 ## Quick start
@@ -202,7 +224,7 @@ Hooks in [.pre-commit-config.yaml](.pre-commit-config.yaml):
 
 ## CI pipeline
 
-`.github/workflows/ci.yml` runs quality and security gates on PRs. `.github/workflows/cd.yml` runs the same quality gates plus deploy jobs on pushes to `main`. A `changes` job (dorny/paths-filter) inside the quality workflow emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
+The quality and security gates live in a reusable workflow, [`.github/workflows/ci-quality.yml`](.github/workflows/ci-quality.yml). [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is a thin caller that runs it on pull requests; [`.github/workflows/cd.yml`](.github/workflows/cd.yml) runs the same reusable workflow plus the deploy jobs on pushes to `main`. A `changes` job (dorny/paths-filter) inside the quality workflow emits `backend` / `frontend` / `dashboards` booleans that path-filtered downstream jobs gate on.
 
 On pull requests and pushes to `main`, it runs:
 
@@ -210,15 +232,17 @@ On pull requests and pushes to `main`, it runs:
 |-----|---------|---------------|
 | `backend-lint` | ruff | backend |
 | `backend-typecheck` | mypy `--strict` | backend |
-| `backend-test` | pytest + coverage (uploads `backend-coverage`) | backend |
+| `backend-test` | pytest + coverage, 3-way matrix shard via pytest-split | backend |
+| `backend-coverage-merge` | Combine the 3 shard coverage artifacts into `backend-coverage` | backend |
 | `frontend-test` | vitest + coverage (uploads `frontend-coverage`) | frontend |
 | `frontend` | ESLint + tsc + vite build | frontend |
+| `e2e` | Playwright (chromium), 2-way matrix shard | frontend or backend |
 | `secrets` | gitleaks | no |
 | `sast` | Semgrep (OWASP top-10 ruleset) | no |
 | `pip-audit` | Python production dependency audit, HIGH+ | backend |
 | `npm-audit` | Node production dependency audit, HIGH+ | frontend |
 | `trivy` | Filesystem CVE scan, HIGH+CRITICAL (no `ignore-unfixed`) | backend or frontend |
-| `sonarqube` | SonarCloud quality gate; needs both `backend-test` and `frontend-test` to succeed | no |
+| `sonarqube` | SonarCloud quality gate; needs `backend-coverage-merge` + `frontend-test` to succeed | no |
 | `dashboards-validate` | Dry-run parse + UID/structure check on Grafana Cloud dashboard JSONs | dashboards |
 
 On pushes to `main` and manual dispatch, after those gates pass, it also runs:
@@ -274,3 +298,7 @@ Key variables:
 | `RATE_LIMIT_AUTHENTICATED` | No | Default tier applied to all authenticated routes (default `100/minute`) |
 | `RATE_LIMIT_ANONYMOUS` | No | Per-IP tier on `POST /auth/login` and `POST /auth/register` (default `30/minute`) |
 | `RATE_LIMIT_IMAGES` | No | Higher tier for `GET /api/v1/images/:id` to absorb attachment fan-out (default `300/minute`) |
+
+## License
+
+Released under the [MIT License](LICENSE).

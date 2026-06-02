@@ -1,0 +1,2107 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>資產管理系統 · 期末報告</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=Source+Serif+4:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Serif+TC:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<style>
+  :root {
+    /* type scale (1920×1080) */
+    --type-hero: 104px;
+    --type-title: 64px;
+    --type-subtitle: 40px;
+    --type-body: 28px;
+    --type-small: 24px;
+
+    /* spacing tokens */
+    --pad-top: 64px;
+    --pad-bottom: 56px;
+    --pad-x: 72px;
+    --gap-title: 48px;
+    --gap-item: 28px;
+
+    /* color */
+    --bg: oklch(0.985 0.003 250);
+    --bg-alt: oklch(0.97 0.004 250);
+    --fg: oklch(0.20 0.012 250);
+    --fg-soft: oklch(0.34 0.010 250);
+    --muted: oklch(0.50 0.010 250);
+    --subtle: oklch(0.86 0.006 250);
+    --border: oklch(0.90 0.006 250);
+    --card: #ffffff;
+    --accent: oklch(0.55 0.16 252);
+    --accent-strong: oklch(0.48 0.18 252);
+    --accent-soft: oklch(0.95 0.04 252);
+    --success: oklch(0.60 0.14 150);
+    --success-soft: oklch(0.95 0.05 150);
+    --warn: oklch(0.70 0.14 60);
+    --warn-soft: oklch(0.96 0.06 80);
+    --danger: oklch(0.58 0.20 25);
+    --danger-soft: oklch(0.96 0.04 25);
+
+    --sans: 'Source Sans 3', 'Noto Sans TC', system-ui, sans-serif;
+    --serif: 'Source Serif 4', 'Noto Serif TC', Georgia, serif;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  deck-stage:not(:defined) { visibility: hidden; }
+
+  html, body { margin: 0; padding: 0; background: #0a0a0a; }
+  body { font-family: var(--sans); color: var(--fg); }
+
+  /* Slide base */
+  section {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    box-sizing: border-box;
+    overflow: hidden;
+    letter-spacing: -0.005em;
+  }
+  section, section * { box-sizing: border-box; }
+
+  /* layout primitives */
+  .frame {
+    width: 100%;
+    height: 100%;
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .frame-tight { padding: 72px var(--pad-x) 64px; }
+
+  /* eyebrow + footer */
+  .slide-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 32px;
+    margin-bottom: 4px;
+  }
+  .slide-head .eyebrow { flex: none; white-space: nowrap; }
+  .slide-head .eyebrow .dot { flex: none; }
+  .eyebrow {
+    font-size: var(--type-small);
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-transform: none;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .eyebrow .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    display: inline-block;
+  }
+  .slide-foot {
+    position: absolute;
+    left: var(--pad-x);
+    right: var(--pad-x);
+    bottom: 44px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 24px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .slide-foot .pagenum { font-family: var(--mono); letter-spacing: 0.02em; }
+  .slide-foot .scoretag {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--fg-soft);
+  }
+  .scoretag strong { color: var(--accent-strong); font-weight: 600; margin-right: 6px; }
+
+  /* titles */
+  h1.deck-title {
+    font-size: var(--type-hero);
+    font-weight: 700;
+    line-height: 1.05;
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  h2.slide-title {
+    font-size: var(--type-title);
+    font-weight: 600;
+    line-height: 1.1;
+    margin: 0;
+    letter-spacing: -0.015em;
+    white-space: nowrap;
+  }
+  h3.sub {
+    font-size: var(--type-subtitle);
+    font-weight: 500;
+    line-height: 1.2;
+    margin: 0;
+    color: var(--fg-soft);
+  }
+  .lede {
+    font-size: var(--type-body);
+    line-height: 1.45;
+    color: var(--fg-soft);
+    max-width: 1400px;
+  }
+
+  /* generic card */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px;
+  }
+  .card-quiet { background: var(--bg-alt); border-color: var(--border); }
+  .card-accent { background: var(--bg-alt); border-color: oklch(0.85 0.05 252); }
+
+  /* utility */
+  .mono { font-family: var(--mono); }
+  .muted { color: var(--muted); }
+  .row { display: flex; gap: 28px; }
+  .col { display: flex; flex-direction: column; gap: 28px; }
+  .grow { flex: 1; }
+  ul.clean { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 18px; }
+  ul.clean li { font-size: var(--type-body); line-height: 1.45; color: var(--fg-soft); padding-left: 32px; position: relative; }
+  ul.clean li::before {
+    content: ''; position: absolute; left: 0; top: 0.65em;
+    width: 14px; height: 2px; background: var(--accent);
+  }
+
+  /* tag pill */
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-size: 24px; font-weight: 500; }
+  .pill.ok { background: var(--success-soft); color: var(--success); }
+  .pill.warn { background: var(--warn-soft); color: oklch(0.50 0.14 60); }
+  .pill.bad { background: var(--danger-soft); color: var(--danger); }
+  .pill.gray { background: var(--bg-alt); color: var(--muted); }
+
+  /* placeholders */
+  .placeholder {
+    background: repeating-linear-gradient(
+      135deg,
+      var(--bg-alt) 0 18px,
+      transparent 18px 36px
+    ), var(--card);
+    border: 1px dashed var(--subtle);
+    border-radius: 14px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+</style>
+
+<script type="application/json" id="speaker-notes">
+[
+  "",
+  "左上角是我們的分工——backend、frontend、QA、infra 都指派不同人負責。開發前我們會先規劃開發期間每一週要做什麼,然後照著計畫開發;不過我們也會照進度做一些功能上的取捨,或是遇到比較急的 issue,就調整當週或下一週的開發計畫,所以我們每一週會進行一次 weekly sprint。另外因為 AI agent 日益進步,這個專案大部分採用 AI agent 輔助開發,並且用 Test-Driven Development 的方式來提高開發品質。簡單講三件事:user story 收斂成 roadmap、每週做功能取捨跟處理緊急 issue 的 weekly sprint、還有以 AI 輔助加 TDD 的開發方式。",
+  "這個專案很明顯有兩個角色:財產持有者跟財產管理員,我們最一開始也幫這兩個角色想出 user empathy map。簡單來說,無論是持有者還是管理員,都會因為現在的行政流程沒有電子化、缺乏標準性跟透明性,很容易造成流程有很多未知因素,或是分工模糊的現象。後面我就用 holder、manager 來稱呼這兩個角色。一句話:沒有電子化,就缺乏標準性跟透明性,導致流程未知、分工模糊。",
+  "為了解決 empathy map 提到的問題,我們在 user story 裡認為,一個完善的資產管理系統,財產持有者要可以提交維修申請、查詢維修進度,跟查看自己持有的設備;而財產管理員要可以審查跟推進維修流程、查詢公司所有設備,還有登記新採購的設備入庫。這些 user story 都是根據 empathy map 想出來的,也都符合我們的格式;具體的 user story 跟 acceptance criteria 格式,可以參考投影片上 US-01 的部分。",
+  "這個專案基於需求,大致拆成兩個模組:資產基礎資訊管理模組,跟申請單管理模組。其實可以把整個系統理解成對兩個資料庫做 CRUD——一個是資產的資料庫,一個是申請單的資料庫:在資產資料庫新增資產、改變資產的狀態、查詢資產的每個屬性,在申請單的資料庫也是一樣。剛剛提到的資產狀態,會遵守我們制定的資產狀態 finite state diagram,這個晚一點也會提到。左邊列的是我們有做到的功能型需求,左下角是 bonus 功能,右圖大概就是我們的 UI 介面。",
+  "為了展示這個系統實際操作大概長什麼樣,我們用 Playwright 錄了兩個 demo,分別代表持有者跟管理員提出申請、核准申請的流程。這一段是持有者的流程——選一台設備、提出維修申請。",
+  "這一段是管理員的流程——審核並核准這筆維修申請。兩支 demo 合起來,就是一張維修單從持有者送出、到管理員核准的完整走法。",
+  "",
+  "這頁是我們對這個系統『高可用』層面的考慮歷程。我們假設這個系統如果是給全球規模的企業用,通常會有上萬個員工。經過一些運算,平均 throughput 大概是 1 QPS,再把 peak factor 跟 80/20 rule 考量進去,推導出尖峰流量大約是 4.2 QPS;其實這樣前後段各一個 ECS 就夠用了,加上預算考量,所以我們只部署一個。而且畢竟是全球公司,資產量跟一些維修資訊會很多,大約是幾十萬筆、或是幾百 GB 的量級,所以有資料庫的 backup 會更保險,也更能確定高可用性。",
+  "",
+  "當使用者連線到 Route 53 框框裡的網域時,為了確保連線不會被中間人攔截,ACM 會把 SSL/TLS 憑證掛在 load balancer 上來加密連線。前端跟後端都用 Docker 打包,部署到各自的 ECS 上。在 VPC 裡,我們把 load balancer 放在 public subnet,把前後端的 ECS 跟 RDS 資料庫放在 private subnet;不過前後端有時候也需要用到外網的服務,所以會透過 NAT 隱藏 IP 出去。周邊服務的部分:ECR 用來更新 Docker image、S3 管理照片、Secrets Manager 拿 API key、CloudWatch logs 輔助除錯,當然還有最重要的 Grafana 提供視覺化的監控。總結以上,這個架構同時兼顧了安全性、擴充性跟維運性。",
+  "前面提到這個系統就是在管理資產跟申請單。資產會隨著使用者的操作轉移狀態,像是使用中、維修中那一些,申請單也是一樣。左邊的 sequence diagram 有畫出哪些操作會造成哪些狀態轉移——比方說提交維修請求時,會在 DB 建立一個申請單物件;而在提交維修請求、審核請求、跟完成請求時,都會改變資產跟申請單的狀態。此外,每次呼叫 API 的紀錄都會寫進 DB 的 log。整體就是 holder 跟 manager 透過 API 對 DB 上的資產跟申請單做操作。右邊的 ER diagram:一個 user 會持有多個資產;一個 user 或一個 asset 都可能會有提交維修申請;一個管理員可以審核多個維修申請;一個維修申請會對應到多張細節圖片;而資產的每個歷程、或 user 的每次操作,都會被寫進操作紀錄。",
+  "前面有提到我們走的是 Test-Driven Development,所以從上面這些數字看,我們寫的測試當然很周全。但除了寫得多以外,最關鍵的是前後端都有大於 90% 的 coverage。而且在 unit、integration、end-to-end 這些尺度都有測試——包括後端跟資料庫連接有沒有做好,或是登入、提交跟審查申請單、資產查詢篩選這些 end-to-end 的測試。",
+  "這邊舉幾個測試的例子跟大家分享。第一張圖是資產的 finite state diagram,每個箭頭上的操作都會改變資產的狀態——橘色是 holder、黑色是 manager——我們要測的就是程式真的有乖乖照這個 FSM 跑。第二個是 RBAC 的測試,不同身分的 user 當然要有不同的權限,像是持有人不能看到別人有什麼財產或維修申請單,也不能擅自核准自己的維修申請單。第三個測試是要確保對資料庫的 race condition 不會發生,我們是用 optimistic lock 解決:比方兩個管理員要同時改同一張申請單,兩邊都是第三版,A 管理員先改成功,申請單就變第四版,但 B 管理員那邊還是第三版,所以會改失敗,預期會出現 409 conflict。",
+  "這邊介紹我們做的三種負載測試。提醒一下,這些測試打的量都高於前面算出來的 4.2 QPS 尖峰。",
+  "Soak 測試:5 rps、跑 30 分鐘的穩態。重點是看久了會不會劣化——結果 p95 全程維持在 0.5 秒以下。",
+  "Spike 測試:看的是突波尖峰時候的 p95 latency,系統會被打到喘,但關鍵是它有回得來。",
+  "Stress 測試:以 p95 10 秒為門檻一路加壓,測下來大約可以承載到 21 個 VU,過了就穿破 SLO。",
+  "這張是從 GitHub Action 抓出來的 CI 流程圖(我用滑鼠帶一下)。這邊會檢查後端跟前端的 code quality,還有剛剛提到的 unit test,也會算 test coverage:後端用 ruff、mypy、pytest,前端用 eslint、tsc、vitest。這些比較基本的跑完之後,才會再去跑 end-to-end test。另外還會跑一些安全性測試,像 gitleak、semgrep、跟一些 dependency audit,以及檢查能不能順利串接到 Grafana dashboard。",
+  "我們在 CI/CD 也做了一些小優化,主要是在 CD 的部分。像是 e2e test 跟 backend 的 test 會做 sharding,拆開來平行測;另外因為前端跟後端是不同的 Docker image,所以有動到哪一端、才會重新部署那一端。這些優化大概能省下十分鐘的部署時間,更能因應敏捷開發這種比較快速的節奏。",
+  "剛剛的 CI quality gate 也接上了 SonarCloud quality gate,其實一樣是 code quality 相關的測試,不過我們體感上比剛剛的 CI gate 嚴格一些。它會推薦比較 bug-free 的寫法,像是在 JavaScript 裡推薦用 globalThis 取代 window;它也會檢查哪裡有重複的 code,更能提升程式碼品質。",
+  "所以這張圖就是要表示:即便 GitHub Action 裡的 CI flow 都過了,SonarCloud 還是會跟你說程式碼不符合它的標準,來督促我們產生更好的程式碼。除了這些程序化的鑑測之外,我們組員也會人工 review;review 的負責人是由 GitHub Action 自動決定的,通常是 A 組員發了 PR 之後,由 B 組員 review 完,再幫他 merge 上去。一張 PR 要經過這麼多層關卡才能 merge,可以看出我們對程式碼品質的把關是很嚴格的。",
+  "這頁我會在短時間內 generate 兩波 request,讓大家看 traffic、latency percentiles、跟 load balancer 上的數值怎麼隨之變化。",
+  "",
+  "",
+  "這頁可以看每個 endpoint 的 p95,針對延遲對症下藥;再搭配 flame graph,看到底是哪個環節卡最久。",
+  "這頁監控 RDS 的健康狀態,包含 CPU 使用率、連線次數、正在等待的 I/O request、跟容量。",
+  "",
+  "",
+  ""
+]
+</script>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080" data-om-id="b6d08c8d:7" style="--deck-rail-w: 188px;">
+
+<!-- ========== Slide 1 — Title ========== -->
+<section data-label="01 Title" data-om-id="b6d08c8d:8" data-screen-label="01 01 Title" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="0">
+  <div class="frame" style="padding: 0;" data-om-id="b6d08c8d:9">
+    <div style="flex: 1; display: grid; grid-template-columns: 1.05fr 0.95fr; align-items: stretch;" data-om-id="b6d08c8d:10">
+      <div style="padding: 64px 30px 56px 72px; display: flex; flex-direction: column" data-om-id="b6d08c8d:11">
+        <div style="display: flex; align-items: center; gap: 14px;" data-om-id="b6d08c8d:12">
+          <span style="width: 36px; height: 36px; background: var(--accent); display: inline-block; border-radius: 8px;" data-om-id="b6d08c8d:13"></span>
+          <span style="font-size: 24px; font-weight: 600; letter-spacing: 0.04em; color: var(--fg-soft);" data-om-id="b6d08c8d:14">Asset Management System</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 36px;" data-om-id="b6d08c8d:15">
+          <div style="font-size: 26px; color: var(--accent-strong); font-weight: 500; letter-spacing: 0.02em;" data-om-id="b6d08c8d:16">Final Project</div>
+          <h1 class="deck-title" style="font-size: 100px" data-om-id="b6d08c8d:17">資產管理系統</h1>
+          <div style="font-size: var(--type-subtitle); color: var(--fg-soft); font-weight: 400; line-height: 1.3;" data-om-id="b6d08c8d:18">Asset Management System</div>
+          <div style="font-size: 24px; color: var(--muted); margin-top: 4px;" data-om-id="b6d08c8d:19">
+            <div style="color: var(--fg); font-weight: 500;" data-om-id="b6d08c8d:20">Group 30</div>
+            <div data-om-id="b6d08c8d:21">劉仲楷 · 古庭榮 · 鄭怡文 · 陳亮諭 · 闕中豪</div>
+          </div>
+        </div>
+      </div>
+      <div style="background: var(--bg-alt); border-left: 1px solid var(--border); padding: 32px 48px; display: flex; align-items: center; justify-content: center; position: relative;" data-om-id="b6d08c8d:22">
+        <div style="position: absolute; top: 32px; right: 32px; font-family: var(--mono); font-size: 24px; color: var(--muted);" data-om-id="b6d08c8d:23">// production · Manager dashboard</div>
+        <img src="assets/fe-manager-dashboard.png" alt="Manager dashboard" style="width: 1115px; max-height: 92%; object-fit: contain; border-radius: 12px; box-shadow: 0 30px 60px -20px rgba(15, 23, 42, 0.25), 0 0 0 1px var(--border)" data-om-id="b6d08c8d:24">
+      </div>
+    </div>
+    <div style="position: absolute; bottom: 28px; right: 48px; text-align: right; font-size: 24px; color: var(--muted);" data-om-id="b6d08c8d:25">
+      <span data-om-id="b6d08c8d:26"></span>
+      <span class="mono" style="margin-left: 16px;" data-om-id="b6d08c8d:27">2026 · 06 · 02</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Slide 2 — Team ========== -->
+<section data-label="02 Team &amp; Roles" data-om-id="b6d08c8d:28" data-screen-label="02 02 Team &amp; Roles" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="1">
+  <div class="frame" data-om-id="b6d08c8d:29">
+    <div class="slide-head" data-om-id="b6d08c8d:30"><h2 class="slide-title" data-om-id="b6d08c8d:31">Team &amp; Roles</h2><div class="eyebrow" data-om-id="b6d08c8d:32"><span class="dot" data-om-id="b6d08c8d:33"></span>A · Intro</div></div>
+
+    <div style="flex: none; margin-top: 40px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 64px; align-items: start;" data-om-id="b6d08c8d:34">
+      <!-- Heatmap -->
+      <div class="card" data-om-id="b6d08c8d:35">
+        <div style="display: grid; grid-template-columns: 140px repeat(5, 1fr); gap: 14px 18px; align-items: center;" data-om-id="b6d08c8d:36">
+          <div data-om-id="b6d08c8d:37"></div>
+          <div style="font-size: 24px; font-weight: 600; color: var(--muted); text-align: center;" data-om-id="b6d08c8d:38">BE</div>
+          <div style="font-size: 24px; font-weight: 600; color: var(--muted); text-align: center;" data-om-id="b6d08c8d:39">FE</div>
+          <div style="font-size: 24px; font-weight: 600; color: var(--muted); text-align: center;" data-om-id="b6d08c8d:40">QA</div>
+          <div style="font-size: 24px; font-weight: 600; color: var(--muted); text-align: center" data-om-id="b6d08c8d:41">Infra</div>
+          <div style="font-size: 24px; font-weight: 600; color: var(--muted); text-align: center" data-om-id="b6d08c8d:42">Others</div>
+
+          <!-- Rows: name + 5 cells; intensity 0–3 via opacity -->
+          <div style="font-size: 24px; font-weight: 500;" data-om-id="b6d08c8d:43">劉仲楷</div>
+          <div class="hm" style="--i:3" data-om-id="b6d08c8d:44"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:45"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:46"></div><div class="hm" style="--i:3" data-om-id="b6d08c8d:47"></div><div class="hm" style="--i:2" data-om-id="b6d08c8d:48"></div>
+
+          <div style="font-size: 24px; font-weight: 500;" data-om-id="b6d08c8d:49">古庭榮</div>
+          <div class="hm" style="--i:3" data-om-id="b6d08c8d:50"></div><div class="hm" style="--i:2" data-om-id="b6d08c8d:51"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:52"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:53"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:54"></div>
+
+          <div style="font-size: 24px; font-weight: 500;" data-om-id="b6d08c8d:55">鄭怡文</div>
+          <div class="hm" style="--i:0" data-om-id="b6d08c8d:56"></div><div class="hm" style="--i:2" data-om-id="b6d08c8d:57"></div><div class="hm" style="--i:3" data-om-id="b6d08c8d:58"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:59"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:60"></div>
+
+          <div style="font-size: 24px; font-weight: 500;" data-om-id="b6d08c8d:61">陳亮諭</div>
+          <div class="hm" style="--i:0" data-om-id="b6d08c8d:62"></div><div class="hm" style="--i:3" data-om-id="b6d08c8d:63"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:64"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:65"></div><div class="hm" style="--i:2" data-om-id="b6d08c8d:66"></div>
+
+          <div style="font-size: 24px; font-weight: 500;" data-om-id="b6d08c8d:67">闕中豪</div>
+          <div class="hm" style="--i:0" data-om-id="b6d08c8d:68"></div><div class="hm" style="--i:2" data-om-id="b6d08c8d:69"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:70"></div><div class="hm" style="--i:3" data-om-id="b6d08c8d:71"></div><div class="hm" style="--i:0" data-om-id="b6d08c8d:72"></div>
+        </div>
+        <div style="margin-top: 28px; display: flex; gap: 12px; align-items: center; font-size: 24px; color: var(--muted);" data-om-id="b6d08c8d:73">
+          <span data-om-id="b6d08c8d:74">Effort</span>
+          <span class="hm" style="--i:0; width: 22px; height: 22px;" data-om-id="b6d08c8d:75"></span>
+          <span class="hm" style="--i:2; width: 22px; height: 22px;" data-om-id="b6d08c8d:76"></span>
+          <span class="hm" style="--i:3; width: 22px; height: 22px;" data-om-id="b6d08c8d:77"></span>
+          <span data-om-id="b6d08c8d:78">Primary</span>
+        </div>
+      </div>
+
+      <!-- Headlines -->
+      <div style="display: flex; flex-direction: column; gap: 22px; height: 493px; padding: 70px 0px 0px" data-om-id="b6d08c8d:79">
+        <div class="member-row" data-om-id="b6d08c8d:80"><span class="mname" data-om-id="b6d08c8d:81">劉仲楷</span><span class="mrole" data-om-id="b6d08c8d:82">Backend FSM · Audit log + CI/CD · Grafana Cloud + Roadmap</span></div>
+        <div class="member-row" data-om-id="b6d08c8d:83"><span class="mname" data-om-id="b6d08c8d:84">古庭榮</span><span class="mrole" data-om-id="b6d08c8d:85">Auth / Asset / Repair API + Manager Dashboard</span></div>
+        <div class="member-row" data-om-id="b6d08c8d:86"><span class="mname" data-om-id="b6d08c8d:87">鄭怡文</span><span class="mrole" data-om-id="b6d08c8d:88">i18n · Frontend refactor + Unit / Integration / E2E / Load&nbsp;Test</span></div>
+        <div class="member-row" data-om-id="b6d08c8d:89"><span class="mname" data-om-id="b6d08c8d:90">陳亮諭</span><span class="mrole" data-om-id="b6d08c8d:91">Asset list · Multi-dim filtering + Presentation</span></div>
+        <div class="member-row" data-om-id="b6d08c8d:92"><span class="mname" data-om-id="b6d08c8d:93">闕中豪</span><span class="mrole" data-om-id="b6d08c8d:94">Antd Layout · Theme switching + AWS infrastructure · ALB HTTPS</span></div>
+      </div>
+    </div>
+
+    <!-- Agile practices strip -->
+    <div class="agile-strip" data-om-id="e1c287e7:95">
+      <div class="as-label" data-om-id="e1c287e7:96"><span class="dot" data-om-id="e1c287e7:97"></span>Agile Practices</div>
+      <div class="as-grid" data-om-id="e1c287e7:98">
+        <div class="am" data-om-id="e1c287e7:99">
+          <span class="am-icon" data-om-id="e1c287e7:100"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="book-open-text" data-om-id="e1c287e7:101" class="lucide lucide-book-open-text"><path d="M12 7v14"></path><path d="M16 12h2"></path><path d="M16 8h2"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path><path d="M6 12h2"></path><path d="M6 8h2"></path></svg></span>
+          <div class="am-body" data-om-id="e1c287e7:102">
+            <div class="am-h" data-om-id="e1c287e7:103">User Stories</div>
+            <div class="am-motif" data-om-id="e1c287e7:104">Personas · Empathy maps · Acceptance criteria</div>
+          </div>
+        </div>
+        <div class="am" data-om-id="e1c287e7:105">
+          <span class="am-icon" data-om-id="e1c287e7:106"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="refresh-cw" data-om-id="e1c287e7:107" class="lucide lucide-refresh-cw"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg></span>
+          <div class="am-body" data-om-id="e1c287e7:108">
+            <div class="am-h" data-om-id="e1c287e7:109">Weekly Sprints + Re-plan</div>
+            <div class="am-motif am-bars" data-om-id="e1c287e7:110"><span class="bar" data-om-id="e1c287e7:111"></span><span class="bar" data-om-id="e1c287e7:112"></span><span class="bar" data-om-id="e1c287e7:113"></span><span class="bar" data-om-id="e1c287e7:114"></span><span class="bar" data-om-id="e1c287e7:115"></span><span class="bar" data-om-id="e1c287e7:116"></span><span class="bar buf" data-om-id="e1c287e7:117"></span><span class="am-note" data-om-id="e1c287e7:118">6 × 1wk</span></div>
+          </div>
+        </div>
+        <div class="am" data-om-id="e1c287e7:119">
+          <span class="am-icon" data-om-id="e1c287e7:120"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="flask-conical" data-om-id="e1c287e7:121" class="lucide lucide-flask-conical"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path><path d="M8.5 2h7"></path><path d="M7 16h10"></path></svg></span>
+          <div class="am-body" data-om-id="e1c287e7:122">
+            <div class="am-h" data-om-id="e1c287e7:123">Test-Driven Development</div>
+            <div class="am-motif am-rg" data-om-id="e1c287e7:124"><span class="rg-dot rg-red" data-om-id="e1c287e7:125"></span>RED<span class="rg-arrow" data-om-id="e1c287e7:126">→</span><span class="rg-dot rg-green" data-om-id="e1c287e7:127"></span>GREEN</div>
+          </div>
+        </div>
+        <div class="am" data-om-id="e1c287e7:128">
+          <span class="am-icon" data-om-id="e1c287e7:129"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="bot" data-om-id="e1c287e7:130" class="lucide lucide-bot"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg></span>
+          <div class="am-body" data-om-id="e1c287e7:131">
+            <div class="am-h" data-om-id="e1c287e7:132">AI-Assisted Pairing</div>
+            <div class="am-motif" data-om-id="e1c287e7:133">Human navigates · AI drives</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:95"><span class="pagenum" data-om-id="b6d08c8d:96">02 · 24</span><span data-om-id="b6d08c8d:97"></span></div>
+  </div>
+  <style>
+    .hm { width: 56px; height: 56px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-alt); justify-self: center; }
+    .hm[style*="--i:2"] { background: oklch(0.78 0.10 252); border-color: oklch(0.72 0.12 252); }
+    .hm[style*="--i:3"] { background: var(--accent); border-color: var(--accent-strong); box-shadow: 0 4px 12px -4px oklch(0.55 0.16 252 / 0.4); }
+    .member-row { display: flex; align-items: baseline; gap: 22px; font-size: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+    .mname { font-weight: 600; min-width: 110px; color: var(--fg); }
+    .mrole { color: var(--fg-soft); line-height: 1.3; }
+    /* agile strip */
+    .agile-strip { margin-top: 36px; padding-top: 32px; border-top: 1px solid var(--border); }
+    .as-label { display: flex; align-items: center; gap: 14px; font-size: 24px; font-weight: 500; color: var(--muted); letter-spacing: 0.04em; margin-bottom: 22px; }
+    .as-label .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
+    .as-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
+    .am { display: flex; align-items: flex-start; gap: 18px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 26px; }
+    .am-icon { flex: none; width: 56px; height: 56px; border-radius: 13px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; }
+    .am-icon svg { width: 30px; height: 30px; color: var(--accent-strong); stroke-width: 2; }
+    .am-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .am-h { font-size: 26px; font-weight: 600; color: var(--fg); line-height: 1.2; display: flex; align-items: baseline; gap: 10px; }
+    .am-idx { font-family: var(--mono); font-size: 24px; font-weight: 500; color: var(--subtle); }
+    .am-motif { font-size: 24px; color: var(--fg-soft); line-height: 1.35; }
+    .am-bars { display: flex; align-items: center; gap: 5px; }
+    .am-bars .bar { width: 12px; height: 26px; border-radius: 3px; background: var(--accent); }
+    .am-bars .bar.buf { background: var(--bg-alt); border: 1px dashed var(--subtle); }
+    .am-note { margin-left: 10px; font-family: var(--mono); font-size: 24px; color: var(--muted); }
+    .am-rg { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 24px; letter-spacing: 0.04em; color: var(--fg-soft); }
+    .am-rg .rg-dot { width: 18px; height: 18px; border-radius: 50%; }
+    .am-rg .rg-red { background: var(--danger); }
+    .am-rg .rg-green { background: var(--success); }
+    .am-rg .rg-arrow { color: var(--muted); }
+  </style>
+</section>
+
+<!-- ========== Slide 3 — Personas ========== -->
+<section data-label="03 兩種使用者" data-om-id="b6d08c8d:98" data-screen-label="03 03 兩種使用者" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="2">
+  <div class="frame" data-om-id="b6d08c8d:99">
+    <div class="slide-head" data-om-id="b6d08c8d:100"><h2 class="slide-title" data-om-id="b6d08c8d:101">User Empathy Map</h2><div class="eyebrow" data-om-id="b6d08c8d:102"><span class="dot" data-om-id="b6d08c8d:103"></span>B · Requirements</div></div>
+
+    <div style="flex: 1; margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px;" data-om-id="b6d08c8d:104">
+      <!-- Holder -->
+      <div class="card" style="display: flex; flex-direction: column; gap: 20px;" data-om-id="b6d08c8d:105">
+        <div style="display: flex; align-items: baseline; gap: 16px;" data-om-id="b6d08c8d:106">
+          <div style="font-size: 32px; font-weight: 600;" data-om-id="b6d08c8d:107">Holder</div>
+          <div class="pill gray" data-om-id="b6d08c8d:108">Repair Requester</div>
+        </div>
+        <div class="empathy" data-om-id="b6d08c8d:109">
+          <div class="quad" data-om-id="b6d08c8d:110"><div class="qlab" data-om-id="b6d08c8d:111">Say</div><div class="qtxt" data-om-id="b6d08c8d:112">「上次填的維修申請,<span class="hl" data-om-id="e1c287e7:152">現在到哪個階段了</span>?有沒有辦法查?」</div></div>
+          <div class="quad" data-om-id="b6d08c8d:113"><div class="qlab" data-om-id="b6d08c8d:114">Do</div><div class="qtxt" data-om-id="b6d08c8d:115">送修兩三天沒消息就<span class="hl" data-om-id="e1c287e7:156">主動用通訊軟體追問</span>。</div></div>
+          <div class="quad" data-om-id="b6d08c8d:116"><div class="qlab" data-om-id="b6d08c8d:117">Think</div><div class="qtxt" data-om-id="b6d08c8d:118">「設備送修期間我要怎麼工作?有沒有<span class="hl" data-om-id="e1c287e7:160">備用機</span>可以借?」</div></div>
+          <div class="quad" data-om-id="b6d08c8d:119"><div class="qlab" data-om-id="b6d08c8d:120">Feel</div><div class="qtxt" data-om-id="b6d08c8d:121"><span class="hl" data-om-id="e1c287e7:164">無法追蹤進度</span>而焦慮,不知設備何時回來。</div></div>
+        </div>
+      </div>
+      <!-- Manager -->
+      <div class="card" style="display: flex; flex-direction: column; gap: 20px;" data-om-id="b6d08c8d:122">
+        <div style="display: flex; align-items: baseline; gap: 16px;" data-om-id="b6d08c8d:123">
+          <div style="font-size: 32px; font-weight: 600;" data-om-id="b6d08c8d:124">Manager</div>
+          <div class="pill gray" data-om-id="b6d08c8d:125">Request Reviewer</div>
+        </div>
+        <div class="empathy" data-om-id="b6d08c8d:126">
+          <div class="quad" data-om-id="b6d08c8d:127"><div class="qlab" data-om-id="b6d08c8d:128">Say</div><div class="qtxt" data-om-id="b6d08c8d:129">「這張單我剛要處理,才發現<span class="hl" data-om-id="e1c287e7:173">同事也在跑同一張</span>。」</div></div>
+          <div class="quad" data-om-id="b6d08c8d:130"><div class="qlab" data-om-id="b6d08c8d:131">Do</div><div class="qtxt" data-om-id="b6d08c8d:132">靠<span class="hl" data-om-id="e1c287e7:177">口頭協調分工</span>避免重工。</div></div>
+          <div class="quad" data-om-id="b6d08c8d:133"><div class="qlab" data-om-id="b6d08c8d:134">Think</div><div class="qtxt" data-om-id="b6d08c8d:135">「我更新了狀態,同事不一定看得到,<span class="hl" data-om-id="e1c287e7:181">兩人同時動同一張</span>怎麼辦?」</div></div>
+          <div class="quad" data-om-id="b6d08c8d:136"><div class="qlab" data-om-id="b6d08c8d:137">Feel</div><div class="qtxt" data-om-id="b6d08c8d:138">用個人協調代替系統機制,做了卻沒解決的<span class="hl" data-om-id="e1c287e7:185">無力感</span>。</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:139">
+      <span class="pagenum" data-om-id="b6d08c8d:140">03 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:141"><strong data-om-id="b6d08c8d:142">30%</strong>Requirements</span>
+    </div>
+  </div>
+  <style>
+    .empathy { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 14px; flex: 1; }
+    .quad { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 10px; padding: 20px 22px; display: flex; flex-direction: column; gap: 8px; }
+    .qlab { font-family: var(--mono); font-size: 24px; color: var(--accent-strong); letter-spacing: 0.06em; text-transform: uppercase; }
+    .qtxt { font-size: 24px; line-height: 1.4; color: var(--fg-soft); }
+    .qtxt .hl { background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 42%; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: var(--fg); font-weight: 600; padding: 0 2px; }
+  </style>
+</section>
+
+<!-- ========== Slide 4 — User Story & AC ========== -->
+<section data-label="04 User Story &amp; Acceptance Criteria" data-om-id="b6d08c8d:143" data-screen-label="04 04 User Story &amp; Acceptance Criteria" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="3">
+  <div class="frame" data-om-id="b6d08c8d:144">
+    <div class="slide-head" data-om-id="b6d08c8d:145"><h2 class="slide-title" data-om-id="b6d08c8d:146">User Story &amp; Acceptance Criteria</h2><div class="eyebrow" data-om-id="b6d08c8d:147"><span class="dot" data-om-id="b6d08c8d:148"></span>B · Requirements</div></div>
+
+    <div style="flex: 1; margin-top: 40px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 36px;" data-om-id="b6d08c8d:149">
+      <!-- US grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-content: start;" data-om-id="b6d08c8d:150">
+        <div class="uscard us-focus" style="grid-column: 1 / -1;" data-om-id="b6d08c8d:151">
+          <div style="display: flex; align-items: baseline; gap: 14px;" data-om-id="b6d08c8d:152"><span class="usid" data-om-id="e1c287e7:200">US-01</span><span class="usrole" data-om-id="e1c287e7:201">Holder</span></div>
+          <div class="ustitle" style="font-size: 25px; line-height: 1.5; font-weight: 400; color: var(--fg-soft);" data-om-id="b6d08c8d:154">身為入職三個月、<span class="hl" data-om-id="e1c287e7:203">從未獨立處理設備故障</span>的業務助理佳慧，我想要填寫故障描述、上傳故障照片並<span class="hl" data-om-id="e1c287e7:204">提交維修申請</span>，這樣才能在設備出問題時<span class="hl" data-om-id="e1c287e7:205">立刻採取正確行動</span>，不因文字難以描述問題而被退件或在主管面前留下不負責任的印象。</div>
+        </div>
+        <div class="uscard" data-om-id="b6d08c8d:155">
+          <div class="usid" data-om-id="b6d08c8d:156">US-02</div>
+          <div class="usrole" data-om-id="b6d08c8d:157">Holder</div>
+          <div class="ustitle" data-om-id="b6d08c8d:158">查詢維修申請進度</div>
+        </div>
+        <div class="uscard" data-om-id="b6d08c8d:159">
+          <div class="usid" data-om-id="b6d08c8d:160">US-03</div>
+          <div class="usrole" data-om-id="b6d08c8d:161">Holder</div>
+          <div class="ustitle" data-om-id="b6d08c8d:162">查看持有設備清單</div>
+        </div>
+        <div class="uscard" data-om-id="b6d08c8d:163">
+          <div class="usid" data-om-id="b6d08c8d:164">US-04</div>
+          <div class="usrole" data-om-id="b6d08c8d:165">Manager</div>
+          <div class="ustitle" data-om-id="b6d08c8d:166">審查並推進維修流程</div>
+        </div>
+        <div class="uscard" data-om-id="b6d08c8d:167">
+          <div class="usid" data-om-id="b6d08c8d:168">US-05</div>
+          <div class="usrole" data-om-id="b6d08c8d:169">Manager</div>
+          <div class="ustitle" data-om-id="b6d08c8d:170">查詢所有設備與保固</div>
+        </div>
+        <div class="uscard" data-om-id="b6d08c8d:171">
+          <div class="usid" data-om-id="b6d08c8d:172">US-06</div>
+          <div class="usrole" data-om-id="b6d08c8d:173">Manager</div>
+          <div class="ustitle" data-om-id="b6d08c8d:174">登記新採購設備入庫</div>
+        </div>
+      </div>
+
+      <!-- AC zoom in -->
+      <div class="card card-accent" style="display: flex; flex-direction: column; gap: 20px;" data-om-id="b6d08c8d:175">
+        <div style="display: flex; align-items: center; gap: 12px;" data-om-id="b6d08c8d:176">
+          <span class="pill" data-om-id="b6d08c8d:177">US-01 Acceptance Criteria</span>
+          <span style="font-size: 24px; color: var(--muted);" data-om-id="b6d08c8d:178">持有者送出維修申請</span>
+        </div>
+        <div style="font-size: 24px; font-weight: 400; line-height: 1.4; color: var(--fg-soft);" data-om-id="b6d08c8d:179">填資產編號與故障描述後可提交,顯示成功並<span class="hl" data-om-id="e1c287e7:231">產生唯一申請單編號</span>;申請單狀態為「待審查」。</div>
+        <ol style="margin: 0; padding-left: 28px; display: flex; flex-direction: column; gap: 14px; font-size: 24px; color: var(--fg-soft); line-height: 1.4;" data-om-id="b6d08c8d:180">
+          <li data-om-id="b6d08c8d:181">可選擇<span class="hl" data-om-id="e1c287e7:234">上傳故障照片</span>,成功後附於申請單。</li>
+          <li data-om-id="e1c287e7:235">申請提交後，申請單狀態顯示為<span class="hl" data-om-id="e1c287e7:236">「待審查」</span>。</li>
+          <li data-om-id="e1c287e7:237">設備持有者可選擇上傳故障照片，照片上傳成功後附於申請單中<span class="hl" data-om-id="e1c287e7:238">供管理人員查看</span>。</li>
+          <li data-om-id="b6d08c8d:182"><span class="acbad" data-om-id="b6d08c8d:183">Edge case</span> 故障描述為空,不允許提交。</li>
+          <li data-om-id="b6d08c8d:184"><span class="acbad" data-om-id="b6d08c8d:185">Edge case</span> 資產編號不存在,拒絕提交並提示無效。</li>
+          <li data-om-id="b6d08c8d:186"><span class="acbad" data-om-id="b6d08c8d:187">Edge case</span> 設備已為「維修中」,禁止重複提交。</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:188">
+      <span class="pagenum" data-om-id="b6d08c8d:189">04 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:190"><strong data-om-id="b6d08c8d:191">30%</strong>Requirements</span>
+    </div>
+  </div>
+  <style>
+    .uscard { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 8px; }
+    .uscard.us-focus { border-color: var(--accent); background: var(--bg-alt); }
+    .usid { font-family: var(--mono); font-size: 24px; color: var(--accent-strong); font-weight: 600; }
+    .usrole { font-size: 24px; color: var(--muted); }
+    .ustitle { font-size: 24px; font-weight: 500; color: var(--fg); line-height: 1.3; }
+    .ustitle .hl { background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 42%; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: var(--fg); font-weight: 600; padding: 0 2px; }
+    .card-accent .hl { background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); background-repeat: no-repeat; background-position: 0 100%; background-size: 100% 42%; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: var(--fg); font-weight: 600; padding: 0 2px; }
+    .acbad { font-family: var(--mono); font-size: 24px; color: var(--danger); background: var(--danger-soft); padding: 2px 10px; border-radius: 4px; margin-right: 6px; }
+  </style>
+</section>
+
+<!-- ========== Slide 5 — Scope ========== -->
+<section data-label="05 Scope" data-om-id="b6d08c8d:192" data-screen-label="05 05 Scope" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="4">
+  <div class="frame" data-om-id="b6d08c8d:193">
+    <div class="slide-head" data-om-id="b6d08c8d:194"><h2 class="slide-title" data-om-id="b6d08c8d:195">Functional Requirements</h2><div class="eyebrow" data-om-id="b6d08c8d:196"><span class="dot" data-om-id="b6d08c8d:197"></span>B · Requirements</div></div>
+
+    <div style="flex: 1; min-height: 0; margin-top: 32px; display: grid; grid-template-columns: 420px 1fr; gap: 28px;" data-om-id="b6d08c8d:198">
+      <!-- Module map (stacked) -->
+      <div style="display: flex; flex-direction: column; gap: 16px;" data-om-id="b6d08c8d:199">
+        <div class="pillar" data-om-id="b6d08c8d:200">
+          <div class="ph" data-om-id="b6d08c8d:201">資產基礎資訊管理模組</div>
+          <div class="pitem" data-om-id="b6d08c8d:202"><span class="check" data-om-id="b6d08c8d:203">✓</span>資產登記與分類(唯一編號)</div>
+          <div class="pitem" data-om-id="b6d08c8d:204"><span class="check" data-om-id="b6d08c8d:205">✓</span>採購入庫:型號 / 供應商 / 金額</div>
+          <div class="pitem" data-om-id="b6d08c8d:206"><span class="check" data-om-id="b6d08c8d:207">✓</span>詳細屬性:地點 / 負責人 / 保固</div>
+          <div class="pitem" data-om-id="b6d08c8d:208"><span class="check" data-om-id="b6d08c8d:209">✓</span>資產狀態 FSM</div>
+        </div>
+        <div class="pillar" data-om-id="b6d08c8d:210">
+          <div class="ph" data-om-id="b6d08c8d:211">申請單管理模組</div>
+          <div class="pitem" data-om-id="b6d08c8d:212"><span class="check" data-om-id="b6d08c8d:213">✓</span>申請 → 審查(同意 / 拒絕)</div>
+          <div class="pitem" data-om-id="b6d08c8d:214"><span class="check" data-om-id="b6d08c8d:215">✓</span>維修中:日期 / 內容 / 方案 / 費用</div>
+          <div class="pitem" data-om-id="b6d08c8d:216"><span class="check" data-om-id="b6d08c8d:217">✓</span>維修完成 → 流程結束</div>
+          <div class="pitem" data-om-id="b6d08c8d:218"><span class="check" data-om-id="b6d08c8d:219">✓</span>歷史維修 + 操作紀錄</div>
+        </div>
+        <div style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;" data-om-id="b6d08c8d:220">
+          <span style="font-size: 24px; color: var(--muted); font-weight: 500;" data-om-id="b6d08c8d:221"></span>
+          <div style="display: flex; gap: 14px 28px; flex-wrap: wrap;" data-om-id="b6d08c8d:222">
+            <span class="infra" data-om-id="b6d08c8d:223"><span class="check" data-om-id="b6d08c8d:224">✓</span>Image upload</span>
+            <span class="infra" data-om-id="b6d08c8d:225"><span class="check" data-om-id="b6d08c8d:226">✓</span>i18n (zh-TW + EN)</span>
+            <span class="infra" data-om-id="b6d08c8d:227"><span class="check" data-om-id="b6d08c8d:228">✓</span>Concurrency control</span>
+            <span class="infra" data-om-id="b6d08c8d:229"><span class="check" data-om-id="b6d08c8d:230">✓</span>Asset query / filter</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screenshot -->
+      <div style="display: flex; flex-direction: column; min-height: 0; justify-content: center;" data-om-id="b6d08c8d:231">
+        <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 6px; box-shadow: 0 20px 40px -20px rgba(15,23,42,0.18);" data-om-id="b6d08c8d:232">
+          <img src="assets/fe-holder-asset.png" alt="Holder asset list" style="width: 1414px; height: auto; display: block; border-radius: 6px; object-fit: cover" data-om-id="b6d08c8d:233">
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:234">
+      <span class="pagenum" data-om-id="b6d08c8d:235">05 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:236"><strong data-om-id="b6d08c8d:237">30%</strong>Requirements</span>
+    </div>
+  </div>
+  <style>
+    .pillar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; }
+    .ph { font-size: 24px; font-weight: 600; color: var(--fg); padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+    .pitem, .infra { font-size: 24px; color: var(--fg-soft); display: flex; align-items: center; gap: 10px; line-height: 1.3; }
+    .check { color: var(--success); font-weight: 600; }
+  </style>
+</section>
+
+<!-- ========== Slide 6 — Tech stack ========== -->
+<section data-label="06 Demo · Holder" data-screen-label="06 06 Demo · Holder" data-om-validate="no_overlapping_text" data-om-id="e1c287e7:574" data-deck-slide="5">
+  <div class="frame" style="padding: 0; background: #0a0a0a;" data-om-id="e1c287e7:575">
+    <video class="demo-video" src="assets/demo/holder-journey.webm" poster="assets/demo/holder-journey-poster.png" controls="" muted="" loop="" playsinline="" preload="metadata" data-om-id="e1c287e7:576"></video>
+    <div class="demo-badge" data-om-id="e1c287e7:577">
+      <span class="demo-eyebrow" data-om-id="e1c287e7:578"><span class="dot" data-om-id="e1c287e7:579"></span>D · Live Demo</span>
+      <span class="demo-title" data-om-id="e1c287e7:580">Holder: log in &amp; submit a repair request</span>
+    </div>
+    <div class="demo-foot" data-om-id="e1c287e7:581"><span class="pagenum" data-om-id="e1c287e7:582">06 · 24</span></div>
+  </div>
+  <style>
+    .demo-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #0a0a0a; display: block; }
+    .demo-badge { position: absolute; bottom: 36px; left: 40px; display: flex; flex-direction: column; gap: 10px; padding: 18px 24px; background: oklch(0.18 0.01 250 / 0.62); backdrop-filter: blur(10px); border: 1px solid oklch(1 0 0 / 0.12); border-radius: 14px; pointer-events: none; }
+    .demo-eyebrow { display: flex; align-items: center; gap: 12px; font-size: 24px; font-weight: 500; color: oklch(0.85 0.02 250); letter-spacing: 0.04em; }
+    .demo-eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
+    .demo-title { font-size: 38px; font-weight: 600; color: #fff; letter-spacing: -0.01em; }
+    .demo-foot { position: absolute; right: 40px; bottom: 28px; font-family: var(--mono); font-size: 24px; color: oklch(0.9 0.01 250 / 0.7); pointer-events: none; }
+  </style>
+</section><section data-label="07 Demo · Manager" data-screen-label="07 07 Demo · Manager" data-om-validate="no_overlapping_text" data-om-id="e1c287e7:583" data-deck-slide="6">
+  <div class="frame" style="padding: 0; background: #0a0a0a;" data-om-id="e1c287e7:584">
+    <video class="demo-video" src="assets/demo/manager-journey.webm" poster="assets/demo/manager-journey-poster.png" controls="" muted="" loop="" playsinline="" preload="metadata" data-om-id="e1c287e7:585"></video>
+    <div class="demo-badge" data-om-id="e1c287e7:586">
+      <span class="demo-eyebrow" data-om-id="e1c287e7:587"><span class="dot" data-om-id="e1c287e7:588"></span>D · Live Demo</span>
+      <span class="demo-title" data-om-id="e1c287e7:589">Manager: review, approve &amp; complete a repair</span>
+    </div>
+    <div class="demo-foot" data-om-id="e1c287e7:590"><span class="pagenum" data-om-id="e1c287e7:591">07 · 24</span></div>
+  </div>
+</section><section data-label="08 Tech Stack &amp; Architecture Patterns" data-om-id="b6d08c8d:238" data-screen-label="08 08 Tech Stack &amp; Architecture Patterns" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="7">
+  <div class="frame" data-om-id="b6d08c8d:239">
+    <div class="slide-head" data-om-id="b6d08c8d:240"><h2 class="slide-title" data-om-id="b6d08c8d:241" style="font-size: 52px; white-space: nowrap;">Tech Stack &amp; Architecture Patterns</h2><div class="eyebrow" data-om-id="b6d08c8d:242"><span class="dot" data-om-id="b6d08c8d:243"></span>C · Architecture</div></div>
+
+    <div style="flex: 1; margin-top: 48px; display: flex; flex-direction: column; gap: 22px;" data-om-id="b6d08c8d:244">
+      <div class="stack-row" data-om-id="b6d08c8d:245">
+        <div class="stack-label" data-om-id="b6d08c8d:246"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="layout-template" data-om-id="b6d08c8d:247" class="lucide lucide-layout-template"><rect width="18" height="7" x="3" y="3" rx="1"></rect><rect width="9" height="7" x="3" y="14" rx="1"></rect><rect width="5" height="7" x="16" y="14" rx="1"></rect></svg>Frontend</div>
+        <div class="stack-items" data-om-id="b6d08c8d:248">
+          <span class="techchip" data-om-id="b6d08c8d:249">React 18</span>
+          <span class="techchip" data-om-id="b6d08c8d:250">Vite</span>
+          <span class="techchip" data-om-id="b6d08c8d:251">TypeScript</span>
+          <span class="techchip" data-om-id="b6d08c8d:252">Ant Design v6</span>
+          <span class="techchip" data-om-id="b6d08c8d:253">Playwright</span>
+          <span class="techchip" data-om-id="e1c287e7:314">Vitest</span>
+        </div>
+      </div>
+      <div class="stack-row" data-om-id="b6d08c8d:254">
+        <div class="stack-label" data-om-id="b6d08c8d:255"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="server" data-om-id="b6d08c8d:256" class="lucide lucide-server"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"></rect><rect width="20" height="8" x="2" y="14" rx="2" ry="2"></rect><line x1="6" x2="6.01" y1="6" y2="6"></line><line x1="6" x2="6.01" y1="18" y2="18"></line></svg>Backend</div>
+        <div class="stack-items" data-om-id="b6d08c8d:257">
+          <span class="techchip" data-om-id="b6d08c8d:258">FastAPI</span>
+          <span class="techchip" data-om-id="b6d08c8d:259">SQLAlchemy</span>
+          <span class="techchip" data-om-id="b6d08c8d:260">Alembic</span>
+          <span class="techchip" data-om-id="b6d08c8d:261">MySQL 8</span>
+          <span class="techchip" data-om-id="b6d08c8d:262">pytest</span>
+        </div>
+      </div>
+      <div class="stack-row" data-om-id="b6d08c8d:263">
+        <div class="stack-label" data-om-id="b6d08c8d:264"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="cloud" data-om-id="b6d08c8d:265" class="lucide lucide-cloud"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>Infra</div>
+        <div class="stack-items" data-om-id="b6d08c8d:266">
+          <span class="techchip" data-om-id="b6d08c8d:267">AWS ECS Fargate</span>
+          <span class="techchip" data-om-id="b6d08c8d:268">ALB</span>
+          <span class="techchip" data-om-id="b6d08c8d:269">RDS Multi-AZ</span>
+          <span class="techchip" data-om-id="b6d08c8d:270">S3</span>
+          <span class="techchip" data-om-id="e1c287e7:337">Docker</span>
+          <span class="techchip" data-om-id="e1c287e7:338">Docker Compose</span>
+        </div>
+      </div>
+      <div class="stack-row" data-om-id="e1c287e7:339">
+        <div class="stack-label" data-om-id="e1c287e7:340"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" data-om-id="e1c287e7:341"><line x1="6" x2="6" y1="3" y2="15" data-om-id="e1c287e7:342"></line><circle cx="18" cy="6" r="3" data-om-id="e1c287e7:343"></circle><circle cx="6" cy="18" r="3" data-om-id="e1c287e7:344"></circle><path d="M18 9a9 9 0 0 1-9 9" data-om-id="e1c287e7:345"></path></svg>CI / CD</div>
+        <div class="stack-items" data-om-id="e1c287e7:346">
+          <span class="techchip" data-om-id="e1c287e7:347">GitHub Actions</span>
+          <span class="techchip" data-om-id="e1c287e7:348">SonarCloud</span>
+          <span class="techchip" data-om-id="e1c287e7:349">gitleaks</span>
+          <span class="techchip" data-om-id="e1c287e7:350">Semgrep</span>
+          <span class="techchip" data-om-id="e1c287e7:351">Trivy</span>
+          <span class="techchip" data-om-id="e1c287e7:352">pip-audit</span>
+          <span class="techchip" data-om-id="e1c287e7:353">npm-audit</span>
+          <span class="techchip" data-om-id="e1c287e7:354">k6</span>
+        </div>
+      </div>
+      <div class="stack-row" data-om-id="e1c287e7:355">
+        <div class="stack-label" data-om-id="e1c287e7:356"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" data-om-id="e1c287e7:357"><path d="M22 12h-4l-3 9L9 3l-3 9H2" data-om-id="e1c287e7:358"></path></svg>Observability</div>
+        <div class="stack-items" data-om-id="e1c287e7:359">
+          <span class="techchip" data-om-id="e1c287e7:360">Grafana Cloud</span>
+          <span class="techchip" data-om-id="e1c287e7:361">CloudWatch</span>
+          <span class="techchip" data-om-id="e1c287e7:362">OpenTelemetry</span>
+          <span class="techchip" data-om-id="e1c287e7:363">Loki</span>
+          <span class="techchip" data-om-id="e1c287e7:364">Tempo</span>
+          <span class="techchip" data-om-id="e1c287e7:365">Pyroscope</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:285">
+      <span class="pagenum" data-om-id="b6d08c8d:286">08 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:287"><strong data-om-id="b6d08c8d:288">25%</strong>Architecture</span>
+    </div>
+  </div>
+  <style>
+    .stack-row { display: grid; grid-template-columns: 270px 1fr; align-items: center; gap: 32px; padding: 20px 28px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; }
+    .stack-label { font-family: var(--mono); font-size: 28px; color: var(--accent-strong); letter-spacing: 0.04em; font-weight: 600; display: flex; align-items: center; gap: 16px; white-space: nowrap; }
+    .stack-label svg { width: 40px; height: 40px; stroke-width: 2; flex-shrink: 0; }
+    .stack-items { display: flex; gap: 14px; flex-wrap: wrap; }
+    .techchip { padding: 10px 18px; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; font-size: 24px; color: var(--fg); font-weight: 500; white-space: nowrap; }
+  </style>
+</section>
+
+<!-- ========== Slide 9 — Capacity estimate (why this architecture) ========== -->
+<section data-label="09 Capacity Estimate" data-screen-label="09 09 Growth-Phase Capacity Estimate" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text">
+  <div class="frame" style="padding-bottom: 104px;">
+    <div class="slide-head"><h2 class="slide-title">Growth-Phase Capacity Estimate</h2><div class="eyebrow"><span class="dot"></span>C · Architecture</div></div>
+    <div class="cap-main">
+      <!-- Left: traffic -->
+      <div class="cap-col">
+        <div class="cap-colhead"><span class="cap-coltag">Traffic</span><span class="cap-coldesc">DAU → peak throughput</span></div>
+        <div class="cap-funnel">
+        <div class="cap-step">
+          <div class="cap-num">30,000</div>
+          <div class="cap-stepmeta"><div class="cap-steplabel">Daily active users</div><div class="cap-stepsub">growth-phase target · DAU</div></div>
+        </div>
+        <div class="cap-op"><span class="cap-arrow">↓</span><span class="cap-oppill">× 3 page views / user · day</span></div>
+        <div class="cap-step">
+          <div class="cap-num">90,000</div>
+          <div class="cap-stepmeta"><div class="cap-steplabel">Daily page views</div><div class="cap-stepsub">PV / day</div></div>
+        </div>
+        <div class="cap-op"><span class="cap-arrow">↓</span><span class="cap-oppill">÷ 86,400 seconds / day</span></div>
+        <div class="cap-step">
+          <div class="cap-num">≈&nbsp;1<span class="cap-unit">QPS</span></div>
+          <div class="cap-stepmeta"><div class="cap-steplabel">Average throughput</div><div class="cap-stepsub">requests / second</div></div>
+        </div>
+        <div class="cap-op"><span class="cap-arrow">↓</span><span class="cap-oppill">× 4 — peak factor · 80 / 20 rule</span></div>
+        <div class="cap-step">
+          <div class="cap-num">4.2<span class="cap-unit">QPS</span></div>
+          <div class="cap-stepmeta"><div class="cap-steplabel">Peak throughput</div><div class="cap-stepsub">busiest second of the day</div></div>
+        </div>
+      </div>
+        <div class="cap-take cap-take-accent">
+          <ul class="clean cap-take-list">
+            <li>The design of redundancy targets availability <strong>not</strong> throughput.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Right: storage -->
+      <div class="cap-col cap-col-right">
+        <div class="cap-colhead"><span class="cap-coltag cap-coltag-data">Storage</span><span class="cap-coldesc">3-year data scale</span></div>
+        <div class="cap-storage">
+          <div class="cap-step">
+            <div class="cap-num">200K</div>
+            <div class="cap-stepmeta"><div class="cap-steplabel">Assets under management</div><div class="cap-stepsub">the real design pressure</div></div>
+          </div>
+          <div class="cap-step">
+            <div class="cap-num">120K</div>
+            <div class="cap-stepmeta"><div class="cap-steplabel">Repair requests</div><div class="cap-stepsub">per year</div></div>
+          </div>
+          <div class="cap-step">
+            <div class="cap-num">~600 GB</div>
+            <div class="cap-stepmeta"><div class="cap-steplabel">Repair images</div><div class="cap-stepsub">accumulated over 3 years</div></div>
+          </div>
+        </div>
+        <div class="cap-take cap-take-accent">
+          <ul class="clean cap-take-list">
+            <li>Two nodes behind a load balancer + RDS <strong>Multi-AZ</strong> removes the single point of failure.</li>
+            <li><strong>Composite indexes</strong> keep queries fast across 200,000 assets.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot">
+      <span class="pagenum">09 · 24</span>
+      <span class="scoretag"><strong>25%</strong>Architecture · Scalability</span>
+    </div>
+  </div>
+  <style>
+    .cap-lede { margin: 12px 0 0; max-width: 1740px; }
+    .cap-main { flex: 1; min-height: 0; margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items: start; }
+    .cap-col { display: flex; flex-direction: column; min-width: 0; }
+    .cap-colhead { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
+    .cap-coltag { font-family: var(--mono); font-size: 26px; font-weight: 600; letter-spacing: 0.02em; color: var(--accent-strong); }
+    .cap-coldesc { font-size: 24px; color: var(--muted); }
+
+    /* Stat steps — shared by funnel (traffic) + storage */
+    .cap-step { display: flex; align-items: center; gap: 26px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 30px; }
+    .cap-step .cap-num { font-size: 46px; font-weight: 700; letter-spacing: -0.02em; color: var(--fg); line-height: 1; white-space: nowrap; min-width: 210px; }
+    .cap-step .cap-unit { font-family: var(--mono); font-size: 24px; font-weight: 500; color: var(--muted); margin-left: 10px; letter-spacing: 0.02em; }
+    .cap-steplabel { font-size: 26px; font-weight: 600; color: var(--fg); }
+    .cap-stepsub { font-size: 24px; color: var(--muted); margin-top: 2px; }
+    .cap-step-peak { background: var(--accent-soft); border-color: oklch(0.72 0.10 252); }
+    .cap-step-peak .cap-num, .cap-step-peak .cap-unit { color: var(--accent-strong); }
+
+    /* Funnel (left) */
+    .cap-funnel { display: flex; flex-direction: column; }
+    .cap-op { display: flex; align-items: center; gap: 16px; padding: 5px 0 5px 40px; }
+    .cap-arrow { color: oklch(0.72 0.04 252); font-size: 26px; line-height: 1; width: 22px; text-align: center; }
+    .cap-oppill { font-family: var(--mono); font-size: 24px; color: var(--accent-strong); background: var(--bg-alt); border: 1px solid var(--border); border-radius: 999px; padding: 6px 18px; }
+
+    /* Storage (right) */
+    .cap-storage { display: flex; flex-direction: column; gap: 16px; }
+
+    /* Takeaway — pinned to bottom of the storage column */
+    .cap-take { margin-top: 18px; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 14px; padding: 24px 30px; display: flex; flex-direction: column; gap: 14px; }
+    .cap-take-accent { background: var(--accent-soft); border-color: oklch(0.72 0.10 252); }
+    .cap-take-accent .cap-take-h { color: var(--accent-strong); }
+    .cap-take-h { font-family: var(--mono); font-size: 24px; font-weight: 600; letter-spacing: 0.03em; color: var(--muted); }
+    .cap-take-list { gap: 14px; }
+    .cap-take-list li { font-size: 24px; }
+    .cap-take-list li strong { color: var(--fg); font-weight: 700; }
+  </style>
+</section>
+
+<!-- ========== Slide 9b — Original AWS architecture design ========== -->
+<section data-label="Original AWS Architecture" data-screen-label="10 Original AWS Architecture Design" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text">
+  <div class="frame">
+    <div class="slide-head"><h2 class="slide-title">Original AWS Architecture Design</h2><div class="eyebrow"><span class="dot"></span>C · Architecture</div></div>
+
+    <div style="flex: 1; margin-top: 24px; display: flex; min-height: 0;">
+      <div class="card" style="flex: 1; padding: 24px; display: flex; min-height: 0; align-items: center; justify-content: center;">
+        <img src="assets/aws-org.png" alt="Original AWS architecture design diagram" style="width: 100%; height: 100%; min-height: 0; object-fit: contain;">
+      </div>
+    </div>
+
+    <div class="slide-foot">
+      <span class="pagenum">10 · 24</span>
+      <span class="scoretag"><strong>25%</strong>Architecture · Scalability</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Slide 7 — AWS architecture ========== -->
+<section data-label="10 Production AWS Architecture" data-om-id="b6d08c8d:289" data-screen-label="10 10 Production AWS Architecture" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="8">
+  <div class="frame" data-om-id="b6d08c8d:290">
+    <div class="slide-head" data-om-id="b6d08c8d:291"><h2 class="slide-title" data-om-id="b6d08c8d:292">Production AWS Architecture</h2><div class="eyebrow" data-om-id="b6d08c8d:293"><span class="dot" data-om-id="b6d08c8d:294"></span>C · Architecture</div></div>
+
+    <div style="flex: 1; margin-top: 24px; display: grid; grid-template-columns: 1fr; gap: 32px; min-height: 0;" data-om-id="b6d08c8d:295">
+      <!-- Architecture diagram -->
+      <div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 8px; width: 1576px;" data-om-id="b6d08c8d:296">
+        <img src="assets/aws.png?v=2" alt="Production AWS architecture diagram" style="width: 1326px; flex: 1; min-height: 0; object-fit: contain; padding: 0px; margin: 0px 0px 0px 100px" data-om-id="b6d08c8d:297">
+        <svg viewBox="0 0 960 660" style="display: none;" preserveAspectRatio="xMidYMid meet" font-family="var(--mono)" data-om-id="b6d08c8d:298">
+          <defs data-om-id="b6d08c8d:299">
+            <marker id="aws-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" data-om-id="b6d08c8d:300">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.48 0.18 252)" data-om-id="b6d08c8d:301"></path>
+            </marker>
+            <marker id="aws-arr-soft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse" data-om-id="b6d08c8d:302">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.50 0.010 250)" data-om-id="b6d08c8d:303"></path>
+            </marker>
+            <style>
+              .aws-edge       { stroke: oklch(0.48 0.18 252); stroke-width: 2; fill: none; }
+              .aws-edge-soft  { stroke: oklch(0.50 0.010 250); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+              .aws-node       { fill: oklch(0.97 0.004 250); stroke: oklch(0.80 0.006 250); stroke-width: 1.5; }
+              .aws-node-blue  { fill: oklch(0.95 0.04 252); stroke: oklch(0.55 0.16 252); stroke-width: 1.5; }
+              .aws-name       { fill: oklch(0.20 0.012 250); font-size: 22px; font-weight: 700; }
+              .aws-sub        { fill: oklch(0.50 0.010 250); font-size: 18px; font-weight: 500; }
+              .aws-edge-label { fill: oklch(0.48 0.18 252); font-size: 18px; font-weight: 600; }
+              .aws-edge-label-soft { fill: oklch(0.50 0.010 250); font-size: 18px; font-style: italic; }
+              .aws-region-label { fill: oklch(0.50 0.010 250); font-size: 18px; font-weight: 600; }
+              .aws-vpc-label    { fill: oklch(0.50 0.010 250); font-size: 18px; }
+            </style>
+          </defs>
+
+          <!-- AWS Region container -->
+          <rect x="240" y="80" width="710" height="570" rx="10" fill="oklch(0.99 0.003 250)" stroke="oklch(0.80 0.006 250)" stroke-width="1.5" stroke-dasharray="6 4" data-om-id="b6d08c8d:304"></rect>
+          <text class="aws-region-label" x="260" y="108" data-om-id="b6d08c8d:305">AWS · ap-east-2</text>
+
+          <!-- VPC container -->
+          <rect x="265" y="125" width="665" height="510" rx="8" fill="oklch(0.985 0.003 250)" stroke="oklch(0.85 0.006 250)" stroke-width="1.5" data-om-id="b6d08c8d:306"></rect>
+          <text class="aws-vpc-label" x="285" y="152" data-om-id="b6d08c8d:307">VPC · 10.0.0.0/16</text>
+
+          <!-- User (external) -->
+          <g data-om-id="b6d08c8d:308">
+            <rect class="aws-node" x="20" y="290" width="160" height="80" rx="8" data-om-id="b6d08c8d:309"></rect>
+            <text class="aws-name" x="100" y="325" text-anchor="middle" data-om-id="b6d08c8d:310">User</text>
+            <text class="aws-sub" x="100" y="350" text-anchor="middle" data-om-id="b6d08c8d:311">HTTPS 443</text>
+          </g>
+
+          <!-- Grafana Cloud (external, top-left) -->
+          <g data-om-id="b6d08c8d:312">
+            <rect class="aws-node" x="35" y="100" width="170" height="80" rx="8" stroke-dasharray="5 4" data-om-id="b6d08c8d:313"></rect>
+            <text class="aws-name" x="120" y="135" text-anchor="middle" data-om-id="b6d08c8d:314">Grafana Cloud</text>
+            <text class="aws-sub" x="120" y="160" text-anchor="middle" data-om-id="b6d08c8d:315">OTLP collector</text>
+          </g>
+
+          <!-- Route 53 (inside region, outside VPC) -->
+          <g data-om-id="b6d08c8d:316">
+            <rect class="aws-node" x="280" y="290" width="170" height="80" rx="8" data-om-id="b6d08c8d:317"></rect>
+            <text class="aws-name" x="365" y="325" text-anchor="middle" data-om-id="b6d08c8d:318">Route 53</text>
+            <text class="aws-sub" x="365" y="350" text-anchor="middle" data-om-id="b6d08c8d:319">ams-group30.online</text>
+          </g>
+
+          <!-- ALB (inside VPC) -->
+          <g data-om-id="b6d08c8d:320">
+            <rect class="aws-node-blue" x="510" y="270" width="190" height="120" rx="8" data-om-id="b6d08c8d:321"></rect>
+            <text class="aws-name" x="605" y="305" text-anchor="middle" data-om-id="b6d08c8d:322">Application LB</text>
+            <text class="aws-sub" x="605" y="332" text-anchor="middle" data-om-id="b6d08c8d:323">ACM · TLS</text>
+            <text class="aws-sub" x="605" y="358" text-anchor="middle" data-om-id="b6d08c8d:324">HTTP → HTTPS 301</text>
+          </g>
+
+          <!-- ECS Frontend -->
+          <g data-om-id="b6d08c8d:325">
+            <rect class="aws-node" x="720" y="180" width="195" height="100" rx="8" data-om-id="b6d08c8d:326"></rect>
+            <text class="aws-name" x="818" y="215" text-anchor="middle" data-om-id="b6d08c8d:327">ECS frontend</text>
+            <text class="aws-sub" x="818" y="241" text-anchor="middle" data-om-id="b6d08c8d:328">Fargate · React 18</text>
+            <text class="aws-sub" x="818" y="265" text-anchor="middle" data-om-id="b6d08c8d:329">Nginx static</text>
+          </g>
+
+          <!-- ECS Backend -->
+          <g data-om-id="b6d08c8d:330">
+            <rect class="aws-node" x="720" y="405" width="195" height="100" rx="8" data-om-id="b6d08c8d:331"></rect>
+            <text class="aws-name" x="818" y="440" text-anchor="middle" data-om-id="b6d08c8d:332">ECS backend</text>
+            <text class="aws-sub" x="818" y="466" text-anchor="middle" data-om-id="b6d08c8d:333">Fargate · FastAPI</text>
+            <text class="aws-sub" x="818" y="490" text-anchor="middle" data-om-id="b6d08c8d:334">uvicorn</text>
+          </g>
+
+          <!-- Data layer -->
+          <g data-om-id="b6d08c8d:335">
+            <rect class="aws-node" x="290" y="530" width="180" height="90" rx="8" data-om-id="b6d08c8d:336"></rect>
+            <text class="aws-name" x="380" y="563" text-anchor="middle" data-om-id="b6d08c8d:337">RDS MySQL</text>
+            <text class="aws-sub" x="380" y="588" text-anchor="middle" data-om-id="b6d08c8d:338">ams-database</text>
+            <text class="aws-sub" x="380" y="610" text-anchor="middle" data-om-id="b6d08c8d:339">private subnet</text>
+
+            <rect class="aws-node" x="500" y="530" width="180" height="90" rx="8" data-om-id="b6d08c8d:340"></rect>
+            <text class="aws-name" x="590" y="563" text-anchor="middle" data-om-id="b6d08c8d:341">S3</text>
+            <text class="aws-sub" x="590" y="588" text-anchor="middle" data-om-id="b6d08c8d:342">ams-repair-images</text>
+            <text class="aws-sub" x="590" y="610" text-anchor="middle" data-om-id="b6d08c8d:343">VPC endpoint</text>
+
+            <rect class="aws-node" x="710" y="530" width="200" height="90" rx="8" data-om-id="b6d08c8d:344"></rect>
+            <text class="aws-name" x="810" y="563" text-anchor="middle" data-om-id="b6d08c8d:345">Secrets Manager</text>
+            <text class="aws-sub" x="810" y="588" text-anchor="middle" data-om-id="b6d08c8d:346">DB / app secrets</text>
+            <text class="aws-sub" x="810" y="610" text-anchor="middle" data-om-id="b6d08c8d:347">IAM bound</text>
+          </g>
+
+          <!-- ====== Edges ====== -->
+          <!-- User -> Route 53 (DNS) -->
+          <line class="aws-edge" x1="180" y1="320" x2="278" y2="320" marker-end="url(#aws-arr)" data-om-id="b6d08c8d:348"></line>
+          <text class="aws-edge-label" x="195" y="310" data-om-id="b6d08c8d:349">DNS</text>
+          <!-- Route 53 -> ALB (alias) -->
+          <line class="aws-edge" x1="450" y1="330" x2="508" y2="330" marker-end="url(#aws-arr)" data-om-id="b6d08c8d:350"></line>
+          <text class="aws-edge-label" x="455" y="322" data-om-id="b6d08c8d:351">alias</text>
+
+          <!-- ALB -> Frontend (path: /) -->
+          <path class="aws-edge" d="M 700 295 L 712 295 L 712 230 L 718 230" marker-end="url(#aws-arr)" data-om-id="b6d08c8d:352"></path>
+          <text class="aws-edge-label" x="704" y="265" text-anchor="end" data-om-id="b6d08c8d:353">GET /</text>
+          <!-- ALB -> Backend (path: /api/v1/*) -->
+          <path class="aws-edge" d="M 700 365 L 712 365 L 712 455 L 718 455" marker-end="url(#aws-arr)" data-om-id="b6d08c8d:354"></path>
+          <text class="aws-edge-label" x="704" y="425" text-anchor="end" data-om-id="b6d08c8d:355">/api/v1/*</text>
+
+          <!-- Backend -> RDS -->
+          <path class="aws-edge" d="M 780 505 L 780 518 L 380 518 L 380 528" marker-end="url(#aws-arr)" data-om-id="b6d08c8d:356"></path>
+          <text class="aws-edge-label" x="500" y="512" data-om-id="b6d08c8d:357">SQL · 3306</text>
+          <!-- Backend -> S3 -->
+          <path class="aws-edge" d="M 818 505 L 818 522 L 590 522 L 590 528" marker-end="url(#aws-arr)" data-om-id="b6d08c8d:358"></path>
+          <text class="aws-edge-label" x="640" y="516" data-om-id="b6d08c8d:359">PUT / GET</text>
+          <!-- Backend -> Secrets Manager -->
+          <path class="aws-edge" d="M 856 505 L 856 520 L 810 520 L 810 528" marker-end="url(#aws-arr)" data-om-id="b6d08c8d:360"></path>
+          <text class="aws-edge-label" x="878" y="514" data-om-id="b6d08c8d:361">boot</text>
+
+          <!-- Frontend & Backend -> Grafana (telemetry, dashed) -->
+          <path class="aws-edge-soft" d="M 720 185 Q 460 50 205 130" marker-end="url(#aws-arr-soft)" data-om-id="b6d08c8d:362"></path>
+          <text class="aws-edge-label-soft" x="480" y="40" text-anchor="middle" data-om-id="b6d08c8d:363">OTLP · metrics · logs · traces</text>
+          <path class="aws-edge-soft" d="M 720 430 Q 440 240 205 175" marker-end="url(#aws-arr-soft)" data-om-id="b6d08c8d:364"></path>
+        </svg>
+      </div>
+
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:378">
+      <span class="pagenum" data-om-id="b6d08c8d:379">11 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:380"><strong data-om-id="b6d08c8d:381">25%</strong>Architecture · Scalability</span>
+    </div>
+  </div>
+  <style>
+    .note-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; }
+    .note-h { font-size: 24px; font-weight: 600; color: var(--accent-strong); margin-bottom: 6px; }
+    .note-b { font-size: 24px; line-height: 1.4; color: var(--fg-soft); }
+  </style>
+</section>
+
+<!-- ========== Slide 8 — Sequence + ER ========== -->
+<section data-label="11 Sequence Diagram &amp; Entity Relationship Model" data-om-id="b6d08c8d:382" data-screen-label="11 11 Sequence Diagram &amp; Entity Relationship Model" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="9">
+  <div class="frame" style="padding-bottom: 140px;" data-om-id="b6d08c8d:383">
+    <div class="slide-head" data-om-id="b6d08c8d:384"><h2 class="slide-title" data-om-id="b6d08c8d:385" style="font-size: 48px; white-space: nowrap;">Sequence Diagram &amp; Entity Relationship Model</h2><div class="eyebrow" data-om-id="b6d08c8d:386"><span class="dot" data-om-id="b6d08c8d:387"></span>C · Architecture</div></div>
+
+    <div style="flex: 1; margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; min-height: 0;" data-om-id="b6d08c8d:388">
+      <!-- Sequence -->
+      <div class="card" style="display: flex; flex-direction: column; gap: 16px; padding: 24px 28px;" data-om-id="b6d08c8d:389">
+        <img src="assets/seq-diag.png" alt="Repair flow sequence diagram" style="width: 854px; flex: 1; min-height: 0; object-fit: contain; height: 875px" data-om-id="b6d08c8d:390">
+        <svg viewBox="0 0 900 760" style="display: none;" preserveAspectRatio="xMidYMid meet" font-family="var(--mono)" data-om-id="b6d08c8d:391">
+          <defs data-om-id="b6d08c8d:392">
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" data-om-id="b6d08c8d:393">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.48 0.18 252)" data-om-id="b6d08c8d:394"></path>
+            </marker>
+            <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" data-om-id="b6d08c8d:395">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="oklch(0.58 0.20 25)" data-om-id="b6d08c8d:396"></path>
+            </marker>
+          </defs>
+          <!-- Actor headers -->
+          <g font-size="24" font-weight="600" fill="oklch(0.20 0.012 250)" text-anchor="middle" data-om-id="b6d08c8d:397">
+            <rect x="30" y="6" width="160" height="48" rx="6" fill="oklch(0.97 0.004 250)" stroke="oklch(0.90 0.006 250)" data-om-id="b6d08c8d:398"></rect>
+            <text x="110" y="37" data-om-id="b6d08c8d:399">Holder</text>
+            <rect x="220" y="6" width="160" height="48" rx="6" fill="oklch(0.97 0.004 250)" stroke="oklch(0.90 0.006 250)" data-om-id="b6d08c8d:400"></rect>
+            <text x="300" y="37" data-om-id="b6d08c8d:401">Manager</text>
+            <rect x="410" y="6" width="160" height="48" rx="6" fill="oklch(0.95 0.04 252)" stroke="oklch(0.80 0.08 252)" data-om-id="b6d08c8d:402"></rect>
+            <text x="490" y="37" data-om-id="b6d08c8d:403">Backend</text>
+            <rect x="600" y="6" width="160" height="48" rx="6" fill="oklch(0.97 0.004 250)" stroke="oklch(0.90 0.006 250)" data-om-id="b6d08c8d:404"></rect>
+            <text x="680" y="37" data-om-id="b6d08c8d:405">DB</text>
+          </g>
+          <!-- Lifelines -->
+          <g stroke="oklch(0.80 0.006 250)" stroke-dasharray="4 4" data-om-id="b6d08c8d:406">
+            <line x1="110" y1="54" x2="110" y2="750" data-om-id="b6d08c8d:407"></line>
+            <line x1="300" y1="54" x2="300" y2="750" data-om-id="b6d08c8d:408"></line>
+            <line x1="490" y1="54" x2="490" y2="750" data-om-id="b6d08c8d:409"></line>
+            <line x1="680" y1="54" x2="680" y2="750" data-om-id="b6d08c8d:410"></line>
+          </g>
+          <!-- Activation bars on Backend -->
+          <g fill="oklch(0.55 0.16 252)" opacity="0.18" data-om-id="b6d08c8d:411">
+            <rect x="484" y="90" width="12" height="80" data-om-id="b6d08c8d:412"></rect>
+            <rect x="484" y="220" width="12" height="220" data-om-id="b6d08c8d:413"></rect>
+            <rect x="484" y="540" width="12" height="140" data-om-id="b6d08c8d:414"></rect>
+          </g>
+          <!-- Messages: submit + INSERT request -->
+          <g font-size="22" fill="oklch(0.34 0.010 250)" stroke-width="2" data-om-id="b6d08c8d:415">
+            <line x1="110" y1="110" x2="484" y2="110" stroke="oklch(0.48 0.18 252)" marker-end="url(#arr)" data-om-id="b6d08c8d:416"></line>
+            <text x="118" y="100" data-om-id="b6d08c8d:417">1. submit(asset_id, desc)</text>
+            <line x1="496" y1="155" x2="680" y2="155" stroke="oklch(0.48 0.18 252)" marker-end="url(#arr)" data-om-id="b6d08c8d:418"></line>
+            <text x="504" y="145" data-om-id="b6d08c8d:419">2. INSERT request</text>
+            <!-- Message 3: review -->
+            <line x1="300" y1="240" x2="484" y2="240" stroke="oklch(0.48 0.18 252)" marker-end="url(#arr)" data-om-id="b6d08c8d:420"></line>
+            <text x="308" y="230" data-om-id="b6d08c8d:421">3. review(approve, version=v)</text>
+          </g>
+          <!-- alt/else frame -->
+          <g data-om-id="b6d08c8d:422">
+            <rect x="260" y="258" width="500" height="180" fill="none" stroke="oklch(0.70 0.14 60)" stroke-dasharray="4 3" rx="4" data-om-id="b6d08c8d:423"></rect>
+            <!-- alt label tab -->
+            <path d="M 260 258 L 320 258 L 332 270 L 332 282 L 260 282 Z" fill="oklch(0.96 0.06 80)" stroke="oklch(0.70 0.14 60)" stroke-dasharray="4 3" data-om-id="b6d08c8d:424"></path>
+            <text x="272" y="277" font-size="20" font-weight="700" fill="oklch(0.50 0.14 60)" data-om-id="b6d08c8d:425">alt</text>
+            <text x="345" y="277" font-size="20" fill="oklch(0.45 0.14 60)" data-om-id="b6d08c8d:426">[version stale]</text>
+            <!-- branch 1 content -->
+            <g font-size="22" fill="oklch(0.34 0.010 250)" stroke-width="2" data-om-id="b6d08c8d:427">
+              <line x1="484" y1="320" x2="304" y2="320" stroke="oklch(0.58 0.20 25)" marker-end="url(#arr-red)" data-om-id="b6d08c8d:428"></line>
+              <text x="318" y="310" fill="oklch(0.58 0.20 25)" font-weight="600" data-om-id="b6d08c8d:429">409 Conflict</text>
+            </g>
+            <!-- else divider -->
+            <line x1="260" y1="350" x2="760" y2="350" stroke="oklch(0.70 0.14 60)" stroke-dasharray="4 3" data-om-id="b6d08c8d:430"></line>
+            <text x="272" y="372" font-size="20" font-weight="700" fill="oklch(0.50 0.14 60)" data-om-id="b6d08c8d:431">else</text>
+            <text x="332" y="372" font-size="20" fill="oklch(0.45 0.14 60)" data-om-id="b6d08c8d:432">[version ok]</text>
+            <!-- branch 2 content -->
+            <g font-size="22" fill="oklch(0.34 0.010 250)" stroke-width="2" data-om-id="b6d08c8d:433">
+              <line x1="496" y1="410" x2="680" y2="410" stroke="oklch(0.48 0.18 252)" marker-end="url(#arr)" data-om-id="b6d08c8d:434"></line>
+              <text x="504" y="400" data-om-id="b6d08c8d:435">4. UPDATE under_repair</text>
+            </g>
+          </g>
+          <!-- separator -->
+          <line x1="30" y1="478" x2="870" y2="478" stroke="oklch(0.90 0.006 250)" stroke-dasharray="2 4" data-om-id="b6d08c8d:436"></line>
+          <text x="450" y="502" text-anchor="middle" font-size="22" fill="oklch(0.50 0.010 250)" data-om-id="b6d08c8d:437">— 維修完成 —</text>
+
+          <!-- Messages: complete, UPDATE completed, INSERT history -->
+          <g font-size="22" fill="oklch(0.34 0.010 250)" stroke-width="2" data-om-id="b6d08c8d:438">
+            <line x1="300" y1="560" x2="484" y2="560" stroke="oklch(0.48 0.18 252)" marker-end="url(#arr)" data-om-id="b6d08c8d:439"></line>
+            <text x="308" y="550" data-om-id="b6d08c8d:440">5. complete(plan, cost)</text>
+            <line x1="496" y1="610" x2="680" y2="610" stroke="oklch(0.48 0.18 252)" marker-end="url(#arr)" data-om-id="b6d08c8d:441"></line>
+            <text x="504" y="600" data-om-id="b6d08c8d:442">6. UPDATE completed</text>
+            <line x1="496" y1="660" x2="680" y2="660" stroke="oklch(0.48 0.18 252)" marker-end="url(#arr)" data-om-id="b6d08c8d:443"></line>
+            <text x="504" y="650" data-om-id="b6d08c8d:444">7. INSERT history</text>
+          </g>
+        </svg>
+      </div>
+
+      <!-- ER -->
+      <div class="card" style="display: flex; flex-direction: column; gap: 16px; padding: 24px 28px;" data-om-id="b6d08c8d:445">
+        <img src="assets/er-diag.png" alt="Entity relationship diagram" style="width: 100%; flex: 1; min-height: 0; object-fit: contain;" data-om-id="b6d08c8d:446">
+        <svg viewBox="0 0 800 660" style="display: none;" preserveAspectRatio="xMidYMid meet" font-family="var(--mono)" data-om-id="b6d08c8d:447">
+          <defs data-om-id="b6d08c8d:448">
+            <style>
+              .ent-bg { fill: oklch(0.97 0.004 250); stroke: oklch(0.80 0.006 250); }
+              .ent-bg-accent { fill: oklch(0.95 0.04 252); stroke: oklch(0.55 0.16 252); }
+              .ent-h { fill: oklch(0.48 0.18 252); }
+              .ent-h-name { fill: white; font-weight: 700; }
+              .ent-attr { fill: oklch(0.34 0.010 250); }
+              .ent-attr-pk { fill: oklch(0.20 0.012 250); font-weight: 700; }
+              .ent-attr-ver { fill: oklch(0.48 0.18 252); font-weight: 600; }
+              .rel-line { stroke: oklch(0.50 0.010 250); fill: none; stroke-width: 1.5; }
+              .rel-label { fill: oklch(0.50 0.010 250); font-size: 15px; }
+            </style>
+          </defs>
+
+          <!-- users (top-left) -->
+          <g data-om-id="b6d08c8d:449">
+            <rect class="ent-bg" x="30" y="30" width="230" height="140" rx="6" data-om-id="b6d08c8d:450"></rect>
+            <rect class="ent-h" x="30" y="30" width="230" height="36" rx="6" data-om-id="b6d08c8d:451"></rect>
+            <rect class="ent-h" x="30" y="50" width="230" height="16" data-om-id="b6d08c8d:452"></rect>
+            <text class="ent-h-name" x="45" y="55" font-size="18" data-om-id="b6d08c8d:453">users</text>
+            <text class="ent-attr-pk" x="45" y="90" font-size="16" data-om-id="b6d08c8d:454">● id (PK)</text>
+            <text class="ent-attr" x="45" y="115" font-size="16" data-om-id="b6d08c8d:455">name</text>
+            <text class="ent-attr" x="45" y="140" font-size="16" data-om-id="b6d08c8d:456">role: holder | manager</text>
+            <text class="ent-attr-ver" x="45" y="165" font-size="16" data-om-id="b6d08c8d:457">◆ version</text>
+          </g>
+
+          <!-- assets (top-right) -->
+          <g data-om-id="b6d08c8d:458">
+            <rect class="ent-bg" x="540" y="30" width="230" height="165" rx="6" data-om-id="b6d08c8d:459"></rect>
+            <rect class="ent-h" x="540" y="30" width="230" height="36" rx="6" data-om-id="b6d08c8d:460"></rect>
+            <rect class="ent-h" x="540" y="50" width="230" height="16" data-om-id="b6d08c8d:461"></rect>
+            <text class="ent-h-name" x="555" y="55" font-size="18" data-om-id="b6d08c8d:462">assets</text>
+            <text class="ent-attr-pk" x="555" y="90" font-size="16" data-om-id="b6d08c8d:463">● id (PK)</text>
+            <text class="ent-attr" x="555" y="115" font-size="16" data-om-id="b6d08c8d:464">responsible_id (FK)</text>
+            <text class="ent-attr" x="555" y="140" font-size="16" data-om-id="b6d08c8d:465">status (FSM)</text>
+            <text class="ent-attr" x="555" y="165" font-size="16" data-om-id="b6d08c8d:466">category, location</text>
+            <text class="ent-attr-ver" x="555" y="190" font-size="16" data-om-id="b6d08c8d:467">◆ version</text>
+          </g>
+
+          <!-- repair_requests (center) -->
+          <g data-om-id="b6d08c8d:468">
+            <rect class="ent-bg-accent" x="270" y="260" width="260" height="205" rx="6" data-om-id="b6d08c8d:469"></rect>
+            <rect class="ent-h" x="270" y="260" width="260" height="36" rx="6" data-om-id="b6d08c8d:470"></rect>
+            <rect class="ent-h" x="270" y="280" width="260" height="16" data-om-id="b6d08c8d:471"></rect>
+            <text class="ent-h-name" x="285" y="285" font-size="18" data-om-id="b6d08c8d:472">repair_requests</text>
+            <text class="ent-attr-pk" x="285" y="320" font-size="16" data-om-id="b6d08c8d:473">● id (PK)</text>
+            <text class="ent-attr" x="285" y="345" font-size="16" data-om-id="b6d08c8d:474">asset_id (FK)</text>
+            <text class="ent-attr" x="285" y="370" font-size="16" data-om-id="b6d08c8d:475">requester_id (FK)</text>
+            <text class="ent-attr" x="285" y="395" font-size="16" data-om-id="b6d08c8d:476">reviewer_id (FK)</text>
+            <text class="ent-attr" x="285" y="420" font-size="16" data-om-id="b6d08c8d:477">status (FSM)</text>
+            <text class="ent-attr-ver" x="285" y="445" font-size="16" data-om-id="b6d08c8d:478">◆ version</text>
+          </g>
+
+          <!-- repair_images (bottom) -->
+          <g data-om-id="b6d08c8d:479">
+            <rect class="ent-bg" x="285" y="540" width="230" height="110" rx="6" data-om-id="b6d08c8d:480"></rect>
+            <rect class="ent-h" x="285" y="540" width="230" height="36" rx="6" data-om-id="b6d08c8d:481"></rect>
+            <rect class="ent-h" x="285" y="560" width="230" height="16" data-om-id="b6d08c8d:482"></rect>
+            <text class="ent-h-name" x="300" y="565" font-size="18" data-om-id="b6d08c8d:483">repair_images</text>
+            <text class="ent-attr-pk" x="300" y="600" font-size="16" data-om-id="b6d08c8d:484">● id (PK)</text>
+            <text class="ent-attr" x="300" y="625" font-size="16" data-om-id="b6d08c8d:485">repair_request_id (FK)</text>
+            <text class="ent-attr" x="300" y="650" font-size="16" data-om-id="b6d08c8d:486">image_url</text>
+          </g>
+
+          <!-- Relationships (orthogonal lines + crow's foot 1..N labels) -->
+          <!-- users 1..N repair_requests (requester / reviewer) -->
+          <path class="rel-line" d="M 145 170 L 145 235 L 360 235 L 360 260" data-om-id="b6d08c8d:487"></path>
+          <text class="rel-label" x="152" y="195" data-om-id="b6d08c8d:488">1</text>
+          <text class="rel-label" x="345" y="253" data-om-id="b6d08c8d:489">N</text>
+          <text class="rel-label" x="168" y="230" data-om-id="b6d08c8d:490">requests as requester / reviewer</text>
+
+          <!-- assets 1..N repair_requests -->
+          <path class="rel-line" d="M 655 195 L 655 235 L 450 235 L 450 260" data-om-id="b6d08c8d:491"></path>
+          <text class="rel-label" x="662" y="215" data-om-id="b6d08c8d:492">1</text>
+          <text class="rel-label" x="435" y="253" data-om-id="b6d08c8d:493">N</text>
+          <text class="rel-label" x="480" y="230" data-om-id="b6d08c8d:494">about an asset</text>
+
+          <!-- users 1..N assets (responsible_person) -->
+          <path class="rel-line" d="M 260 100 L 540 100" stroke-dasharray="4 3" data-om-id="b6d08c8d:495"></path>
+          <text class="rel-label" x="268" y="95" data-om-id="b6d08c8d:496">1</text>
+          <text class="rel-label" x="525" y="95" data-om-id="b6d08c8d:497">N</text>
+          <text class="rel-label" x="335" y="95" data-om-id="b6d08c8d:498">responsible_person</text>
+
+          <!-- repair_requests 1..N repair_images -->
+          <path class="rel-line" d="M 400 465 L 400 540" data-om-id="b6d08c8d:499"></path>
+          <text class="rel-label" x="408" y="485" data-om-id="b6d08c8d:500">1</text>
+          <text class="rel-label" x="408" y="533" data-om-id="b6d08c8d:501">N</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:502">
+      <span class="pagenum" data-om-id="b6d08c8d:503">12 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:504"><strong data-om-id="b6d08c8d:505">25%</strong>Architecture</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Slide 9a — Demo video: Holder submit ========== -->
+
+
+<!-- ========== Slide 9b — Demo video: Manager approve ========== -->
+
+
+<!-- ========== Slide 10 — Test pyramid ========== -->
+<section data-label="12 Test Pyramid" data-om-id="b6d08c8d:544" data-screen-label="12 12 Test Pyramid" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="10">
+  <div class="frame" data-om-id="b6d08c8d:545">
+    <div class="slide-head" data-om-id="b6d08c8d:546"><h2 class="slide-title" data-om-id="b6d08c8d:547">Test Pyramid</h2><div class="eyebrow" data-om-id="b6d08c8d:548"><span class="dot" data-om-id="b6d08c8d:549"></span>E · Testing &amp; Validation</div></div>
+
+    <div style="flex: 1; margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center;" data-om-id="b6d08c8d:550">
+      <!-- Pyramid (SVG, properly aligned, triangle on top) -->
+      <svg viewBox="0 0 400 280" style="width: 100%; height: auto;" preserveAspectRatio="xMidYMid meet" font-family="var(--sans)" data-om-id="b6d08c8d:551">
+        <!-- E2E triangle -->
+        <polygon points="200,0 160,60 240,60" fill="oklch(0.55 0.16 252)" data-om-id="b6d08c8d:552"></polygon>
+        <text x="200" y="32" text-anchor="middle" fill="white" font-size="15" font-weight="600" data-om-id="b6d08c8d:553">E2E</text>
+        <text x="200" y="50" text-anchor="middle" fill="white" font-size="15" font-family="var(--mono)" font-weight="700" data-om-id="b6d08c8d:554">25</text>
+        <!-- Integration trapezoid -->
+        <polygon points="160,64 240,64 293,140 107,140" fill="oklch(0.62 0.13 252)" data-om-id="b6d08c8d:555"></polygon>
+        <text x="200" y="100" text-anchor="middle" fill="white" font-size="18" font-weight="600" data-om-id="b6d08c8d:556">Integration</text>
+        <text x="200" y="124" text-anchor="middle" fill="white" font-size="18" font-family="var(--mono)" font-weight="700" data-om-id="b6d08c8d:557">80+</text>
+        <!-- Unit trapezoid -->
+        <polygon points="107,144 293,144 360,240 40,240" fill="oklch(0.70 0.10 252)" data-om-id="b6d08c8d:558"></polygon>
+        <text x="200" y="185" text-anchor="middle" fill="white" font-size="22" font-weight="600" data-om-id="b6d08c8d:559">Unit</text>
+        <text x="200" y="215" text-anchor="middle" fill="white" font-size="22" font-family="var(--mono)" font-weight="700" data-om-id="b6d08c8d:560">550+</text>
+        <!-- Axis labels -->
+        <text x="380" y="32" text-anchor="end" fill="oklch(0.50 0.010 250)" font-size="13" font-family="var(--mono)" data-om-id="b6d08c8d:561">Slow · Real · Few</text>
+        <text x="380" y="225" text-anchor="end" fill="oklch(0.50 0.010 250)" font-size="13" font-family="var(--mono)" data-om-id="b6d08c8d:562">Fast · Mock · Many</text>
+      </svg>
+
+      <!-- Details + coverage -->
+      <div style="display: flex; flex-direction: column; gap: 24px;" data-om-id="b6d08c8d:563">
+        <div class="layer-card" data-om-id="b6d08c8d:564">
+          <div class="layer-h" data-om-id="b6d08c8d:565"><span class="layer-tag" data-om-id="b6d08c8d:566">E2E</span>Playwright · 6 critical flows</div>
+          <div class="layer-b" data-om-id="b6d08c8d:567">Login · Submit repair · Review · Close · Register asset · Multi-dim search</div>
+        </div>
+        <div class="layer-card" data-om-id="b6d08c8d:568">
+          <div class="layer-h" data-om-id="b6d08c8d:569"><span class="layer-tag" data-om-id="b6d08c8d:570">Integration</span>FastAPI TestClient · Real DB fixture</div>
+          <div class="layer-b" data-om-id="b6d08c8d:571">Covers every route · RBAC · Lifecycle integration</div>
+        </div>
+        <div class="layer-card" data-om-id="b6d08c8d:572">
+          <div class="layer-h" data-om-id="b6d08c8d:573"><span class="layer-tag" data-om-id="b6d08c8d:574">Unit</span>Backend 400+ · Frontend 150+</div>
+          <div class="layer-b" data-om-id="b6d08c8d:575">Pure functions · Business logic · FSM rules · hooks + components</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;" data-om-id="b6d08c8d:576">
+          <div class="bigstat" data-om-id="b6d08c8d:577">
+            <div class="bigstat-lab" data-om-id="b6d08c8d:578">Backend Coverage</div>
+            <div class="bigstat-num" data-om-id="b6d08c8d:579">96.3<span style="font-size: 36px;" data-om-id="b6d08c8d:580">%</span></div>
+            <div class="bigstat-src" data-om-id="b6d08c8d:581">pytest --cov</div>
+          </div>
+          <div class="bigstat" data-om-id="b6d08c8d:582">
+            <div class="bigstat-lab" data-om-id="b6d08c8d:583">Frontend Coverage</div>
+            <div class="bigstat-num" data-om-id="b6d08c8d:584">94.7<span style="font-size: 36px;" data-om-id="b6d08c8d:585">%</span></div>
+            <div class="bigstat-src" data-om-id="b6d08c8d:586">vitest</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:587">
+      <span class="pagenum" data-om-id="b6d08c8d:588">13 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:589"><strong data-om-id="b6d08c8d:590">25%</strong>Testing &amp; Validation</span>
+    </div>
+  </div>
+  <style>
+    .pyr-lvl { color: white; padding: 22px 28px; clip-path: polygon(8% 0, 92% 0, 100% 100%, 0% 100%); display: flex; align-items: center; justify-content: space-between; }
+    .pyr:first-child .pyr-lvl { clip-path: polygon(20% 0, 80% 0, 100% 100%, 0% 100%); }
+    .pyr-title { font-size: 24px; font-weight: 600; }
+    .pyr-num { font-family: var(--mono); font-size: 28px; font-weight: 700; }
+    .layer-card { padding: 14px 0; border-bottom: 1px solid var(--border); }
+    .layer-h { font-size: 24px; font-weight: 600; color: var(--fg); display: flex; align-items: center; gap: 12px; }
+    .layer-tag { font-family: var(--mono); font-size: 24px; color: var(--accent-strong); background: var(--accent-soft); padding: 2px 10px; border-radius: 4px; font-weight: 600; }
+    .layer-b { font-size: 24px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+    .bigstat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 22px; }
+    .bigstat-lab { font-size: 24px; color: var(--muted); margin-bottom: 4px; }
+    .bigstat-num { font-size: 56px; font-weight: 700; color: var(--accent-strong); font-family: var(--mono); line-height: 1; letter-spacing: -0.02em; }
+    .bigstat-src { font-size: 24px; color: var(--muted); font-family: var(--mono); margin-top: 6px; }
+  </style>
+</section>
+
+<!-- ========== Slide 11 — Hard test cases ========== -->
+<section data-label="13 Hard-to-Test Case Coverage" data-om-id="b6d08c8d:591" data-screen-label="13 13 Hard-to-Test Case Coverage" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="11">
+  <div class="frame" data-om-id="b6d08c8d:592">
+    <div class="slide-head" data-om-id="b6d08c8d:593"><h2 class="slide-title" data-om-id="b6d08c8d:594" style="font-size: 56px; white-space: nowrap;">Testing about Business Logic</h2><div class="eyebrow" data-om-id="b6d08c8d:595"><span class="dot" data-om-id="b6d08c8d:596"></span>E · Testing &amp; Validation</div></div>
+
+    <div style="flex: 1; margin-top: 28px; margin-bottom: 44px; min-height: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 28px;" data-om-id="b6d08c8d:597">
+      <div class="hardcase" data-om-id="b6d08c8d:598">
+        <div class="hc-num" data-om-id="b6d08c8d:599">01</div>
+        <div class="hc-title" data-om-id="b6d08c8d:600">FSM Invariants</div>
+        <div class="hc-body" data-om-id="b6d08c8d:601">20 parameterized cases covering every legal / illegal state transition. Calls that violate the FSM are blocked at the API layer.</div>
+        <div class="hc-fsm" style="flex: 1; min-height: 0;" data-om-id="b6d08c8d:602">
+          <img src="assets/FSM.png" alt="Asset FSM state diagram" style="width: 100%; height: 508px; object-fit: contain" data-om-id="b6d08c8d:603">
+        </div>
+      </div>
+
+      <div class="hardcase" data-om-id="b6d08c8d:605">
+        <div class="hc-num" data-om-id="b6d08c8d:606">02</div>
+        <div class="hc-title" data-om-id="b6d08c8d:607">RBAC Matrix</div>
+        <div class="hc-body" data-om-id="b6d08c8d:608">Holder vs Manager × every endpoint x negative cases included.</div>
+        <div class="rbac-mini" data-om-id="b6d08c8d:609">
+          <div class="rb-head" data-om-id="b6d08c8d:610"><span data-om-id="b6d08c8d:611"></span><span data-om-id="b6d08c8d:612">Holder</span><span data-om-id="b6d08c8d:613">Manager</span></div>
+          <div class="rb-row" data-om-id="b6d08c8d:614"><span class="rb-cap" style="width: 305px" data-om-id="b6d08c8d:615">View assets</span><span class="rb-y" style="color: var(--fg-soft); font-weight: 400;" data-om-id="b6d08c8d:616">own</span><span class="rb-y" style="color: var(--fg-soft); font-weight: 400;" data-om-id="b6d08c8d:621">all</span></div>
+          <div class="rb-row" data-om-id="b6d08c8d:622"><span class="rb-cap" style="width: 305px" data-om-id="b6d08c8d:623">Register / edit / assign</span><span class="rb-n" data-om-id="b6d08c8d:624">—</span><span class="rb-y" data-om-id="b6d08c8d:625">✓</span></div>
+          <div class="rb-row" data-om-id="b6d08c8d:626"><span class="rb-cap" style="width: 305px" data-om-id="b6d08c8d:627">Submit repair request</span><span class="rb-y" data-om-id="b6d08c8d:628">✓</span><span class="rb-n" data-om-id="b6d08c8d:629">—</span></div>
+          <div class="rb-row" data-om-id="b6d08c8d:630"><span class="rb-cap" style="width: 305px" data-om-id="b6d08c8d:631">View requests</span><span class="rb-y" style="color: var(--fg-soft); font-weight: 400;" data-om-id="b6d08c8d:632">own</span><span class="rb-y" style="color: var(--fg-soft); font-weight: 400;" data-om-id="b6d08c8d:637">all</span></div>
+          <div class="rb-row" data-om-id="b6d08c8d:638"><span class="rb-cap" style="width: 305px" data-om-id="b6d08c8d:639">Approve / reject / complete</span><span class="rb-n" data-om-id="b6d08c8d:640">—</span><span class="rb-y" data-om-id="b6d08c8d:641">✓</span></div>
+          <div class="rb-row" data-om-id="b6d08c8d:642"><span class="rb-cap" style="width: 305px" data-om-id="b6d08c8d:643">View request images</span><span class="rb-y" style="color: rgb(52, 56, 61); font-weight: 400;" data-om-id="b6d08c8d:644">own</span><span class="rb-y" style="color: rgb(52, 56, 61); font-weight: 400;" data-om-id="b6d08c8d:645">all</span></div>
+          <div class="rb-row" data-om-id="b6d08c8d:646"><span class="rb-cap" style="width: 305px" data-om-id="b6d08c8d:647">View manager dashboard</span><span class="rb-n" data-om-id="b6d08c8d:648">—</span><span class="rb-y" data-om-id="b6d08c8d:649">✓</span></div>
+        </div>
+      </div>
+
+      <div class="hardcase" data-om-id="b6d08c8d:651">
+        <div class="hc-num" data-om-id="b6d08c8d:652">03</div>
+        <div class="hc-title" data-om-id="b6d08c8d:653">Concurrent Review Race Condition</div>
+        <div class="hc-body" data-om-id="b6d08c8d:654">Two managers review the same request at once; the loser gets a 409 instead of a silent overwrite. <span class="mono" style="color: var(--muted);" data-om-id="e1c287e7:695">v</span> = row version (optimistic lock), bumped on every write.</div>
+        <div class="race" data-om-id="b6d08c8d:655">
+          <div class="race-mgr" data-om-id="b6d08c8d:656">Mgr A · v=3</div>
+          <div class="race-mgr" data-om-id="b6d08c8d:657">Mgr B · v=3</div>
+          <div class="race-arr" data-om-id="b6d08c8d:658">↓ submits first</div>
+          <div class="race-arr" data-om-id="b6d08c8d:659">↓</div>
+          <div class="race-result ok" data-om-id="b6d08c8d:660">✓ approved · v=4</div>
+          <div class="race-result bad" data-om-id="b6d08c8d:661">409 Conflict</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:663">
+      <span class="pagenum" data-om-id="b6d08c8d:664">14 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:665"><strong data-om-id="b6d08c8d:666">25%</strong>Testing &amp; Validation</span>
+    </div>
+  </div>
+  <style>
+    .hardcase { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 12px; }
+    .hc-num { font-family: var(--mono); font-size: 24px; color: var(--accent); font-weight: 700; letter-spacing: 0.06em; }
+    .hc-title { font-size: 30px; font-weight: 600; color: var(--fg); line-height: 1.2; }
+    .hc-body { font-size: 24px; color: var(--fg-soft); line-height: 1.5; }
+    .hc-tag { font-size: 24px; color: var(--muted); margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--border); }
+    .hc-fsm { display: flex; justify-content: center; padding: 8px; background: var(--bg-alt); border-radius: 8px; }
+    .fsm-state { font-family: var(--mono); font-size: 24px; background: var(--card); border: 1px solid var(--border); padding: 4px 8px; border-radius: 4px; color: var(--fg-soft); }
+    .fsm-state.warn { color: oklch(0.50 0.14 60); background: var(--warn-soft); border-color: var(--warn); }
+    .fsm-arr { font-family: var(--mono); color: var(--accent); font-size: 24px; }
+
+    .rbac-mini { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--bg-alt); border-radius: 8px; font-size: 22px; }
+    .rb-head { display: grid; grid-template-columns: 1fr 86px 86px; gap: 8px; font-family: var(--mono); font-size: 22px; color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .rb-head span:not(:first-child) { text-align: center; }
+    .rb-row { display: grid; grid-template-columns: 1fr 86px 86px; gap: 8px; align-items: center; }
+    .rb-cap { color: var(--fg-soft); font-size: 22px; width: auto !important; white-space: nowrap; }
+    .rb-y, .rb-n { text-align: center; font-family: var(--mono); }
+    .rb-y { color: var(--success); font-weight: 600; }
+    .rb-n { color: var(--muted); }
+
+    .race { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; padding: 14px; background: var(--bg-alt); border-radius: 8px; align-items: center; justify-items: center; }
+    .race-mgr { font-family: var(--mono); font-size: 24px; background: var(--card); border: 1px solid var(--border); padding: 8px 10px; border-radius: 6px; text-align: center; width: 100%; }
+    .race-arr { color: var(--accent); font-weight: 700; text-align: center; font-size: 24px; }
+    .race-result { font-family: var(--mono); font-size: 24px; padding: 8px 10px; border-radius: 6px; text-align: center; font-weight: 600; width: 100%; }
+    .race-result.ok { background: var(--success-soft); color: var(--success); }
+    .race-result.bad { background: var(--danger-soft); color: var(--danger); }
+  </style>
+</section>
+
+<!-- ========== Slide 12 — Load test ========== -->
+<!-- k6 shared styling for load-test slides -->
+<style>
+  .k6surface {
+    flex: 1; min-height: 0; margin-top: 26px;
+    background: #1b2030; border: 1px solid #2b3145; border-radius: 8px;
+    padding: 22px 26px 24px; display: flex; flex-direction: column;
+    font-family: var(--sans);
+    box-shadow: 0 20px 48px -28px rgba(0,0,0,0.5);
+  }
+  .k6bar { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex: none; }
+  .k6brand { display: flex; align-items: center; gap: 13px; }
+  .k6brand .k6mark { width: 34px; height: 34px; display: block; }
+  .k6brand .k6wm { font-size: 25px; font-weight: 600; color: #d7dae6; letter-spacing: -0.01em; }
+  .k6brand .k6run { font-family: var(--mono); font-size: 21px; color: #707892; padding-left: 13px; margin-left: 3px; border-left: 1px solid #313850; white-space: nowrap; }
+  .k6chips { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .k6chip { font-family: var(--mono); font-size: 19px; color: #aab0c4; background: #232a3d; border: 1px solid #333a52; border-radius: 5px; padding: 5px 11px; font-weight: 400; white-space: nowrap; }
+  .k6verdict { font-family: var(--sans); font-size: 20px; font-weight: 500; border-radius: 5px; padding: 6px 13px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .k6verdict.pass { color: #4ed8a0; background: rgba(54,179,126,0.13); border: 1px solid rgba(54,179,126,0.4); }
+  .k6verdict.fail { color: #ff7a6e; background: rgba(226,87,76,0.13); border: 1px solid rgba(226,87,76,0.45); }
+  .k6verdict.warn { color: #ffc24b; background: rgba(255,194,75,0.12); border: 1px solid rgba(255,194,75,0.4); }
+
+  .k6chartwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 16px; }
+  .k6ptitle { font-size: 22px; color: #c2c7d8; font-weight: 500; margin-bottom: 2px; display: flex; align-items: baseline; gap: 12px; }
+  .k6ptitle .u { font-family: var(--mono); font-size: 19px; color: #6f7691; font-weight: 400; white-space: nowrap; }
+  .k6plot { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .k6plot svg { max-width: 100%; max-height: 100%; height: auto; }
+  .k6legend { display: flex; gap: 26px; flex: none; margin-top: 14px; padding-left: 78px; }
+  .k6legend .li { display: flex; align-items: center; gap: 9px; font-size: 21px; color: #aab0c4; white-space: nowrap; }
+  .k6legend .sw { width: 22px; height: 4px; border-radius: 2px; }
+  .k6legend .sw.area { height: 13px; border-radius: 3px; opacity: 0.5; }
+
+  .k6stats { display: grid; gap: 14px; flex: none; margin-top: 18px; }
+  .k6stat { background: #232a3d; border: 1px solid #313850; border-radius: 6px; padding: 20px 22px 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+  .k6stat .lab { font-size: 23px; color: #aab0c4; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+  .k6stat .val { font-size: 52px; font-weight: 400; color: #f0f2f8; line-height: 1.0; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; white-space: nowrap; }
+  .k6stat .val small { font-size: 26px; font-weight: 400; color: #909ab5; margin-left: 3px; letter-spacing: 0; }
+  .k6stat .sub { font-size: 20px; color: #7e85a0; font-variant-numeric: tabular-nums; font-weight: 400; line-height: 1.35; }
+  .k6stat .val.teal { color: #2ec5b6; } .k6stat .val.blue { color: #5e8def; }
+  .k6stat .val.red { color: #ff7a6e; } .k6stat .val.green { color: #4ed8a0; }
+
+  /* overview comparison table */
+  .k6tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .k6tbl th { font-size: 19px; color: #7e85a0; font-weight: 400; text-transform: none; letter-spacing: 0; text-align: right; padding: 0 20px 14px; border-bottom: 1px solid #313850; }
+  .k6tbl th.l { text-align: left; }
+  .k6tbl td { font-size: 27px; color: #ccd0e0; text-align: right; padding: 19px 20px; border-bottom: 1px solid #262c3e; font-weight: 400; }
+  .k6tbl td.l { text-align: left; }
+  .k6tbl tr:last-child td { border-bottom: none; }
+  .k6tbl .tname { font-size: 28px; color: #e6e9f4; font-weight: 500; }
+  .k6tbl .tname small { display: block; font-size: 18px; color: #6f7691; font-weight: 400; text-transform: none; letter-spacing: 0; margin-top: 3px; }
+  .k6tbl .muted { color: #767d97; font-weight: 400; }
+  .k6dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 11px; vertical-align: middle; }
+</style>
+
+<!-- ========== Slide 13 — Load Testing overview ========== -->
+<section data-label="13 Load Testing" data-screen-label="13 13 Load Testing · Overview" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="12">
+  <div class="frame">
+    <div class="slide-head"><h2 class="slide-title">Load Testing</h2><div class="eyebrow"><span class="dot"></span>E · Testing &amp; Validation</div></div>
+
+    <div class="k6surface">
+      <div class="k6bar">
+        <div class="k6brand">
+          <svg class="k6mark" viewBox="0 0 67.733 67.733" fill="#7b65fa" xmlns="http://www.w3.org/2000/svg"><path d="M3.005 10.266V63.83h1.793V10.266z"/><path d="M3.901.264L.265 11.162H7.54z"/><path d="M2.964 62.926v1.809h54.504v-1.809z"/><path d="M56.571 60.193v7.275L67.47 63.83l-10.898-3.637z"/><path d="M54.193 63.685H4.68l16.483-35.16 9.929 7.299 12.951-20.192z" fill-opacity=".502" stroke="#7b65fa" stroke-width="1.873"/></svg>
+          <span class="k6wm">k6</span>
+          <span class="k6run">3 scenarios · run against staging, not localhost</span>
+        </div>
+        <div class="k6chips">
+          <span class="k6chip">k6 v0.49 · cloud output</span>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; margin-top: 18px;">
+        <table class="k6tbl">
+          <thead>
+            <tr>
+              <th class="l">Test profile</th>
+              <th>Duration</th>
+              <th>Peak VUs</th>
+              <th>Requests</th>
+              <th>Throughput</th>
+              <th>p95 latency</th>
+              <th>Errors</th>
+              <th class="l" style="text-align:center; padding-left:34px;">Verdict</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="l"><span class="tname"><span class="k6dot" style="background:#2ec5b6"></span>Soak / Consistent<small>8 user journeys, steady load · "does it hold over time?"</small></span></td>
+              <td>30 min</td>
+              <td>29</td>
+              <td>8,954</td>
+              <td>4.97 <span class="muted">/s</span></td>
+              <td>138 <span class="muted">ms</span></td>
+              <td>0.01%</td>
+              <td class="l" style="text-align:center; padding-left:34px;"><span class="k6verdict pass">PASS</span></td>
+            </tr>
+            <tr>
+              <td class="l"><span class="tname"><span class="k6dot" style="background:#5e8def"></span>Spike<small>2 → 50 VUs in seconds · "survive a sudden surge?"</small></span></td>
+              <td>100 s</td>
+              <td>50</td>
+              <td>2,855</td>
+              <td>28.5 <span class="muted">/s</span></td>
+              <td>3,087 <span class="muted">ms</span></td>
+              <td>1.47%</td>
+              <td class="l" style="text-align:center; padding-left:34px;"><span class="k6verdict pass">RECOVERED</span></td>
+            </tr>
+            <tr>
+              <td class="l"><span class="tname"><span class="k6dot" style="background:#c45ce0"></span>Stress<small>ramp until it breaks · "where is the ceiling?"</small></span></td>
+              <td>120 s</td>
+              <td>41</td>
+              <td>811</td>
+              <td>6.76 <span class="muted">/s</span></td>
+              <td class="" style="color:#ff6b5e;">10,112 <span class="muted">ms</span></td>
+              <td style="color:#ff6b5e;">17.0%</td>
+              <td class="l" style="text-align:center; padding-left:34px;"><span class="k6verdict fail">SLO BREACH</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="slide-foot">
+      <span class="pagenum">13 · 26</span>
+      <span class="scoretag"><strong>25%</strong>Testing &amp; Validation</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Slide 14 — Soak / Consistent ========== -->
+<section data-label="14 Soak Test" data-screen-label="14 14 Soak Test" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="13">
+  <div class="frame">
+    <div class="slide-head"><h2 class="slide-title">Soak Test · 30 min steady</h2><div class="eyebrow"><span class="dot"></span>E · Testing &amp; Validation</div></div>
+
+    <div class="k6surface">
+      <div class="k6bar">
+        <div class="k6brand">
+          <svg class="k6mark" viewBox="0 0 67.733 67.733" fill="#7b65fa" xmlns="http://www.w3.org/2000/svg"><path d="M3.005 10.266V63.83h1.793V10.266z"/><path d="M3.901.264L.265 11.162H7.54z"/><path d="M2.964 62.926v1.809h54.504v-1.809z"/><path d="M56.571 60.193v7.275L67.47 63.83l-10.898-3.637z"/><path d="M54.193 63.685H4.68l16.483-35.16 9.929 7.299 12.951-20.192z" fill-opacity=".502" stroke="#7b65fa" stroke-width="1.873"/></svg>
+          <span class="k6wm">k6</span>
+          <span class="k6run">scenario = consistent · 8 journeys · ~5 rps</span>
+        </div>
+        <div class="k6chips"><span class="k6verdict pass">✓ no degradation over 30 min</span></div>
+      </div>
+
+      <div style="flex:1; min-height:0; display:grid; grid-template-columns: 1fr 372px; gap: 24px; margin-top: 14px;">
+        <div class="k6chartwrap" style="margin-top:0;">
+          <div class="k6ptitle">HTTP request duration — p95 &amp; throughput <span class="u">left: ms · right: req/s · x: minutes</span></div>
+          <div class="k6legend" style="margin-top:0; margin-bottom:8px;">
+            <div class="li"><span class="sw" style="background:#c45ce0"></span>p95 latency</div>
+            <div class="li"><span class="sw" style="background:#2ec5b6"></span>avg latency</div>
+            <div class="li"><span class="sw" style="background:#6b79da"></span>throughput (req/s)</div>
+          </div>
+          <div class="k6plot"><div id="chart-soak"></div></div>
+        </div>
+        <div class="k6stats" style="grid-template-columns: 1fr; align-content:center;">
+          <div class="k6stat"><span class="lab">p95 latency</span><span class="val green">138<small>ms</small></span><span class="sub">median 23 ms · p99 384 ms · held flat 30 min</span></div>
+          <div class="k6stat"><span class="lab">Error rate</span><span class="val green">0.01<small>%</small></span><span class="sub">checks 100% · 1 failed request</span></div>
+          <div class="k6stat"><span class="lab">Throughput</span><span class="val">4.97<small>/s</small></span><span class="sub">8,954 requests · 7,191 iterations</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot">
+      <span class="pagenum">14 · 26</span>
+      <span class="scoretag"><strong>25%</strong>Testing &amp; Validation</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Slide 15 — Spike ========== -->
+<section data-label="15 Spike Test" data-screen-label="15 15 Spike Test" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="14">
+  <div class="frame">
+    <div class="slide-head"><h2 class="slide-title">Spike Test · 2 → 50 VUs</h2><div class="eyebrow"><span class="dot"></span>E · Testing &amp; Validation</div></div>
+
+    <div class="k6surface">
+      <div class="k6bar">
+        <div class="k6brand">
+          <svg class="k6mark" viewBox="0 0 67.733 67.733" fill="#7b65fa" xmlns="http://www.w3.org/2000/svg"><path d="M3.005 10.266V63.83h1.793V10.266z"/><path d="M3.901.264L.265 11.162H7.54z"/><path d="M2.964 62.926v1.809h54.504v-1.809z"/><path d="M56.571 60.193v7.275L67.47 63.83l-10.898-3.637z"/><path d="M54.193 63.685H4.68l16.483-35.16 9.929 7.299 12.951-20.192z" fill-opacity=".502" stroke="#7b65fa" stroke-width="1.873"/></svg>
+          <span class="k6wm">k6</span>
+          <span class="k6run">scenario = spike · sudden surge then drain</span>
+        </div>
+        <div class="k6chips">
+          <span class="k6chip">threshold: http_req_failed &lt; 50%</span>
+          <span class="k6verdict pass">PASS · 1.47%</span>
+        </div>
+      </div>
+
+      <div style="flex:1; min-height:0; display:grid; grid-template-columns: 1fr 384px; gap: 24px; margin-top: 14px;">
+        <div class="k6chartwrap" style="margin-top:0;">
+          <div class="k6ptitle">Latency vs. concurrency over the spike <span class="u">left: s · right: req/s · hover for per-window values</span></div>
+          <div class="k6legend" style="margin-top:0; margin-bottom:8px;">
+            <div class="li"><span class="sw" style="background:#e6a93c"></span>active VUs</div>
+            <div class="li"><span class="sw" style="background:#6b79da"></span>throughput (req/s)</div>
+            <div class="li"><span class="sw" style="background:#c45ce0"></span>p95 latency</div>
+            <div class="li"><span class="sw" style="background:#2ec5b6"></span>avg latency</div>
+          </div>
+          <div class="k6plot"><div id="chart-spike"></div></div>
+        </div>
+        <div class="k6stats" style="grid-template-columns: 1fr; align-content:center;">
+          <div class="k6stat"><span class="lab">Peak p95 latency</span><span class="val red">12.4<small>s</small></span><span class="sub">@ 50 VUs · max 14.6 s</span></div>
+          <div class="k6stat"><span class="lab">Recovery</span><span class="val green">~40<small>s</small></span><span class="sub">p95 back under 1 s by t≈90 s</span></div>
+          <div class="k6stat"><span class="lab">Error rate</span><span class="val green">1.47<small>%</small></span><span class="sub">under 50% threshold · checks 99.9%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot">
+      <span class="pagenum">15 · 26</span>
+      <span class="scoretag"><strong>25%</strong>Testing &amp; Validation</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Slide 16 — Stress ========== -->
+<section data-label="16 Stress Test" data-screen-label="16 16 Stress Test" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="15">
+  <div class="frame">
+    <div class="slide-head"><h2 class="slide-title">Stress Test · ramp to breaking</h2><div class="eyebrow"><span class="dot"></span>E · Testing &amp; Validation</div></div>
+
+    <div class="k6surface">
+      <div class="k6bar">
+        <div class="k6brand">
+          <svg class="k6mark" viewBox="0 0 67.733 67.733" fill="#7b65fa" xmlns="http://www.w3.org/2000/svg"><path d="M3.005 10.266V63.83h1.793V10.266z"/><path d="M3.901.264L.265 11.162H7.54z"/><path d="M2.964 62.926v1.809h54.504v-1.809z"/><path d="M56.571 60.193v7.275L67.47 63.83l-10.898-3.637z"/><path d="M54.193 63.685H4.68l16.483-35.16 9.929 7.299 12.951-20.192z" fill-opacity=".502" stroke="#7b65fa" stroke-width="1.873"/></svg>
+          <span class="k6wm">k6</span>
+          <span class="k6run">scenario = stress · open ramp · 120 s</span>
+        </div>
+        <div class="k6chips">
+          <span class="k6chip">http_req_failed &lt; 50% <span style="color:#3ddc97">✓</span></span>
+          <span class="k6verdict fail">p95 &gt; 10 s · FAIL</span>
+        </div>
+      </div>
+
+      <div style="flex:1; min-height:0; display:grid; grid-template-columns: 1fr 384px; gap: 24px; margin-top: 14px;">
+        <div class="k6chartwrap" style="margin-top:0;">
+          <div class="k6ptitle">Response time vs. load as concurrency climbs <span class="u">left: s · right: req/s · dashed = SLO</span></div>
+          <div class="k6legend" style="margin-top:0; margin-bottom:8px;">
+            <div class="li"><span class="sw" style="background:#e6a93c"></span>active VUs</div>
+            <div class="li"><span class="sw" style="background:#6b79da"></span>throughput (req/s)</div>
+            <div class="li"><span class="sw" style="background:#c45ce0"></span>p95 latency</div>
+            <div class="li"><span class="sw" style="background:#2ec5b6"></span>avg latency</div>
+            <div class="li"><span class="sw" style="background:#e2574c"></span>p95 SLO (10 s)</div>
+          </div>
+          <div class="k6plot"><div id="chart-stress"></div></div>
+        </div>
+        <div class="k6stats" style="grid-template-columns: 1fr; align-content:center;">
+          <div class="k6stat"><span class="lab">Breaking point</span><span class="val red">~21<small>VUs</small></span><span class="sub">p95 crosses the 10 s SLO · t≈80 s</span></div>
+          <div class="k6stat"><span class="lab">p95 at peak load</span><span class="val red">12.7<small>s</small></span><span class="sub">at 41 VUs · final 10 s window</span></div>
+          <div class="k6stat"><span class="lab">Error rate</span><span class="val red">17.0<small>%</small></span><span class="sub">climbs to 27% at the top</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot">
+      <span class="pagenum">16 · 26</span>
+      <span class="scoretag"><strong>25%</strong>Testing &amp; Validation</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Slide 13 — CI gates ========== -->
+<section data-label="14 CI Quality Gates" data-om-id="b6d08c8d:706" data-screen-label="14 14 CI Quality Gates" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="13">
+  <div class="frame" data-om-id="b6d08c8d:707">
+    <div class="slide-head" data-om-id="b6d08c8d:708"><h2 class="slide-title" data-om-id="b6d08c8d:709">CI Quality Gates</h2><div class="eyebrow" data-om-id="b6d08c8d:710"><span class="dot" data-om-id="b6d08c8d:711"></span>F · Code Quality</div></div>
+
+    <div style="flex: 1; margin-top: 44px; display: flex; flex-direction: column; gap: 18px;" data-om-id="b6d08c8d:712">
+      <!-- CI screenshot -->
+      <div style="background: #0d1117; border: 1px solid var(--border); border-radius: 12px; padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0;" data-om-id="b6d08c8d:713">
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0;" data-om-id="b6d08c8d:714">
+          <img src="assets/ci.png" alt="ci.yml workflow" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px;" data-om-id="b6d08c8d:715">
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:716">
+      <span class="pagenum" data-om-id="b6d08c8d:717">15 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:718"><strong data-om-id="b6d08c8d:719">10%</strong>Code Quality</span>
+    </div>
+  </div>
+  <style>
+    .gate { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 12px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+    .gate-n { font-family: var(--mono); font-size: 24px; color: var(--accent); font-weight: 700; }
+    .gate-h { font-size: 24px; font-weight: 600; color: var(--fg); }
+    .gate-b { font-family: var(--mono); font-size: 24px; color: var(--muted); line-height: 1.3; }
+  </style>
+</section>
+
+<!-- ========== Slide 14 — SonarCloud ========== -->
+<section data-label="15 CI/CD Pipeline" data-om-id="b6d08c8d:733" data-screen-label="15 15 CI/CD Pipeline" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="16" data-deck-active="">
+  <div class="frame" data-om-id="b6d08c8d:734">
+    <div class="slide-head" data-om-id="b6d08c8d:735"><h2 class="slide-title" data-om-id="b6d08c8d:736">CI/CD Pipeline</h2><div class="eyebrow" data-om-id="b6d08c8d:737"><span class="dot" data-om-id="b6d08c8d:738"></span>G · Ops &amp; Reliability</div></div>
+
+    <div style="flex: 1; margin-top: 32px; display: flex; flex-direction: column; gap: 20px; min-height: 0;" data-om-id="b6d08c8d:739">
+      <!-- Notes (2-col, above) -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;" data-om-id="b6d08c8d:740">
+        <div class="cdnote" data-om-id="b6d08c8d:741">
+          <div class="cdnote-h" data-om-id="b6d08c8d:742">Parallelization</div>
+          <div class="cdnote-b" data-om-id="b6d08c8d:743">pytest E2E sharding · Parallel task</div>
+        </div>
+        <div class="cdnote" data-om-id="b6d08c8d:744">
+          <div class="cdnote-h" data-om-id="b6d08c8d:745">Path-filtered</div>
+          <div class="cdnote-b" data-om-id="b6d08c8d:746">backend/** · frontend/** · CI/CD on demand</div>
+        </div>
+      </div>
+
+      <!-- CD screenshot (large, below) -->
+      <div style="background: rgb(255, 255, 255); border: 1px solid var(--border); border-radius: 12px; padding: 18px; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; border-width: 1px; height: 729px" data-om-id="b6d08c8d:747">
+        <img src="assets/cicd.png" alt="cd.yml workflow" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 12px" data-om-id="b6d08c8d:748">
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:749">
+      <span class="pagenum" data-om-id="b6d08c8d:750">16 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:751"><strong data-om-id="b6d08c8d:752">10%</strong>Ops &amp; Reliability</span>
+    </div>
+  </div>
+  <style>
+    .cdnote { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 22px; display: flex; align-items: baseline; gap: 18px; }
+    .cdnote-h { font-size: 26px; font-weight: 600; color: var(--accent-strong); flex-shrink: 0; }
+    .cdnote-b { font-size: 24px; color: var(--fg-soft); line-height: 1.4; font-family: var(--mono); }
+  </style>
+</section><section data-label="16 SonarCloud Quality Gate" data-om-id="b6d08c8d:720" data-screen-label="16 16 SonarCloud Quality Gate" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="14">
+  <div class="frame" data-om-id="b6d08c8d:721">
+    <div class="slide-head" data-om-id="b6d08c8d:722"><h2 class="slide-title" data-om-id="b6d08c8d:723">SonarCloud Quality Gate</h2><div class="eyebrow" data-om-id="b6d08c8d:724"><span class="dot" data-om-id="b6d08c8d:725"></span>F · Code Quality</div></div>
+
+    <div style="flex: 1; margin-top: 36px; display: flex; min-height: 0;" data-om-id="b6d08c8d:726">
+      <!-- Screenshot (full width) -->
+      <div style="background: rgb(255, 255, 255); border-radius: 14px; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 0; flex: 1; width: 1276px; height: 850px; opacity: 1" data-om-id="b6d08c8d:727">
+        <img src="assets/SonarCloud.png" alt="SonarCloud quality gate" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px;" data-om-id="b6d08c8d:728">
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:729">
+      <span class="pagenum" data-om-id="b6d08c8d:730">17 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:731"><strong data-om-id="b6d08c8d:732">10%</strong>Code Quality</span>
+    </div>
+  </div>
+  <style>
+    .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 28px; display: grid; grid-template-columns: 56px 1fr; grid-template-rows: auto auto; gap: 4px 16px; }
+    .kpi-card.kpi-ok { border-color: var(--success); background: var(--success-soft); }
+    .kpi-icon { grid-row: span 2; width: 56px; height: 56px; border-radius: 12px; background: var(--success); color: white; font-size: 30px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .kpi-cap { font-size: 24px; color: var(--muted); }
+    .kpi-val { font-size: 44px; font-weight: 700; color: var(--success); letter-spacing: -0.01em; line-height: 1; }
+    .ratebox { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; text-align: center; }
+    .rate-lab { font-size: 24px; color: var(--muted); }
+    .rate-rank { font-size: 36px; font-weight: 700; color: var(--success); line-height: 1; margin-top: 4px; }
+  </style>
+</section>
+
+<!-- ========== Slide 15 — PR flow / CI gate & auto-assign ========== -->
+<section data-label="17 PR Flow &amp; CI Gate" data-screen-label="17 17 PR Flow &amp; CI Gate" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-om-id="e1c287e7:774" data-deck-slide="15">
+  <div class="frame" data-om-id="e1c287e7:775">
+    <div class="slide-head" data-om-id="e1c287e7:776"><h2 class="slide-title" data-om-id="e1c287e7:777">PR Flow &amp; CI Gate</h2><div class="eyebrow" data-om-id="e1c287e7:778"><span class="dot" data-om-id="e1c287e7:779"></span>F · Code Quality</div></div>
+
+    <div style="flex: 1; margin-top: 36px; display: grid; grid-template-columns: 0.82fr 1.18fr; gap: 36px; align-items: stretch; min-height: 0;" data-om-id="e1c287e7:780">
+      <!-- Left: explanatory blocks -->
+      <div style="display: flex; flex-direction: column; gap: 24px; justify-content: flex-start; align-items: stretch" data-om-id="e1c287e7:781">
+        <div class="prnote" data-om-id="e1c287e7:782">
+          <div class="prnote-h" data-om-id="e1c287e7:783"><span class="prnote-tag" data-om-id="e1c287e7:784">Gate</span>PR blocked by CI Quality Gate</div>
+          <div class="prnote-b" data-om-id="e1c287e7:785">SonarCloud quality gate fails (e.g. duplicated code over the limit) and the PR cannot merge.</div>
+        </div>
+        <div class="prnote" data-om-id="e1c287e7:786">
+          <div class="prnote-h" data-om-id="e1c287e7:787"><span class="prnote-tag" data-om-id="e1c287e7:788">Bot</span>Auto-assign Reviewer</div>
+          <div class="prnote-b" data-om-id="e1c287e7:789">A GitHub Action auto-assigns a reviewer when the PR opens, so every PR has a gatekeeper.</div>
+        </div>
+      </div>
+      <!-- Right: screenshot -->
+      <div style="background: rgb(255, 255, 255); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; align-items: center; justify-content: center; min-height: 0; height: 850px" data-om-id="e1c287e7:790">
+        <img src="assets/pr.png" alt="SonarCloud quality gate on PR" style="max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; width: 990px; height: 890px" data-om-id="e1c287e7:791">
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="e1c287e7:792">
+      <span class="pagenum" data-om-id="e1c287e7:793">18 · 24</span>
+      <span class="scoretag" data-om-id="e1c287e7:794"><strong data-om-id="e1c287e7:795">10%</strong>Code Quality</span>
+    </div>
+  </div>
+  <style>
+    .prnote { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 26px 30px; }
+    .prnote-h { font-size: 30px; font-weight: 600; color: var(--fg); margin-bottom: 12px; display: flex; align-items: center; gap: 14px; }
+    .prnote-tag { font-size: 20px; font-weight: 600; color: var(--accent-strong); background: var(--accent-soft, var(--card)); border: 1px solid var(--accent-strong); border-radius: 6px; padding: 3px 10px; font-family: var(--mono); }
+    .prnote-b { font-size: 25px; color: var(--fg-soft); line-height: 1.55; }
+    .prnote-b strong { color: var(--fg); font-weight: 600; }
+  </style>
+</section>
+
+<!-- ========== Slide 16 — CI/CD pipeline ========== -->
+
+
+<!-- ========== Slide 16–19 — Observability (split) ========== -->
+<section data-label="18 Observability Dashboard · RED Metrics · Operations Overview" data-screen-label="18 18 Observability Dashboard · RED Metrics · Operations Overview" data-om-validate="no_overflowing_text,no_overlapping_text" data-om-id="e1c287e7:816" data-deck-slide="17">
+  <div class="frame" data-om-id="e1c287e7:817">
+    <div class="slide-head" data-om-id="e1c287e7:818"><h2 class="slide-title" data-om-id="e1c287e7:819">Observability: 01 Operations Overview</h2><div class="eyebrow" data-om-id="e1c287e7:820"><span class="dot" data-om-id="e1c287e7:821"></span>G · Ops &amp; Reliability</div></div>
+
+    <div style="flex: 1; margin-top: 28px; min-height: 0; display: flex; gap: 28px; align-items: stretch;" data-om-id="e1c287e7:822">
+      <div style="width: 280px; flex-shrink: 0; display: flex; align-items: flex-start;" data-om-id="e1c287e7:823">
+        <div class="obs-prob" data-om-id="e1c287e7:824">
+          <div class="lab" data-om-id="e1c287e7:825">The Problem</div>
+          <p class="q" data-om-id="e1c287e7:826">Is the service healthy — and which endpoint is dragging it down?</p>
+        </div>
+      </div>
+      <div class="gpanel" style="flex: 1; min-height: 0;" data-om-id="e1c287e7:827">
+        <div class="gpanel-img" style="flex: 1; min-height: 0;" data-om-id="e1c287e7:828"><img src="assets/grafana-01.png?v=2" alt="Grafana RED metrics" data-om-id="e1c287e7:829"></div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="e1c287e7:830">
+      <span class="pagenum" data-om-id="e1c287e7:831">19 · 24</span>
+      <span class="scoretag" data-om-id="e1c287e7:832"><strong data-om-id="e1c287e7:833">10%</strong>Ops &amp; Reliability</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== BACKUP (skipped) — Observability · 02 Service Drilldown ========== -->
+<section data-deck-skip="" data-label="B · 02 Service Drilldown" data-screen-label="B 02 Observability · Service Drilldown (backup)" data-om-validate="no_overflowing_text,no_overlapping_text" data-om-id="backup02:900">
+  <div class="frame" data-om-id="backup02:901">
+    <div class="slide-head" data-om-id="backup02:902"><h2 class="slide-title" data-om-id="backup02:903">Observability: 02 Service Drilldown</h2><div class="eyebrow" data-om-id="backup02:904"><span class="dot" data-om-id="backup02:905"></span>G · Ops &amp; Reliability · Backup</div></div>
+
+    <div style="flex: 1; margin-top: 28px; min-height: 0; display: flex; gap: 28px; align-items: stretch;" data-om-id="backup02:906">
+      <div style="width: 280px; flex-shrink: 0; display: flex; align-items: flex-start;" data-om-id="backup02:907">
+        <div class="obs-prob" data-om-id="backup02:908">
+          <div class="lab" data-om-id="backup02:909">The Problem</div>
+          <p class="q" data-om-id="backup02:910">A metric is red — <em data-om-id="backup02:911">which</em> endpoint, and is the container starved?</p>
+        </div>
+      </div>
+      <div class="gpanel" style="flex: 1; min-height: 0;" data-om-id="backup02:912">
+        <div class="gpanel-img" style="flex: 1; min-height: 0;" data-om-id="backup02:913"><img src="assets/grafana-02.png?v=2" alt="Grafana service drilldown — per-handler traffic, latency, ECS CPU/memory" data-om-id="backup02:914"></div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="backup02:915">
+      <span class="pagenum" data-om-id="backup02:916">BACKUP · 02</span>
+      <span class="scoretag" data-om-id="backup02:917"><strong data-om-id="backup02:918">10%</strong>Ops &amp; Reliability</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== BACKUP (skipped) — Observability · 03 Repair Journey ========== -->
+<section data-deck-skip="" data-label="B · 03 Repair Journey" data-screen-label="B 03 Observability · Repair Journey (backup)" data-om-validate="no_overflowing_text,no_overlapping_text" data-om-id="backup03:900">
+  <div class="frame" data-om-id="backup03:901">
+    <div class="slide-head" data-om-id="backup03:902"><h2 class="slide-title" data-om-id="backup03:903">Observability: 03 Repair Journey</h2><div class="eyebrow" data-om-id="backup03:904"><span class="dot" data-om-id="backup03:905"></span>G · Ops &amp; Reliability · Backup</div></div>
+
+    <div style="flex: 1; margin-top: 28px; min-height: 0; display: flex; gap: 28px; align-items: stretch;" data-om-id="backup03:906">
+      <div style="width: 280px; flex-shrink: 0; display: flex; align-items: flex-start;" data-om-id="backup03:907">
+        <div class="obs-prob" data-om-id="backup03:908">
+          <div class="lab" data-om-id="backup03:909">The Problem</div>
+          <p class="q" data-om-id="backup03:910">Is the repair <em data-om-id="backup03:911">workflow</em> itself healthy — FSM, conflicts, journey latency?</p>
+        </div>
+      </div>
+      <div class="gpanel" style="flex: 1; min-height: 0;" data-om-id="backup03:912">
+        <div class="gpanel-img" style="flex: 1; min-height: 0;" data-om-id="backup03:913"><img src="assets/grafana-03.png?v=2" alt="Grafana repair journey — FSM transitions, 409 conflicts, per-flow p95, repair logs" data-om-id="backup03:914"></div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="backup03:915">
+      <span class="pagenum" data-om-id="backup03:916">BACKUP · 03</span>
+      <span class="scoretag" data-om-id="backup03:917"><strong data-om-id="backup03:918">10%</strong>Ops &amp; Reliability</span>
+    </div>
+  </div>
+</section>
+
+<section data-label="19 Observability Dashboard · Logs · Traces · Profiles" data-screen-label="19 19 Observability Dashboard · Logs · Traces · Profiles" data-om-validate="no_overflowing_text,no_overlapping_text" data-om-id="e1c287e7:834" data-deck-slide="18">
+  <div class="frame" data-om-id="e1c287e7:835">
+    <div class="slide-head" data-om-id="e1c287e7:836"><h2 class="slide-title" data-om-id="e1c287e7:837">Observability: 04 Logs Traces Profiles</h2><div class="eyebrow" data-om-id="e1c287e7:838"><span class="dot" data-om-id="e1c287e7:839"></span>G · Ops &amp; Reliability</div></div>
+
+    <div style="flex: 1; margin-top: 28px; min-height: 0; display: flex; gap: 28px; align-items: stretch;" data-om-id="e1c287e7:840">
+      <div style="width: 280px; flex-shrink: 0; display: flex; align-items: flex-start;" data-om-id="e1c287e7:841">
+        <div class="obs-prob" data-om-id="e1c287e7:842">
+          <div class="lab" data-om-id="e1c287e7:843">The Problem</div>
+          <p class="q" data-om-id="e1c287e7:844">A metric went red. Now <em data-om-id="e1c287e7:845">why</em> — which span or hotspot?</p>
+        </div>
+      </div>
+      <div class="gpanel" style="flex: 1; min-height: 0;" data-om-id="e1c287e7:846">
+        <div class="gpanel-img" style="flex: 1; min-height: 0;" data-om-id="e1c287e7:847"><img src="assets/grafana-04.png?v=2" alt="Grafana logs traces profiles" data-om-id="e1c287e7:848"></div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="e1c287e7:849">
+      <span class="pagenum" data-om-id="e1c287e7:850">20 · 24</span>
+      <span class="scoretag" data-om-id="e1c287e7:851"><strong data-om-id="e1c287e7:852">10%</strong>Ops &amp; Reliability</span>
+    </div>
+  </div>
+</section>
+
+<section data-label="20 Observability Dashboard · MySQL Health · RDS" data-screen-label="20 20 Observability Dashboard · MySQL Health · RDS" data-om-validate="no_overflowing_text,no_overlapping_text" data-om-id="e1c287e7:853" data-deck-slide="19">
+  <div class="frame" data-om-id="e1c287e7:854">
+    <div class="slide-head" data-om-id="e1c287e7:855"><h2 class="slide-title" data-om-id="e1c287e7:856">Observability: 05 MySQL</h2><div class="eyebrow" data-om-id="e1c287e7:857"><span class="dot" data-om-id="e1c287e7:858"></span>G · Ops &amp; Reliability</div></div>
+
+    <div style="flex: 1; margin-top: 28px; min-height: 0; display: flex; gap: 28px; align-items: stretch;" data-om-id="e1c287e7:859">
+      <div style="width: 280px; flex-shrink: 0; display: flex; align-items: flex-start;" data-om-id="e1c287e7:860">
+        <div class="obs-prob" data-om-id="e1c287e7:861">
+          <div class="lab" data-om-id="e1c287e7:862">The Problem</div>
+          <p class="q" data-om-id="e1c287e7:863">Will the database choke before it takes the app down?</p>
+        </div>
+      </div>
+      <div class="gpanel" style="flex: 1; min-height: 0;" data-om-id="e1c287e7:864">
+        <div class="gpanel-img" style="flex: 1; min-height: 0;" data-om-id="e1c287e7:865"><img src="assets/grafana-05.png?v=2" alt="Grafana MySQL" data-om-id="e1c287e7:866"></div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="e1c287e7:867">
+      <span class="pagenum" data-om-id="e1c287e7:868">21 · 24</span>
+      <span class="scoretag" data-om-id="e1c287e7:869"><strong data-om-id="e1c287e7:870">10%</strong>Ops &amp; Reliability</span>
+    </div>
+  </div>
+</section>
+
+<section data-label="21 Observability · Alerts" data-screen-label="21 21 Observability · Alerts" data-om-validate="no_overflowing_text,no_overlapping_text" data-om-id="e1c287e7:871" data-deck-slide="20">
+  <div class="frame" data-om-id="e1c287e7:872">
+    <div class="slide-head" data-om-id="e1c287e7:873"><h2 class="slide-title" data-om-id="e1c287e7:874">Automation Alerts</h2><div class="eyebrow" data-om-id="e1c287e7:875"><span class="dot" data-om-id="e1c287e7:876"></span>G · Ops &amp; Reliability</div></div>
+
+    <div style="flex: 1; margin-top: 32px; margin-bottom: 56px; min-height: 0; display: flex; flex-direction: column; gap: 28px;" data-om-id="e1c287e7:877">
+      <div style="font-size: 28px; color: var(--muted); font-family: var(--mono);" data-om-id="e1c287e7:878">7 rules × 2 thresholds · as-code · Grafana provisioning</div>
+      <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; gap: 22px;" data-om-id="e1c287e7:879">
+          <div class="alertcard" data-om-id="e1c287e7:880">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" data-om-id="e1c287e7:881"><line x1="10" x2="14" y1="2" y2="2" data-om-id="e1c287e7:882"></line><line x1="12" x2="15" y1="14" y2="11" data-om-id="e1c287e7:883"></line><circle cx="12" cy="14" r="8" data-om-id="e1c287e7:884"></circle></svg>
+            <div class="ac-name" data-om-id="e1c287e7:885">p95 latency</div>
+            <div class="ac-desc" data-om-id="e1c287e7:886">User-perceptible slowness</div>
+          </div>
+          <div class="alertcard" data-om-id="e1c287e7:887">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" data-om-id="e1c287e7:888"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" data-om-id="e1c287e7:889"></path><path d="M12 8v4" data-om-id="e1c287e7:890"></path><path d="M12 16h.01" data-om-id="e1c287e7:891"></path></svg>
+            <div class="ac-name" data-om-id="e1c287e7:892">5xx rate</div>
+            <div class="ac-desc" data-om-id="e1c287e7:893">Correctness regression</div>
+          </div>
+          <div class="alertcard" data-om-id="e1c287e7:894">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" data-om-id="e1c287e7:895"><ellipse cx="12" cy="5" rx="9" ry="3" data-om-id="e1c287e7:896"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5" data-om-id="e1c287e7:897"></path><path d="M3 12A9 3 0 0 0 21 12" data-om-id="e1c287e7:898"></path></svg>
+            <div class="ac-name" data-om-id="e1c287e7:899">DB connection pool</div>
+            <div class="ac-desc" data-om-id="e1c287e7:900">Capacity saturation</div>
+          </div>
+          <div class="alertcard" data-om-id="e1c287e7:901">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" data-om-id="e1c287e7:902"><rect width="16" height="16" x="4" y="4" rx="2" data-om-id="e1c287e7:903"></rect><rect width="6" height="6" x="9" y="9" rx="1" data-om-id="e1c287e7:904"></rect><path d="M15 2v2" data-om-id="e1c287e7:905"></path><path d="M15 20v2" data-om-id="e1c287e7:906"></path><path d="M2 15h2" data-om-id="e1c287e7:907"></path><path d="M2 9h2" data-om-id="e1c287e7:908"></path><path d="M20 15h2" data-om-id="e1c287e7:909"></path><path d="M20 9h2" data-om-id="e1c287e7:910"></path><path d="M9 2v2" data-om-id="e1c287e7:911"></path><path d="M9 20v2" data-om-id="e1c287e7:912"></path></svg>
+            <div class="ac-name" data-om-id="e1c287e7:913">Disk / CPU</div>
+            <div class="ac-desc" data-om-id="e1c287e7:914">Infrastructure saturation</div>
+          </div>
+          <div class="alertcard" data-om-id="e1c287e7:915">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" data-om-id="e1c287e7:916"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" data-om-id="e1c287e7:917"></path><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" data-om-id="e1c287e7:918"></path></svg>
+            <div class="ac-name" data-om-id="e1c287e7:919">/health</div>
+            <div class="ac-desc" data-om-id="e1c287e7:920">Service down</div>
+          </div>
+          <div class="alertcard ac-email" data-om-id="e1c287e7:921">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide" data-om-id="e1c287e7:922"><rect width="20" height="16" x="2" y="4" rx="2" data-om-id="e1c287e7:923"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" data-om-id="e1c287e7:924"></path></svg>
+            <div class="ac-name" data-om-id="e1c287e7:925">Threshold crossed → email</div>
+            <div class="ac-desc" data-om-id="e1c287e7:926">Grafana emails the team the moment a rule fires</div>
+          </div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="e1c287e7:927">
+      <span class="pagenum" data-om-id="e1c287e7:928">22 · 24</span>
+      <span class="scoretag" data-om-id="e1c287e7:929"><strong data-om-id="e1c287e7:930">10%</strong>Ops &amp; Reliability</span>
+    </div>
+  </div>
+  <style>
+    .gpanel { background: #0d1117; border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    .gpanel-h { font-family: var(--mono); font-size: 24px; color: oklch(0.75 0.04 250); padding: 2px 4px; }
+    .obs-prob { display: flex; flex-direction: column; gap: 24px; }
+    .obs-prob .lab { font-family: var(--mono); font-size: 24px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent-strong); }
+    .obs-prob .q { font-size: 38px; line-height: 1.26; font-weight: 600; color: var(--fg); text-wrap: pretty; margin: 0; }
+    .gpanel-img { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 6px; }
+    .gpanel-img img { width: 100%; height: 100%; object-fit: contain; }
+    .alertcard { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 16px; padding: 32px 34px; display: flex; flex-direction: column; justify-content: center; gap: 12px; }
+    .alertcard svg { width: 40px; height: 40px; color: var(--accent); stroke-width: 2; }
+    .alertcard .ac-name { font-size: 32px; font-weight: 600; color: var(--fg); }
+    .alertcard .ac-desc { font-size: 26px; color: var(--fg-soft); line-height: 1.35; }
+    .alertcard.ac-email { background: var(--accent-soft); border-color: var(--accent); }
+    .alertcard.ac-email svg { color: var(--accent-strong); }
+    .alertcard.ac-email .ac-name { color: var(--accent-strong); }
+  </style>
+</section>
+
+<!-- ========== Slide 17 — Reliability ========== -->
+<section data-label="22 Reliability Mechanisms" data-om-id="b6d08c8d:797" data-screen-label="22 22 Reliability Mechanisms" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="21" data-deck-skip="">
+  <div class="frame" data-om-id="b6d08c8d:798">
+    <div class="slide-head" data-om-id="b6d08c8d:799"><h2 class="slide-title" data-om-id="b6d08c8d:800">Reliability Mechanisms</h2><div class="eyebrow" data-om-id="b6d08c8d:801"><span class="dot" data-om-id="b6d08c8d:802"></span>G · Ops &amp; Reliability</div></div>
+
+    <div style="flex: 1; margin-top: 36px;" data-om-id="b6d08c8d:803">
+      <div class="reltable" data-om-id="b6d08c8d:804">
+        <div class="rel-head" data-om-id="b6d08c8d:805"><span data-om-id="b6d08c8d:806">If X fails</span><span data-om-id="b6d08c8d:807">What happens</span><span data-om-id="b6d08c8d:808">Mechanism</span></div>
+        <div class="rel-row" data-om-id="b6d08c8d:809">
+          <span class="rel-x" data-om-id="b6d08c8d:810"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="server-crash" data-om-id="b6d08c8d:811" class="lucide lucide-server-crash"><path d="M6 10H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"></path><path d="M6 14H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-2"></path><path d="M6 6h.01"></path><path d="M6 18h.01"></path><path d="m13 6-4 6h6l-4 6"></path></svg>AZ failure</span>
+          <span class="rel-y" data-om-id="b6d08c8d:812">A single AZ goes down</span>
+          <span class="rel-z" data-om-id="b6d08c8d:813">ALB shifts to a healthy AZ · RDS Multi-AZ failover · ECS reschedules</span>
+        </div>
+        <div class="rel-row" data-om-id="b6d08c8d:814">
+          <span class="rel-x" data-om-id="b6d08c8d:815"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="database" data-om-id="b6d08c8d:816" class="lucide lucide-database"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg>DB transient outage</span>
+          <span class="rel-y" data-om-id="b6d08c8d:817">Shouldn't spew lots of 5xx</span>
+          <span class="rel-z" data-om-id="b6d08c8d:818">/ready returns 503 · ALB drains the target · no container kill</span>
+        </div>
+        <div class="rel-row" data-om-id="b6d08c8d:819">
+          <span class="rel-x" data-om-id="b6d08c8d:820"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="git-merge" data-om-id="b6d08c8d:821" class="lucide lucide-git-merge"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M6 21V9a9 9 0 0 0 9 9"></path></svg>Manager race condition</span>
+          <span class="rel-y" data-om-id="b6d08c8d:822">Two review the same request</span>
+          <span class="rel-z" data-om-id="b6d08c8d:823">optimistic lock returns 409 · retry is safe</span>
+        </div>
+        <div class="rel-row" data-om-id="b6d08c8d:824">
+          <span class="rel-x" data-om-id="b6d08c8d:825"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="layers" data-om-id="b6d08c8d:826" class="lucide lucide-layers"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"></path><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"></path><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"></path></svg>Bad Migration</span>
+          <span class="rel-y" data-om-id="b6d08c8d:827">DB schema broken</span>
+          <span class="rel-z" data-om-id="b6d08c8d:828">Alembic one-off before deploy · abort rollout on failure</span>
+        </div>
+        <div class="rel-row" data-om-id="b6d08c8d:829">
+          <span class="rel-x" data-om-id="b6d08c8d:830"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="rocket" data-om-id="b6d08c8d:831" class="lucide lucide-rocket"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"></path><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path></svg>Deploy regression</span>
+          <span class="rel-y" data-om-id="b6d08c8d:832">New version is up but broken</span>
+          <span class="rel-z" data-om-id="b6d08c8d:833">ECS Rolling · keep old until new is healthy</span>
+        </div>
+        <div class="rel-row rel-meta" data-om-id="b6d08c8d:834">
+          <span class="rel-x" data-om-id="b6d08c8d:835"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="bell-ring" data-om-id="b6d08c8d:836" class="lucide lucide-bell-ring"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path><path d="M4 2C2.8 3.7 2 5.7 2 8"></path><path d="M22 8c0-2.3-.8-4.3-2-6"></path></svg>All of the above still trip</span>
+          <span class="rel-y" data-om-id="b6d08c8d:837">No one's watching the dashboard</span>
+          <span class="rel-z" data-om-id="b6d08c8d:838">Grafana alert emails · detect → notify loop</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slide-foot" data-om-id="b6d08c8d:839">
+      <span class="pagenum" data-om-id="b6d08c8d:840">23 · 24</span>
+      <span class="scoretag" data-om-id="b6d08c8d:841"><strong data-om-id="b6d08c8d:842">10%</strong>Ops &amp; Reliability</span>
+    </div>
+  </div>
+  <style>
+    .reltable { display: flex; flex-direction: column; }
+    .rel-head, .rel-row { display: grid; grid-template-columns: 1.2fr 1.4fr 2.2fr; gap: 32px; padding: 22px 28px; align-items: center; }
+    .rel-head { font-family: var(--mono); font-size: 24px; color: var(--muted); border-bottom: 2px solid var(--border); letter-spacing: 0.04em; text-transform: uppercase; padding-bottom: 14px; }
+    .rel-row { border-bottom: 1px solid var(--border); }
+    .rel-row.rel-meta { background: var(--accent-soft); border-radius: 0 0 12px 12px; }
+    .rel-x { font-size: 24px; font-weight: 600; color: var(--fg); display: flex; align-items: center; gap: 12px; }
+    .rel-x svg { width: 24px; height: 24px; color: var(--accent); stroke-width: 2; flex-shrink: 0; }
+    .rel-meta .rel-x svg { color: var(--accent-strong); }
+    .rel-y { font-size: 24px; color: var(--fg-soft); line-height: 1.4; }
+    .rel-z { font-size: 24px; color: var(--fg-soft); line-height: 1.4; font-family: var(--mono); }
+    .rel-meta .rel-x { color: var(--accent-strong); }
+  </style>
+</section>
+
+<!-- ========== Slide 18 — Q&A ========== -->
+<section data-label="23 Q&amp;A" data-om-id="b6d08c8d:843" data-screen-label="23 23 Q&amp;A" data-om-validate="no_overflowing_text,no_overlapping_text,slide_sized_text" data-deck-slide="22" data-deck-last-visible="">
+  <div class="frame" data-om-id="b6d08c8d:844">
+    <div style="flex: 1; display: grid; grid-template-columns: 1.3fr 1fr; gap: 80px; align-items: start; padding-top: 120px;" data-om-id="b6d08c8d:845">
+      <div style="display: flex; flex-direction: column; gap: 40px;" data-om-id="b6d08c8d:846">
+        <div class="eyebrow" data-om-id="b6d08c8d:847"><span class="dot" data-om-id="b6d08c8d:848"></span>H · Closing</div>
+        <h1 class="deck-title" style="font-size: 144px;" data-om-id="b6d08c8d:849">Q&amp;A</h1>
+        <div style="font-size: var(--type-subtitle); color: var(--fg-soft); line-height: 1.3; max-width: 80%;" data-om-id="b6d08c8d:850">Asset Management System<br>Live Demo + Repo</div>
+        <div style="display: flex; flex-direction: column; gap: 14px; font-size: 24px; color: var(--fg-soft);" data-om-id="b6d08c8d:851">
+          <div style="display: flex; align-items: baseline; gap: 16px;" data-om-id="b6d08c8d:852"><span class="mono" style="color: var(--accent-strong); min-width: 110px;" data-om-id="b6d08c8d:853">Demo</span><span class="mono" data-om-id="b6d08c8d:854">ams-group30.online</span></div>
+          <div style="display: flex; align-items: baseline; gap: 16px;" data-om-id="b6d08c8d:855"><span class="mono" style="color: var(--accent-strong); min-width: 110px;" data-om-id="b6d08c8d:856">Repo</span><span class="mono" data-om-id="b6d08c8d:857">github.com/Joshua0209/Asset-Management-System</span></div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: var(--card); border: 1px solid var(--border); border-radius: 14px;" data-om-id="b6d08c8d:858">
+        <div style="font-size: 24px; color: var(--muted); font-family: var(--mono);" data-om-id="b6d08c8d:859">// Q&amp;A coverage</div>
+        <div class="qarow" data-om-id="b6d08c8d:860"><span class="qa-name" data-om-id="b6d08c8d:861">劉仲楷</span><span class="qa-area" data-om-id="b6d08c8d:862">CICD · Observability</span></div>
+        <div class="qarow" data-om-id="b6d08c8d:863"><span class="qa-name" data-om-id="b6d08c8d:864">古庭榮</span><span class="qa-area" data-om-id="b6d08c8d:865">Backend API</span></div>
+        <div class="qarow" data-om-id="b6d08c8d:866"><span class="qa-name" data-om-id="b6d08c8d:867">鄭怡文</span><span class="qa-area" data-om-id="b6d08c8d:868">Testing · i18n</span></div>
+        <div class="qarow" data-om-id="b6d08c8d:869"><span class="qa-name" data-om-id="b6d08c8d:870">陳亮諭</span><span class="qa-area" data-om-id="b6d08c8d:871">Frontend pages</span></div>
+        <div class="qarow" data-om-id="b6d08c8d:872"><span class="qa-name" data-om-id="b6d08c8d:873">闕中豪</span><span class="qa-area" data-om-id="b6d08c8d:874">AWS Infrastructure</span></div>
+      </div>
+    </div>
+
+    <div style="position: absolute; bottom: 44px; left: var(--pad-x); right: var(--pad-x); display: flex; justify-content: space-between; font-size: 24px; color: var(--muted);" data-om-id="b6d08c8d:878">
+      <span class="mono" data-om-id="b6d08c8d:879">28 · 28</span>
+      <span data-om-id="b6d08c8d:880">Thank you · Group 30 · 2026-06-02</span>
+    </div>
+  </div>
+  <style>
+    .qarow { display: grid; grid-template-columns: 140px 1fr; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 24px; }
+    .qa-name { font-weight: 600; color: var(--fg); }
+    .qa-area { color: var(--fg-soft); }
+    .qarow:last-of-type { border-bottom: none; }
+  </style>
+</section>
+
+</deck-stage>
+
+<!-- Design-tool Tweaks panel (React + Babel) removed on handoff; its values are baked into :root. -->
+
+<script src="k6-charts.js"></script>
+<script src="k6-final.js"></script>
+<script>
+  // ---- Render the k6-style load-test charts ----
+  function renderK6Slides() {
+    if (!window.K6DATA || !window.renderK6Chart) { return setTimeout(renderK6Slides, 60); }
+    var D = window.K6DATA;
+
+    // ---------- Soak ----------
+    var soak = D.soak.series; // {min:[], rps:[], p95:[]}
+    var soakEl = document.getElementById('chart-soak');
+    if (soakEl && !soakEl.dataset.done) {
+      soakEl.dataset.done = '1';
+      // find the single p95 excursion to annotate
+      var mi = 0; for (var i = 1; i < soak.p95.length; i++) if (soak.p95[i] > soak.p95[mi]) mi = i;
+      renderK6Chart(soakEl, {
+        width: 1180, height: 600, xTicks: 10,
+        x: soak.min,
+        xFmt: function (v) { return v % 5 === 0 || v === soak.min[soak.min.length - 1] ? Math.round(v) : ''; },
+        xLabel: function (v) { return 'min ' + v; },
+        xTitle: 'elapsed time (minutes)',
+        leftMax: 1000,
+        rightMax: 8,
+        leftTitle: 'response time', leftTitleColor: '#aab0c4',
+        rightTitle: 'throughput (req/s)', rightTitleColor: '#8a93e0',
+        leftFmt: function (v) { return Math.round(v) + 'ms'; },
+        rightFmt: function (v) { return Math.round(v) + '/s'; },
+        series: [
+          { name: 'throughput', kind: 'line', color: 'indigo', axis: 'right', data: soak.rps, fmt: function (v) { return v.toFixed(2) + ' /s'; } },
+          { name: 'p95 latency', kind: 'line', color: 'purple', axis: 'left', width: 3, data: soak.p95, fmt: function (v) { return v + ' ms'; } },
+          { name: 'avg latency', kind: 'line', color: 'teal', axis: 'left', data: soak.avg, fmt: function (v) { return v + ' ms'; } }
+        ]
+      });
+    }
+
+    // ---------- Spike ----------
+    var sp = D.spike.series;
+    var spEl = document.getElementById('chart-spike');
+    if (spEl && !spEl.dataset.done) {
+      spEl.dataset.done = '1';
+      var spx = sp.vus.map(function (_, i) { return (i + 1) * 10; });
+      renderK6Chart(spEl, {
+        width: 1320, height: 620, xTicks: 10,
+        x: spx,
+        xFmt: function (v) { return v; },
+        xLabel: function (v) { return 't = ' + v + ' s'; },
+        xTitle: 'elapsed time (seconds)',
+        leftMax: 14000,
+        rightMax: 60,
+        leftTitle: 'response time', leftTitleColor: '#aab0c4',
+        rightTitle: 'throughput (req/s)', rightTitleColor: '#8a93e0',
+        leftFmt: function (v) { var s = v / 1000; return (Number.isInteger(s) ? s : +s.toFixed(1)) + 's'; },
+        rightFmt: function (v) { return Math.round(v); },
+        pctMax: 60, pctTickColor: '#e6a93c',
+        pctTitle: 'active VUs', pctTitleColor: '#e6a93c',
+        pctFmt: function (v) { return Math.round(v); },
+        series: [
+          { name: 'throughput', kind: 'line', color: 'indigo', axis: 'right', data: sp.rps, fmt: function (v) { return v.toFixed(1) + ' /s'; } },
+          { name: 'active VUs', kind: 'line', color: 'amber', axis: 'pct', data: sp.vus, fmt: function (v) { return v + ' VUs'; } },
+          { name: 'p95 latency', kind: 'line', color: 'purple', axis: 'left', width: 3.5, data: sp.p95, fmt: function (v) { return v.toLocaleString() + ' ms'; } },
+          { name: 'avg latency', kind: 'line', color: 'teal', axis: 'left', data: sp.avg, fmt: function (v) { return v.toLocaleString() + ' ms'; } }
+        ],
+        annotations: [
+          { s: 2, i: 4, dir: 'left', html: 'Spike peak — p95 <b style="color:#fff">12.4 s</b><br><span style="font-weight:400;font-size:18px;color:#9aa0a6">50 VUs · then recovers to ~0.9 s by t = 90 s</span>' }
+        ]
+      });
+    }
+
+    // ---------- Stress ----------
+    var st = D.stress.series;
+    var stEl = document.getElementById('chart-stress');
+    if (stEl && !stEl.dataset.done) {
+      stEl.dataset.done = '1';
+      var stx = st.vus.map(function (_, i) { return (i + 1) * 10; });
+      // first index where p95 crosses 10000
+      var bi = 0; for (var j = 0; j < st.p95.length; j++) { if (st.p95[j] >= 10000) { bi = j; break; } }
+      renderK6Chart(stEl, {
+        width: 1320, height: 620, xTicks: 12,
+        x: stx,
+        xFmt: function (v) { return v; },
+        xLabel: function (v, i) { return 't = ' + v + ' s · ' + st.vus[i] + ' VUs'; },
+        xTitle: 'elapsed time (seconds)',
+        leftMax: 14000,
+        rightMax: 10,
+        leftTitle: 'response time', leftTitleColor: '#aab0c4',
+        rightTitle: 'throughput (req/s)', rightTitleColor: '#8a93e0',
+        leftFmt: function (v) { var s = v / 1000; return (Number.isInteger(s) ? s : +s.toFixed(1)) + 's'; },
+        rightFmt: function (v) { return Math.round(v); },
+        pctMax: 48, pctTickColor: '#e6a93c',
+        pctTitle: 'active VUs', pctTitleColor: '#e6a93c',
+        pctFmt: function (v) { return Math.round(v); },
+        thresholds: [{ value: 10000, axis: 'left', color: '#e2574c', label: 'p95 SLO · 10 s', labelSide: 'left' }],
+        series: [
+          { name: 'throughput', kind: 'line', color: 'indigo', axis: 'right', data: st.rps, fmt: function (v) { return v.toFixed(1) + ' /s'; } },
+          { name: 'active VUs', kind: 'line', color: 'amber', axis: 'pct', data: st.vus, fmt: function (v) { return v + ' VUs'; } },
+          { name: 'p95 latency', kind: 'line', color: 'purple', axis: 'left', width: 3.5, data: st.p95, fmt: function (v) { return v.toLocaleString() + ' ms'; } },
+          { name: 'avg latency', kind: 'line', color: 'teal', axis: 'left', data: st.avg, fmt: function (v) { return v.toLocaleString() + ' ms'; } }
+        ],
+        annotations: [
+          { s: 2, i: bi, dir: 'up', html: 'Breaking point — p95 <b style="color:#fff">' + (st.p95[bi] / 1000).toFixed(1) + ' s</b><br><span style="font-weight:400;font-size:18px;color:#9aa0a6">crosses the 10 s SLO at ' + st.vus[bi] + ' VUs</span>' }
+        ]
+      });
+    }
+  }
+
+  // ---- Keep slide-foot page numbers in sync after slides were added ----
+  function renumberPages() {
+    var secs = document.querySelectorAll('deck-stage > section');
+    var total = secs.length;
+    secs.forEach(function (s, i) {
+      var p = s.querySelector('.slide-foot .pagenum');
+      if (p) p.textContent = (i + 1) + ' · ' + total;
+    });
+  }
+
+  function bootK6() { renderK6Slides(); renumberPages(); }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootK6);
+  } else { bootK6(); }
+  customElements.whenDefined('deck-stage').then(function () { setTimeout(bootK6, 30); });
+</script>
+
+<script src="deck-stage.js"></script>
+<script>
+  function initLucide(attempt) {
+    attempt = attempt || 0;
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+      window.lucide.createIcons();
+    } else if (attempt < 80) {
+      // lucide script may not have finished downloading yet — keep retrying
+      setTimeout(function () { initLucide(attempt + 1); }, 100);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { initLucide(0); });
+  } else {
+    initLucide(0);
+  }
+  // Re-run after deck-stage upgrades (slides may be cloned/moved)
+  customElements.whenDefined('deck-stage').then(() => setTimeout(function () { initLucide(0); }, 0));
+</script>
+</body>
+</html>

@@ -16,18 +16,18 @@ Shared logic lives under `lib/`:
 
 - `lib/auth.js` — per-VU JWT cache, seed-account credentials, eviction
   helpers for long runs that outlive the JWT TTL.
-- `lib/flows.js` — the six critical-flow exec functions + helpers
-  (search, my-assets, list-repairs, submit, approve, complete, register,
-  health). Every request carries low-cardinality `tags` so dashboards keep
-  their route templates stable.
+- `lib/flows.js` — the per-flow exec functions (login, search, my-assets,
+  list-repairs, submit, approve, complete, register, health); the weighted
+  scripts draw their six critical flows from this set. Every request carries
+  low-cardinality `tags` so dashboards keep their route templates stable.
 - `lib/fixtures.js` — tiny 1×1 JPEG used as the multipart payload for
   `submit_repair`.
 
 ## Running
 
-The local docker-compose observability overlay was removed (Phase 2 of
-`docs/plans/observability-prod-migration-plan.md`); k6 no longer ships as a
-compose service. Run it on the host or via a one-shot `docker run`.
+The local docker-compose observability overlay was removed during the
+Grafana Cloud migration; k6 no longer ships as a compose service. Run it on
+the host or via a one-shot `docker run`.
 
 ### Prerequisites
 
@@ -172,3 +172,19 @@ per scenario) or from Grafana Cloud — the `03 Repair Journey` and
 `01 Operations Overview` dashboards both surface p(95) per route. Record
 the number in `docs/system-design/09-testing-strategy.md` so the team can
 compare across runs.
+
+## Captured results
+
+`results/` holds the artifacts from the load-test campaign run against the
+deployed stack:
+
+| File | What it is |
+| ---- | ---------- |
+| `results/consistent.html` | k6 web-dashboard export from a `k6-consistent.js` run. |
+| `results/spike.html` | k6 web-dashboard export from a `k6-spike.js` run. |
+| `results/stress.html` | k6 web-dashboard export from a `k6-stress.js` run (the breakpoint ramp). |
+| `results/2026-05-31-throughput-investigation.md` | Why the stress test tops out at ~8 QPS per task — a CPU/GIL ceiling on a 0.5-vCPU single-worker service, not a code defect. Concludes no change is needed for Phases 1–2. |
+| `results/2026-06-02-stress-409-estimate.md` | Infers the HTTP 409 (optimistic-lock conflict) rate the k6 report omits: ~1.5% of traffic, with optimistic locking holding at 100% checks under the ramp. |
+
+Open the `.html` files in a browser. The two write-ups summarize the headline
+findings the presentation deck (`docs/slides/index.html`) charts.
