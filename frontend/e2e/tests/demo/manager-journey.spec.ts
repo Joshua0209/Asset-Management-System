@@ -1,4 +1,5 @@
-import { expect, test, loginAsManager } from "../../fixtures/auth";
+import { expect, test } from "../../fixtures/demo";
+import { loginAsManager } from "../../fixtures/auth";
 import { AssetListPage } from "../../pages/AssetListPage";
 import { ReviewsPage } from "../../pages/ReviewsPage";
 import { ReviewDetailPage } from "../../pages/ReviewDetailPage";

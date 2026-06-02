@@ -1,9 +1,5 @@
-import {
-  expect,
-  test,
-  HOLDER_CREDENTIALS,
-  loginAsHolder,
-} from "../../fixtures/auth";
+import { expect, test } from "../../fixtures/demo";
+import { HOLDER_CREDENTIALS, loginAsHolder } from "../../fixtures/auth";
 import { SubmitRepairPage } from "../../pages/SubmitRepairPage";
 
 // Demo: a holder reports a hardware fault.
