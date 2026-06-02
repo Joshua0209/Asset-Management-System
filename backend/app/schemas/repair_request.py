@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from typing import Annotated
 
 from pydantic import Field, computed_field, model_validator
 
 from app.models.repair_request import RepairRequestStatus
-from app.schemas.common import APIModel, UUIDString
+from app.schemas.common import APIModel, UtcDatetime, UUIDString
 
 # Single source of truth for length / digit constraints shared with the
 # `repair_requests` table in app/models/repair_request.py. Bumping
@@ -25,7 +25,7 @@ RowVersion = Annotated[int, Field(ge=1)]
 
 class RepairImageRead(APIModel):
     id: str
-    uploaded_at: datetime
+    uploaded_at: UtcDatetime
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -114,8 +114,8 @@ class RepairRequestRead(APIModel):
     repair_cost: Decimal | None
     repair_vendor: str | None
     rejection_reason: str | None
-    completed_at: datetime | None
+    completed_at: UtcDatetime | None
     version: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime
     images: list[RepairImageRead] = []

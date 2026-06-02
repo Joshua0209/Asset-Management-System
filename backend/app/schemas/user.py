@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from app.models.user import UserRole
-from app.schemas.common import APIModel
+from app.schemas.common import APIModel, UtcDatetime
 
 
 class UserRead(APIModel):
@@ -14,5 +12,5 @@ class UserRead(APIModel):
     department: str
     location: str
     version: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDatetime
+    updated_at: UtcDatetime

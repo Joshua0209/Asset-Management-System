@@ -1,12 +1,32 @@
 from __future__ import annotations
 
 import math
+from datetime import UTC, datetime
 from typing import Annotated, Any, Generic, TypeVar
 
 from fastapi import Path
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, computed_field
 
 T = TypeVar("T")
+
+
+def _ensure_utc(value: datetime) -> datetime:
+    """Normalize a datetime to UTC-aware before serialization.
+
+    MySQL ``DATETIME`` columns store no timezone, so values written as UTC by
+    ``utc_now()`` come back from the DB *naive*. A naive datetime serializes to
+    JSON without an offset (``2026-06-02T12:42:11``), which ``new Date(...)`` on
+    the frontend then parses as *local* time — a UTC instant rendered 8 hours
+    early in Taipei. Stamping UTC here makes Pydantic emit an explicit offset
+    (``2026-06-02T12:42:11+00:00``) so clients convert to local time correctly.
+    Idempotent on already-aware values.
+    """
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+# Use for every datetime field that round-trips through the database. Plain
+# ``datetime`` would re-introduce the missing-offset bug described above.
+UtcDatetime = Annotated[datetime, AfterValidator(_ensure_utc)]
 
 UUID_PATTERN = (
     r"^[0-9a-fA-F]{8}-"
